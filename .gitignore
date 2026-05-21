@@ -1,0 +1,29 @@
+# Build artifacts
+target/
+build/
+out/
+*.class
+*.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local logs and runtime artifacts produced by test runs
+logs/
+*.log
+reports/runtime/
+
+# Local environment / secrets (real secrets MUST NOT be committed)
+.env
+.env.local
+*.pem
+*.key

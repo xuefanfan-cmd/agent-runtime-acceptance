@@ -1,0 +1,83 @@
+# Adapter binding for the spring-ai-ascend SUT.
+#
+# This file (and its sibling README.md) is the only place in
+# agent-runtime-acceptance where the product name "spring-ai-ascend"
+# appears in a load-bearing way. All test cases reference only abstract
+# capability ids; this adapter binds those ids to the SUT's concrete
+# surface.
+
+sut_id: spring-ai-ascend
+
+# Bumped on every PR that updates this adapter to track a newer revision
+# of ../../../sut/sut-contract.md. Placeholder until the first commit
+# lands and we can record the actual sha.
+contract_version: "<placeholder — fill in at first commit>"
+
+endpoints:
+  health:
+    method: GET
+    url_template: "{base}/v1/health"
+  create_long_task:
+    method: POST
+    url_template: "{base}/v1/runs"
+  poll_task:
+    method: GET
+    url_template: "{base}/v1/runs/{handle}"
+  cancel_task:
+    method: POST
+    url_template: "{base}/v1/runs/{handle}/cancel"
+  list_tasks:
+    method: GET
+    url_template: "{base}/v1/runs"
+
+hooks:
+  set_worker_delay_ms:
+    available: false
+    reason: |
+      The SUT has not yet exposed a runtime-mutable worker-delay hook on a
+      public surface. A test-only HTTP endpoint is planned. Until then,
+      AT-001.C and AT-001.E will report INCONCLUSIVE against this adapter.
+  force_worker_failure:
+    available: false
+    reason: "Not yet exposed."
+  seed_tenant:
+    available: false
+    reason: "Not yet exposed."
+  revoke_credentials:
+    available: false
+    reason: "Not yet exposed."
+
+response_shape:
+  create_long_task:
+    task_handle_jsonpath: "$.runId"
+    poll_address_jsonpath: "$.pollUrl"
+    terminal_output_jsonpaths_forbidden:
+      - "$.result"
+      - "$.output"
+      - "$.terminal_output"
+  poll_task:
+    state_jsonpath: "$.status"
+    created_at_jsonpath: "$.createdAt"
+    finished_at_jsonpath: "$.finishedAt"
+
+state_mapping:
+  RUNNING:   [PENDING, RUNNING]
+  SUCCEEDED: [SUCCEEDED]
+  FAILED:    [FAILED]
+  CANCELLED: [CANCELLED]
+  EXPIRED:   [EXPIRED]
+  SUSPENDED: [SUSPENDED]
+
+# Disconnect-triggered erasure means: if the client TCP connection drops
+# during work, the SUT erases the task. This SUT does NOT do that.
+disconnect_triggered_erasure: false
+
+# Auth declaration — values are sourced from env vars at run time. Real
+# secrets MUST NOT appear in this file.
+auth:
+  scheme: bearer
+  token_env_var: SPRING_AI_ASCEND_BEARER_TOKEN
+  additional_headers:
+    X-Tenant-Id:
+      env_var: SPRING_AI_ASCEND_TENANT_ID
+      required: true

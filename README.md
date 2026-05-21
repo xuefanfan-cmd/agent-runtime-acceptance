@@ -16,15 +16,20 @@ implementation.
 
 ## Status
 
-Bootstrap. Initial commit ships:
+Bootstrap. Repository ships:
 
 - [PHILOSOPHY.md](PHILOSOPHY.md) — the methodology this repo enforces.
 - [sut/sut-contract.md](sut/sut-contract.md) — the abstract surface every SUT
-  must expose to be testable.
+  must expose to be testable, plus boot-profile and capacity declarations
+  introduced by lifecycle / load tests.
 - [specs/000-state-vocabulary.md](specs/000-state-vocabulary.md) — shared
   vocabulary used across test cases.
-- [specs/AT-001-async-task-boundary.md](specs/AT-001-async-task-boundary.md) —
-  one sample test case demonstrating the format.
+- Five test specifications under [specs/](specs/):
+  - [AT-001](specs/AT-001-async-task-boundary.md) — async long-running task boundary
+  - [AT-002](specs/AT-002-multi-tenant-isolation.md) — multi-tenant read/write isolation
+  - [AT-003](specs/AT-003-submission-schema-strict-matching.md) — submission schema strict matching
+  - [AT-004](specs/AT-004-fail-closed-startup.md) — fail-closed startup under production posture
+  - [AT-005](specs/AT-005-control-plane-liveness-under-load.md) — control-plane liveness under data-plane saturation
 - [sut/adapters/spring-ai-ascend/](sut/adapters/spring-ai-ascend/) — one
   sample SUT adapter showing how an implementation binds to the suite.
 

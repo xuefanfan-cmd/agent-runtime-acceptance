@@ -42,10 +42,21 @@ hooks:
     reason: "Not yet exposed."
   seed_tenant:
     available: false
-    reason: "Not yet exposed."
+    reason: |
+      The SUT does not currently expose a tenant-provisioning API. AT-002
+      will report INCONCLUSIVE against this adapter for all sub-clauses
+      until a seeding mechanism is added (e.g. a test-only POST /tenants
+      or a CLI invocation inside boot.sh that mints two JWTs).
   revoke_credentials:
     available: false
     reason: "Not yet exposed."
+  verify_storage_layer_scope:
+    available: false
+    reason: |
+      Black-box verification of Postgres RLS enforcement is not yet
+      exposed. AT-002.E will report INCONCLUSIVE until a hook is added
+      (e.g. a test-only endpoint that runs a known cross-tenant query
+      with session GUC and returns the row count visible).
 
 response_shape:
   create_long_task:
@@ -72,6 +83,41 @@ state_mapping:
 # during work, the SUT erases the task. This SUT does NOT do that.
 disconnect_triggered_erasure: false
 
+# AT-003 — submission validation exemplars.
+# spring-ai-ascend does not yet expose a registered task-type taxonomy on
+# its public surface (capability registry is a W2+ design contract). Until
+# it does, AT-003 reports INCONCLUSIVE for all sub-clauses against this
+# adapter. Placeholders are listed here as a forward marker; the
+# adapter validator will flag these as unresolved.
+submission_validation:
+  known_task_type: null              # PLACEHOLDER until SUT ships capability surface
+  unknown_task_type: null            # PLACEHOLDER
+  submission_type_jsonpath: "$.capability"
+  rejection_field_jsonpath: null     # PLACEHOLDER
+  rejection_value_jsonpath: null     # PLACEHOLDER
+
+# AT-004 — boot profiles.
+# Only `valid_prod` is currently supported; missing_required and
+# inmem_in_prod require boot.sh to recognise the --profile flag, which
+# is planned but not shipped.
+boot_profiles:
+  valid_prod:
+    available: false
+    reason: "boot.sh / teardown.sh not yet shipped; placeholder for first iteration."
+  missing_required:
+    available: false
+    reason: "Not yet supported by boot.sh."
+  inmem_in_prod:
+    available: false
+    reason: "Not yet supported by boot.sh."
+missing_config_key: null             # for AT-004.C
+dev_only_component_name: null        # for AT-004.D
+
+# AT-005 — capacity declarations.
+capacity:
+  max_payload_size_bytes: 16384        # 16 KiB inline cap declared by SUT for create_long_task
+  declared_concurrent_task_ceiling: null   # not declared; test pushes to first observed backpressure
+
 # Auth declaration — values are sourced from env vars at run time. Real
 # secrets MUST NOT appear in this file.
 auth:
@@ -81,3 +127,4 @@ auth:
     X-Tenant-Id:
       env_var: SPRING_AI_ASCEND_TENANT_ID
       required: true
+  tenant_claim_present: true           # JWT carries a tenant_id claim that the SUT cross-checks against X-Tenant-Id

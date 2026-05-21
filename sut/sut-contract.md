@@ -41,12 +41,13 @@ Each endpoint capability's adapter binding declares:
 Hook capabilities are OPTIONAL by default. A SUT not exposing a hook
 causes dependent sub-clauses to report INCONCLUSIVE, not FAIL.
 
-| Capability id            | Purpose                                                       | First consumed by  |
-|--------------------------|---------------------------------------------------------------|--------------------|
-| `set_worker_delay_ms`    | Inject artificial worker delay for boundary tests.            | AT-001.C, AT-001.E |
-| `force_worker_failure`   | Cause the next worker invocation to throw / exit non-zero.    | AT-005             |
-| `seed_tenant`            | Provision a tenant identity for multi-tenant test cases.      | AT-002             |
-| `revoke_credentials`     | Invalidate a previously-issued credential mid-flight.         | AT-006             |
+| Capability id                  | Purpose                                                       | First consumed by  |
+|--------------------------------|---------------------------------------------------------------|--------------------|
+| `set_worker_delay_ms`          | Inject artificial worker delay for boundary tests.            | AT-001.C, AT-001.E |
+| `force_worker_failure`         | Cause the next worker invocation to throw / exit non-zero.    | (future)           |
+| `seed_tenant`                  | Provision a tenant identity for multi-tenant test cases.      | AT-002             |
+| `revoke_credentials`           | Invalidate a previously-issued credential mid-flight.         | (future)           |
+| `verify_storage_layer_scope`   | Confirm tenant scope is enforced at the storage engine.       | AT-002.E           |
 
 Each hook binding declares:
 
@@ -83,6 +84,58 @@ The shape capability set grows as new test cases require new fields.
 Adapters that do not yet declare a newly-required field cause the
 corresponding sub-clause to report INCONCLUSIVE.
 
+### Submission validation exemplars
+
+For tests that exercise schema-strict matching (AT-003), the adapter
+declares two exemplar values from the SUT's task-type vocabulary, and
+the JSONPaths the test runner uses to set and inspect them:
+
+| Field name                       | Required | Example                                                       |
+|----------------------------------|----------|---------------------------------------------------------------|
+| `known_task_type`                | yes      | a string the SUT WILL accept as a `type` field                |
+| `unknown_task_type`              | yes      | a string the adapter author GUARANTEES is NOT registered      |
+| `submission_type_jsonpath`       | yes      | where `type` is placed in the submission body                 |
+| `rejection_field_jsonpath`       | yes      | where the offending field name appears in the rejection body  |
+| `rejection_value_jsonpath`       | yes      | where the offending value appears in the rejection body       |
+
+If either of `known_task_type` / `unknown_task_type` is omitted, AT-003
+reports INCONCLUSIVE for every sub-clause.
+
+## Boot profile declarations
+
+For lifecycle tests (e.g. AT-004), the adapter's `boot.sh` accepts a
+`--profile=<name>` argument. The adapter declares which profiles it
+supports and the substring tokens the test should look for in stderr
+on aborting profiles:
+
+| Profile name        | Purpose                                                    | First consumed by  |
+|---------------------|------------------------------------------------------------|--------------------|
+| `valid_prod`        | All required config present; SUT should boot cleanly       | AT-004.A           |
+| `missing_required`  | One required config item deliberately missing              | AT-004.B, AT-004.C |
+| `inmem_in_prod`     | Production posture wired to a dev-only in-memory component | AT-004.D           |
+
+For the aborting profiles, the adapter optionally declares the literal
+substring the test runner expects in stderr:
+
+| Field                       | Used by    | Notes                                                   |
+|-----------------------------|------------|---------------------------------------------------------|
+| `missing_config_key`        | AT-004.C   | substring-matched against stderr of `missing_required`  |
+| `dev_only_component_name`   | AT-004.D   | substring-matched against stderr of `inmem_in_prod`     |
+
+Absent profiles flip the dependent sub-clauses to INCONCLUSIVE — they
+do NOT count as FAIL. A SUT that genuinely has no in-memory dev impls,
+for example, legitimately omits `inmem_in_prod`.
+
+## Capacity declarations
+
+For tests that exercise load characteristics (e.g. AT-005), the adapter
+declares the SUT's stated capacity envelope:
+
+| Field name                          | Used by  | Notes                                                       |
+|-------------------------------------|----------|-------------------------------------------------------------|
+| `max_payload_size_bytes`            | AT-005   | Largest payload the SUT accepts on `create_long_task`       |
+| `declared_concurrent_task_ceiling`  | AT-005   | Optional; if present the test caps saturation at this value |
+
 ## State vocabulary mapping
 
 Every adapter MUST include a `state_mapping` block projecting the SUT's
@@ -117,7 +170,13 @@ auth:
     <header_name>:
       env_var: <env var name>
       required: <bool>
+  tenant_claim_present: <bool>   # does the auth credential carry tenant identity?
 ```
+
+`tenant_claim_present` is consumed by AT-002.D. If `false`, AT-002.D
+reports INCONCLUSIVE (the SUT's auth scheme does not give the test a
+way to construct a "credential authorises tenant B but request claims
+tenant A" mismatch).
 
 ## Versioning
 

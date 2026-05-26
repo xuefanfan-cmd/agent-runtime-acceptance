@@ -1,0 +1,134 @@
+# spring-ai-ascend observability map
+#
+# This file records the public or operator-facing observation surfaces the
+# acceptance suite may use to explain module collaboration. Entries are
+# intentionally abstract until the SUT exposes concrete names.
+
+sut_id: spring-ai-ascend
+status: draft
+
+principles:
+  - Prefer public HTTP response fields, headers, metrics, traces, audit events, and diagnostic endpoints.
+  - Do not require private code instrumentation as acceptance evidence.
+  - If an observation surface required by an AT is absent, report INCONCLUSIVE for the affected sub-clause.
+  - If an observation surface is only supporting evidence for module-collaboration explanation, report an evidence gap rather than changing the AT verdict.
+
+correlation:
+  run_id:
+    preferred_sources:
+      - create_long_task response body at adapter.response_shape.create_long_task.task_handle_jsonpath
+      - poll_task response body
+      - audit event payload when publicly exposed
+      - trace/span attributes when publicly exported
+    required_for:
+      - async_task_boundary
+      - idempotent_submission
+      - engine_mode_contract_consistency
+      - suspend_resume_external_event_flow
+  trace_id:
+    preferred_sources:
+      - response header: traceparent
+      - response header: X-Trace-Id
+      - OpenTelemetry exported span trace id
+    required_for:
+      - trace_and_audit_correlation_proposed
+    optional_for:
+      - async_task_boundary
+      - control_plane_liveness_under_load
+      - multi_tenant_isolation
+  tenant_id:
+    preferred_sources:
+      - auth token claim when test runner owns the credential
+      - required tenant header declared in adapter.yaml
+      - audit event tenant field when publicly exposed
+    required_for:
+      - multi_tenant_isolation
+
+http_surfaces:
+  health:
+    endpoint_capability: health
+    evidence:
+      - liveness status
+      - latency under saturation
+      - recovery after saturation
+  create_long_task:
+    endpoint_capability: create_long_task
+    evidence:
+      - acknowledgement latency
+      - task handle
+      - poll address
+      - rejection shape for schema validation
+  poll_task:
+    endpoint_capability: poll_task
+    evidence:
+      - externally mapped run state
+      - created/finished timestamps when exposed
+      - terminal state stability
+  cancel_task:
+    endpoint_capability: cancel_task
+    evidence:
+      - cancellation reachability
+      - control-plane responsiveness
+      - authorization denial for cross-tenant attempts
+  list_tasks:
+    endpoint_capability: list_tasks
+    evidence:
+      - tenant-scoped visibility
+      - absence of phantom tasks
+      - duplicate-run detection for idempotency
+
+metrics:
+  status: proposed
+  acceptable_metric_kinds:
+    - request latency by endpoint class
+    - control-plane request success/failure count
+    - data-plane accepted/backpressured count
+    - validation rejection count
+    - authorization denial count
+    - idempotency hit count
+    - run state transition count
+    - bus control/data/rhythm message count
+  notes:
+    - Concrete metric names must be declared here only after they are exposed through a public metrics surface.
+    - Metrics are supporting evidence unless a specific AT spec declares them required.
+
+traces:
+  status: proposed
+  acceptable_span_attributes:
+    - run_id
+    - tenant_id
+    - endpoint_capability
+    - engine_mode
+    - state_from
+    - state_to
+    - error_code
+  notes:
+    - Trace evidence must come from an exported tracing surface, not private debugger instrumentation.
+    - Trace absence should normally create an evidence gap, not a direct FAIL, unless the AT specifically requires trace correlation.
+
+audit_events:
+  status: proposed
+  acceptable_event_kinds:
+    - run_created
+    - run_cancel_requested
+    - run_cancel_denied
+    - run_state_changed
+    - validation_rejected
+    - cross_tenant_access_denied
+    - feedback_accepted
+    - evolve_candidate_created
+  notes:
+    - Audit event names are provisional. Concrete names should be added only when the SUT exposes them through a public or operator-facing surface.
+
+unsupported_evidence:
+  - private Java method invocation
+  - package/import dependency assertions
+  - direct database table inspection as primary evidence
+  - private queue depth as primary evidence
+  - source-code path or class name as acceptance object
+
+evidence_gap_policy:
+  spec_required_surface_missing: INCONCLUSIVE
+  supporting_surface_missing: EVIDENCE_GAP
+  external_contract_violation: FAIL
+  private_only_evidence_available: EVIDENCE_GAP

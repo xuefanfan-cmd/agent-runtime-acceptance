@@ -31,7 +31,11 @@ Bootstrap. Repository ships:
   - [AT-004](specs/AT-004-fail-closed-startup.md) — fail-closed startup under production posture
   - [AT-005](specs/AT-005-control-plane-liveness-under-load.md) — control-plane liveness under data-plane saturation
 - [sut/adapters/spring-ai-ascend/](sut/adapters/spring-ai-ascend/) — one
-  sample SUT adapter showing how an implementation binds to the suite.
+  sample SUT adapter showing how an implementation binds to the suite,
+  including SUT-specific feature coverage and observability maps.
+- [docs/spring-ai-ascend-integration-acceptance-plan.md](docs/spring-ai-ascend-integration-acceptance-plan.md) —
+  SUT-specific integration acceptance plan for architecture-aware external
+  integration testing.
 
 Test implementations (Java), boot/teardown scripts, CI, tooling, and
 certification reports follow in subsequent iterations.
@@ -39,6 +43,9 @@ certification reports follow in subsequent iterations.
 ## Layout
 
 ```
+docs/                        # SUT-specific acceptance planning notes
+  spring-ai-ascend-integration-acceptance-plan.md
+
 specs/                       # Test case specifications (markdown, not code)
   README.md                  # How to author a spec; author checklist
   000-state-vocabulary.md    # Shared abstract state names
@@ -51,6 +58,8 @@ sut/                         # System Under Test abstraction
     spring-ai-ascend/        # First SUT adapter (sample)
       README.md
       adapter.yaml
+      feature-coverage.yaml
+      observability-map.yaml
 ```
 
 ## How to read this repo
@@ -61,7 +70,11 @@ sut/                         # System Under Test abstraction
 3. [specs/AT-001-async-task-boundary.md](specs/AT-001-async-task-boundary.md) —
    the test case format.
 4. [sut/adapters/spring-ai-ascend/](sut/adapters/spring-ai-ascend/) — what an
-   SUT-specific binding looks like.
+   SUT-specific binding looks like, including feature coverage and
+   observability evidence maps.
+5. [docs/spring-ai-ascend-integration-acceptance-plan.md](docs/spring-ai-ascend-integration-acceptance-plan.md) —
+   how the spring-ai-ascend adapter applies architecture-aware external
+   integration acceptance.
 
 ## How to add a new SUT
 
@@ -81,5 +94,6 @@ numbers. See [specs/README.md](specs/README.md) for the author checklist.
 
 This repository does not import code from any SUT. SUTs do not import code
 from this repository. The only coupling is observational: the test suite
-talks to each SUT through the SUT's `adapter.yaml`, and through that file
-alone.
+talks to each SUT through the SUT's `adapter.yaml`, and through adapter-local
+coverage / observability maps that explain SUT-specific evidence without
+changing the SUT-agnostic specs.

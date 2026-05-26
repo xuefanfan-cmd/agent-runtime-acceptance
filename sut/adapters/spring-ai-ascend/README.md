@@ -13,6 +13,10 @@ load-bearing way. It maps:
 - Abstract state names → the SUT's concrete state vocabulary.
 - Abstract response field paths → the SUT's JSON response shapes.
 - Abstract hooks → SUT-specific injection mechanisms (where supported).
+- Feature coverage → expected spring-ai-ascend module collaboration and acceptable observable evidence.
+- Observability surfaces → public or operator-facing trace / metric / audit evidence.
+
+The adapter uses an **architecture-aware external integration acceptance** stance: it may document which spring-ai-ascend modules are expected to collaborate for a feature, but it does not make private implementation details the acceptance object.
 
 ## How to boot the SUT
 
@@ -34,6 +38,15 @@ Until `boot.sh` lands, an operator wishing to run this adapter manually
 boots the SUT according to the SUT's own quickstart (whatever that
 quickstart may be) and then invokes the test runner with the resulting
 base URL.
+
+## Architecture-aware coverage files
+
+Two SUT-specific coverage files complement `adapter.yaml`:
+
+- [`feature-coverage.yaml`](feature-coverage.yaml) maps each externally specified feature to the spring-ai-ascend modules expected to collaborate, the acceptable evidence, and the evidence that must not be used.
+- [`observability-map.yaml`](observability-map.yaml) records public or operator-facing observation surfaces such as response fields, headers, metrics, traces, and audit events.
+
+These files guide coverage analysis and result interpretation. They do not change the SUT-agnostic `specs/` corpus and must not require importing SUT code, asserting private class invocation, or inspecting internal database tables as the primary acceptance evidence.
 
 ## Capabilities not yet exposed
 

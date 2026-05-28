@@ -56,28 +56,7 @@ Two kinds of conclusions are separated during judgment:
 
 If the external behavior required by an AT specification cannot be observed, report `INCONCLUSIVE`. If the external behavior satisfies the specification but there is not enough evidence to prove that an expected module participated, do not force the specification-level PASS into a FAIL. Instead, mark an evidence gap in coverage analysis, or make that public observation surface a required evidence item in the relevant AT before using it for verdict judgment.
 
-## 4. Recommended Directory Enhancement
-
-Add the following files under the existing structure:
-
-```text
-sut/adapters/spring-ai-ascend/
-  adapter.yaml
-  feature-coverage.yaml
-  observability-map.yaml
-```
-
-Responsibilities:
-
-| File | Purpose | SUT-specific? |
-|---|---|---|
-| `specs/AT-xxx.md` | General acceptance specifications | No |
-| `sut/sut-contract.md` | Abstract capability contract | No |
-| `adapter.yaml` | Mapping from abstract capabilities to SUT interfaces | Yes |
-| `feature-coverage.yaml` | Mapping from features to module collaboration and evidence | Yes |
-| `observability-map.yaml` | Mapping of trace / metric / audit observation points | Yes |
-
-## 5. Feature-Driven Module Collaboration Acceptance
+## 4. Feature-Driven Module Collaboration Acceptance
 
 Acceptance cases should not use an internal call chain such as `client -> service -> bus -> engine` as the test object. They should use features as the test object.
 
@@ -112,7 +91,7 @@ Unacceptable evidence:
 - An internal table was written.
 - An internal package path appeared in a stack trace.
 
-## 6. Verdict Principles
+## 5. Verdict Principles
 
 | Verdict / Label | Meaning |
 |---|---|
@@ -122,35 +101,3 @@ Unacceptable evidence:
 | EVIDENCE_GAP | Coverage explanation label: external behavior may have satisfied the requirement, but there is not enough public observable evidence to prove that an expected module collaborated. It is not a top-level verdict. |
 
 `INCONCLUSIVE` is neither PASS nor FAIL. It records insufficient acceptance surface and prevents the test repository from invading SUT internals just to obtain a binary result. `EVIDENCE_GAP` is used for coverage explanation and does not change the specification-level verdict, unless the corresponding AT has already defined that observation surface as a required condition.
-
-## 7. Division of Responsibility with Internal Development Tests
-
-The test repository is responsible for:
-
-- External behavior acceptance.
-- Feature-level cross-module collaboration verification.
-- Observable evidence collection and coverage explanation.
-- Runtime semantics such as multi-tenancy, idempotency, cancellation, async boundaries, and control-plane liveness.
-
-The development repository's internal tests are responsible for:
-
-- ArchUnit / module dependency checks.
-- Consistency among SPI packages, `module-metadata`, DFX, and the contract catalog.
-- Code-level correctness of private classes, private methods, and internal state machines.
-- Gate / enforcer / schema-level rule execution.
-- Database table structures and internal implementation details.
-
-## 8. Future Extension Directions
-
-Based on the current AT-001 through AT-005, the following specifications should be prioritized:
-
-1. Idempotent Submission.
-2. Terminal State Absorption.
-3. Trace and Audit Correlation.
-4. Engine Mode Contract Consistency.
-5. Suspend / Resume External Event Flow.
-6. Control / Data / Rhythm Separation.
-7. Middleware Policy Enforcement.
-8. Evolve Feedback Loop.
-
-These specifications should continue to keep the `specs/` layer SUT-agnostic. spring-ai-ascend module collaboration explanations should remain in adapter-layer coverage files.

@@ -56,7 +56,28 @@ PASS / FAIL 主要依据：
 
 若 AT 规格要求的外部行为无法观测，报告 `INCONCLUSIVE`。若外部行为满足但缺少足够证据证明某个预期模块参与，不应把规格层 PASS 强行改成 FAIL；应在覆盖分析中标记 evidence gap，或在相关 AT 明确把该公开观测面纳入 required evidence 后再进入判定。
 
-## 4. 特性驱动的模块协同验收
+## 4. 推荐目录增强
+
+在现有结构基础上，增加：
+
+```text
+sut/adapters/spring-ai-ascend/
+  adapter.yaml
+  feature-coverage.yaml
+  observability-map.yaml
+```
+
+职责：
+
+| 文件 | 作用 | 是否 SUT 特定 |
+|---|---|---|
+| `specs/AT-xxx.md` | 通用验收规格 | 否 |
+| `sut/sut-contract.md` | 抽象能力契约 | 否 |
+| `adapter.yaml` | 抽象能力到 SUT 接口映射 | 是 |
+| `feature-coverage.yaml` | 特性到模块协同与证据映射 | 是 |
+| `observability-map.yaml` | trace / metric / audit 观测点映射 | 是 |
+
+## 5. 特性驱动的模块协同验收
 
 验收用例不以 `client -> service -> bus -> engine` 这种内部调用链为对象，而以特性为对象。
 
@@ -91,7 +112,7 @@ PASS / FAIL 主要依据：
 - 某张内部表被写入。
 - 某个内部包路径出现在调用栈。
 
-## 5. 判定原则
+## 6. 判定原则
 
 | 判定 | 含义 |
 |---|---|
@@ -102,3 +123,34 @@ PASS / FAIL 主要依据：
 
 `INCONCLUSIVE` 不等于 PASS，也不等于 FAIL。它用于记录验收面不足，避免测试仓为了得到二值结果而侵入 SUT 实现。`EVIDENCE_GAP` 用于覆盖解释，不改变规格层 verdict，除非对应 AT 已经把该观测面定义为必需条件。
 
+## 7. 与开发内部测试的分工
+
+测试仓负责：
+
+- 外部行为验收。
+- 特性级跨模块协同验证。
+- 可观测证据采集与覆盖解释。
+- 多租户、幂等、取消、异步边界、控制面活性等运行时语义验收。
+
+开发仓内部测试负责：
+
+- ArchUnit / module dependency 检查。
+- SPI 包、module-metadata、DFX、contract catalog 一致性。
+- 私有类、私有方法、内部状态机代码级正确性。
+- Gate / enforcer / schema 级规则执行。
+- 数据库表结构与内部实现细节。
+
+## 8. 后续扩展方向
+
+在现有 AT-001 至 AT-005 基础上，建议优先补充：
+
+1. Idempotent Submission。
+2. Terminal State Absorption。
+3. Trace and Audit Correlation。
+4. Engine Mode Contract Consistency。
+5. Suspend / Resume External Event Flow。
+6. Control / Data / Rhythm Separation。
+7. Middleware Policy Enforcement。
+8. Evolve Feedback Loop。
+
+这些规格应继续保持 specs 层 SUT 无关；spring-ai-ascend 的模块协同解释放入 adapter 层覆盖文件。

@@ -1,8 +1,8 @@
 # spring-ai-ascend 平台 SIT（系统集成测试）设计文档
 
-> 版本：v1.0  
-> 基于：ARCHITECTURE.md（freeze_id: W1-russell-2026-05-14）  
-> 适用范围：L0→L1 架构落地验证，覆盖 W0 已交付能力 + W1/W2 设计契约预验证  
+> 版本：v1.0
+> 基于：ARCHITECTURE.md（freeze_id: W1-russell-2026-05-14）
+> 适用范围：L0→L1 架构落地验证，覆盖 W0 已交付能力 + W1/W2 设计契约预验证
 > 文档性质：架构一致性守门文档，供架构组、测试组、工程实施组三方协同使用
 
 ---
@@ -338,19 +338,50 @@ SIT 测试的触发方式**必须复用生产协议**，不能为测试创造私
 
 ## 8. 环境要求与测试数据
 
-### 8.1 SIT 环境配置
+### 8.1 SIT 测试框架选型
 
-| 组件 | 要求 | 备注 |
-|-----|------|------|
-| **JDK** | OpenJDK 21 | 与生产一致，Virtual Threads 验证 |
-| **Spring Boot** | 4.0.5 | 与生产一致 |
-| **Postgres** | 16 + pgvector | W2+ 持久化验证；W0 可用 H2/内存替代 |
-| **消息总线** | Kafka / NATS JetStream / Redpanda（Stub 或 Testcontainers） | Track 1/2/3 分离验证 |
-| **LLM 网关** | Mock Server（WireMock/MockServer） | 避免测试时调用真实付费接口 |
-| **可观测性** | OTLP Collector + Prometheus + Tempo（可选） | 验证 Telemetry Vertical 端到端 |
-| **性能测试硬件** | Ascend 910B NPU + Kunpeng 920 CPU | 性能竞争力层必须真实硬件 |
-| **OS** | openEuler 22.03 LTS SP3 | 内核 ≥ 5.10，启用 NUMA、hugepages、io_uring |
-| **监控工具** | eBPF（bcc/bpftrace）、perf、Intel PCM / iBMC | 内核级性能事件采集 |
+#### 测试金字塔分层
+
+```
+┌─────────────────────────────────────────────┐
+│  契约测试层 (Pact JVM)                       │
+│  → 验证跨服务 HTTP/消息契约兼容性             │
+├─────────────────────────────────────────────────────────┤
+│  端到端 SIT 层 (@SpringBootTest + Testcontainers)        │
+│  → 真实 Kafka + DB + 外部服务容器                      │
+│  → Awaitility 等待异步状态完成                         │
+│  → AssertJ + Micrometer 验证可观测数据                  │
+├─────────────────────────────────────────────────────────┤
+│  集成测试层 (@SpringBootTest + EmbeddedKafka)            │
+│  → 验证调度逻辑 + 消息消费 + 指标/日志                  │
+├─────────────────────────────────────────────────────────┤
+│  切片测试 (@WebMvcTest / @DataJpaTest)                  │
+│  → 验证 HTTP 层 / 持久层独立行为                        │
+├─────────────────────────────────────────────────────────┤
+│  单元测试 (JUnit + Mockito)                             │
+│  → 调度算法、状态机转换逻辑                             │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 框架必选性矩阵
+
+| 层级 | 框架 | 来源 | 必要性 | 智能体场景说明 |
+|:---|:---|:---|:---|:---|
+| **底座** | JUnit 5 | `spring-boot-starter-test` 内置 | ⭐⭐⭐ 必选 | 测试引擎，所有框架的运行底座 |
+| **底座** | AssertJ | `spring-boot-starter-test` 内置 | ⭐⭐⭐ 必选 | 流式断言，验证状态机对象 |
+| **底座** | Mockito | `spring-boot-starter-test` 内置 | ⭐⭐ 条件必选 | SIT 中仅 Mock 外部不稳定依赖（如 LLM API），禁止 Mock DB/Kafka |
+| **底座** | Spring Boot Test | `spring-boot-starter-test` 内置 | ⭐⭐⭐ 必选 | `@SpringBootTest`、`@MockBean`、内嵌容器 |
+| **SIT 核心** | Awaitility | 🔴 手动引入 | ⭐⭐⭐ 必选 | 异步状态机等待，替代 `Thread.sleep` |
+| **SIT 核心** | Testcontainers | 🔴 手动引入 | ⭐⭐⭐ 必选 | 真实 Docker 依赖，与生产环境一致 |
+| **垂直** | Spring Kafka Test | 🔴 手动引入 | ⭐⭐ 可选 | 有 Kafka 则可提供 `@EmbeddedKafka`，也可用Testcontainers替代 |
+| **垂直** | Pact JVM | 🔴 手动引入 | ⭐⭐ 可选 | 有跨服务 HTTP 则可用于防止接口回归，**暂不考虑** |
+| **增强** | RestAssured | 🔴 手动引入 | ⭐⭐ 可选 | 复杂外部 HTTP 场景，**暂不考虑**，优先用 `TestRestTemplate` |
+| **增强** | ArchUnit | 🔴 手动引入 | ⭐ 可选 | 架构门禁，验证分层约束，**暂不考虑** |
+| **特定** | spring-ai-testcontainers | 🔴 手动引入 | ⭐ 可选 | 仅当直接集成 Spring AI + LLM 时 |
+
+#### 决策
+
+> **最小可行 SIT**：`spring-boot-starter-test`（内置 4 个）+ **Awaitility**（有 异步状态机或线程 时） + **Testcontainers**（有 Kafka 时）
 
 ### 8.2 测试数据管理
 

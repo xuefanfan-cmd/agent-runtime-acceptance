@@ -1,9 +1,9 @@
 # 测试用例（TC）上线门禁设计文档
 # Test Case Quality Gate Design Document
 
-> 文档性质：架构级基础设施文档，定义测试资产与待测对象之间的质量契约  
-> 适用范围：spring-ai-ascend 平台 SIT/系统测试用例上线前质量门禁  
-> 关联文档：《SIT 测试设计文档》、《ARCHITECTURE.md》、《Java 21 SIT 测试框架推荐》  
+> 文档性质：架构级基础设施文档，定义测试资产与待测对象之间的质量契约
+> 适用范围：spring-ai-ascend 平台 SIT/系统测试用例上线前质量门禁
+> 关联文档：《SIT 测试设计文档》、《ARCHITECTURE.md》、《Java 21 SIT 测试框架推荐》
 > 架构原则：待测对象仓与测试仓物理隔离，测试逻辑对上层不可见
 
 ---
@@ -71,12 +71,11 @@
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                     测试执行引擎（Test Engine）                        │    │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐          │    │
-│  │  │  2M 契约  │  │  3-4M    │  │  6M 端到  │  │ 非功能    │          │    │
-│  │  │  测试     │  │  子链路   │  │  端测试   │  │ 专项     │          │    │
-│  │  │(Pact/Arch)│  │(TC+Await) │  │(RestAss) │  │(Perf/Sec)│          │    │
-│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘          │    │
+│  │                     测试执行引擎（Test Engine）                       │    │
+│  │  ┌──────────┐            ┌──────────┐           ──────────┐          │    │
+│  │  │  SC子链路 │           │    6M 端  │          │ 性能等   │          │    │
+│  │  │  测试     │           │  端测试   │          │ 专项     │          │    │
+│  │  └──────────┘            └──────────┘           ──────────┘          │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -290,7 +289,7 @@ jobs:
 | 约束项 | 门禁规则 | 自动化检查 | 严重级别 |
 |-------|---------|-----------|---------|
 | **模板合规** | 必须使用标准 TC 模板（含：用例编号、标题、前置条件、测试步骤、预期结果、优先级、关联特性、关联架构约束、作者、创建日期） | 脚本扫描模板字段完整性 | 🔴 P0 — 阻塞 |
-| **编号规范** | 格式：`SIT-<模块缩写>-<层级>-<类型>-<序号>` | 正则表达式校验 | 🔴 P0 — 阻塞 |
+| **编号规范** | 格式：`SIT-<模块缩写>-<SC|E2E|PERF>-<类型>-<序号>` | 正则表达式校验 | 🔴 P0 — 阻塞 |
 | **命名规范** | 标题必须包含"被测对象+操作+预期结果"，无二义性 | NLP 语义检查（禁止"是否""可能"等模糊词） | 🟡 P1 — 警告 |
 | **步骤粒度** | 单用例步骤数 ≤ 7 步；每步描述 ≤ 50 字 | 脚本计数 | 🟡 P1 — 警告 |
 
@@ -410,7 +409,7 @@ check_template_compliance() {
 check_id_format() {
     local file="$1"
     local id=$(grep "^用例编号:" "$file" | sed 's/用例编号://' | tr -d ' ')
-    if ! echo "$id" | grep -qE '^SIT-[A-Z]{2,4}-(2M|SC|E2E)-(CONTRACT|DATAFLOW|INTERACTION|E2E)-[0-9]{3}$'; then
+    if ! echo "$id" | grep -qE '^SIT-[A-Z]{2,4}-(SC|E2E|PERF)-(DATAFLOW|INTERACTION|E2E|HETEROGENEOUS|MEMORY|OSAFFINITY|THROUGHPUT|EFFICIENCY|ELASTICITY)-[0-9]{3}$'; then
         log_error "[$file] 用例编号格式非法: $id"
     fi
 }
@@ -743,7 +742,7 @@ generate_html_report() {
         <tr><th>模块</th><th>TC 数</th><th>P0</th><th>P1</th><th>自动化</th></tr>
 EOF
 
-    for module in AC AS AM AE AB EV GM; do
+    for module in AC AS AM AEE AB AE GM; do
         local count=$(grep -rl "用例编号:.*-${module}-" "$TC_DIR" | wc -l)
         local p0=$(grep -rl "用例编号:.*-${module}-" "$TC_DIR" | xargs grep -l "优先级:.*P0" 2>/dev/null | wc -l)
         local auto=$(grep -rl "用例编号:.*-${module}-" "$TC_DIR" | xargs grep -l "自动化状态:.*READY" 2>/dev/null | wc -l)
@@ -992,7 +991,7 @@ log_redaction:
 
 ```markdown
 ---
-用例编号: SIT-ASE-2M-CONTRACT-001
+用例编号: SIT-ASE-SC-DATAFLOW-001
 测试标题: agent-service 调用 agent-execution-engine 的 Orchestrator SPI 执行 Graph 模式
 优先级: P0
 自动化状态: READY

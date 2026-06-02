@@ -1,0 +1,47 @@
+[
+  {
+    "name": "standard_weather_dispatch",
+    "description": "Standard weather query dispatched through A2A to Weather Agent",
+    "request": {
+      "capability": "weather-query",
+      "input": {
+        "query": "北京明天天气如何，适合出门吗"
+      }
+    },
+    "expectedFinalStatus": "SUCCEEDED",
+    "assertions": [
+      "response.runId is not blank",
+      "response.pollUrl is not blank",
+      "response.status transitions to SUCCEEDED",
+      "response.createdAt is not blank",
+      "response.finishedAt is not blank"
+    ]
+  },
+  {
+    "name": "weather_dispatch_with_cancel",
+    "description": "Dispatch then immediate cancel — verify CANCELLED state",
+    "request": {
+      "capability": "weather-query",
+      "input": {
+        "query": "重庆天气"
+      }
+    },
+    "action": "cancel_immediately",
+    "expectedFinalStatus": "CANCELLED"
+  },
+  {
+    "name": "weather_dispatch_idempotent",
+    "description": "Duplicate submission with same idempotency key",
+    "request": {
+      "capability": "weather-query",
+      "input": {
+        "query": "天津天气"
+      },
+      "idempotencyKey": "idem-key-placeholder"
+    },
+    "assertions": [
+      "both submissions return the same runId",
+      "task list contains exactly one run for the idempotency key"
+    ]
+  }
+]

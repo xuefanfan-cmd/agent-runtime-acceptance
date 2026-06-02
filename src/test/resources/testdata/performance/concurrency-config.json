@@ -1,0 +1,17 @@
+{
+  "concurrencyLevels": [10, 50, 100],
+  "timeoutSeconds": 60,
+  "warmupIterations": 5,
+  "measurementIterations": 3,
+  "payload": {
+    "capability": "weather-query",
+    "input": {
+      "query": "并发测试天气查询"
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0.01,
+    "maxP99LatencyMs": 5000,
+    "maxMeanLatencyMs": 2000
+  }
+}

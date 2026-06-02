@@ -1,0 +1,14 @@
+# Local development environment configuration
+# Suitable for running tests against a local SUT instance.
+
+sut:
+  base:
+    url: http://100.101.169.153:8093
+  auth:
+    bearer-token: ${SPRING_AI_ASCEND_BEARER_TOKEN:local-dev-token}
+    tenant-id: ${SPRING_AI_ASCEND_TENANT_ID:default-tenant}
+  timeout:
+    poll-seconds: 60
+    poll-interval-ms: 500
+    connect-timeout-seconds: 5
+    read-timeout-seconds: 30

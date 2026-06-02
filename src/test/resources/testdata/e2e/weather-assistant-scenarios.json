@@ -1,0 +1,38 @@
+[
+  {
+    "name": "single_turn_weather_query",
+    "description": "Single turn: user asks weather, gets complete response",
+    "turns": [
+      {
+        "query": "北京今天天气怎么样，适合户外活动吗？",
+        "expectedStatus": "SUCCEEDED"
+      }
+    ]
+  },
+  {
+    "name": "multi_turn_contextual",
+    "description": "Multi-turn: first ask about Beijing, then follow up about tomorrow",
+    "turns": [
+      {
+        "query": "北京今天天气",
+        "expectedStatus": "SUCCEEDED",
+        "sessionId": null
+      },
+      {
+        "query": "那明天呢？",
+        "expectedStatus": "SUCCEEDED",
+        "sessionId": "inherit_from_previous"
+      }
+    ]
+  },
+  {
+    "name": "health_check_during_execution",
+    "description": "Verify health endpoint remains responsive while a run is in progress",
+    "steps": [
+      "submit weather query",
+      "check health endpoint concurrently",
+      "assert health returns 200 with healthy status",
+      "poll run to terminal state"
+    ]
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "missing_capability_field",
+    "description": "Request body without the required capability field",
+    "payload": {
+      "input": { "query": "北京天气" }
+    },
+    "expectedStatusCode": 400
+  },
+  {
+    "name": "empty_capability",
+    "description": "Capability field is empty string",
+    "payload": {
+      "capability": "",
+      "input": { "query": "北京天气" }
+    },
+    "expectedStatusCode": 400
+  },
+  {
+    "name": "oversized_payload",
+    "description": "Input exceeds 16 KiB inline payload limit",
+    "payload": {
+      "capability": "weather-query",
+      "input": { "query": "x" }
+    },
+    "payloadOverride": "FILL_WITH_17KB_STRING_AT_RUNTIME",
+    "expectedStatusCode": 413
+  },
+  {
+    "name": "null_input",
+    "description": "Input field is null",
+    "payload": {
+      "capability": "weather-query",
+      "input": null
+    },
+    "expectedStatusCode": 400
+  }
+]

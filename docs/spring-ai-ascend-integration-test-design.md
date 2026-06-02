@@ -427,7 +427,266 @@ SIT 测试的触发方式**必须复用生产协议**，不能为测试创造私
 
 ---
 
-## 10. 附录：与 W0/W1/W2/W3/W4 波次的对齐
+## 10. 框架实现指南
+
+> 本章节记录 `agent-runtime-acceptance` 测试框架的代码结构设计、用例编写约束和运行方法，
+> 供测试开发人员和 CI/CD 维护者参考。
+
+### 10.1 核心设计原则：src/main 与 src/test 分离
+
+框架严格区分 `src/main`（测试基础设施）与 `src/test`（测试业务逻辑），实现"怎么测"与"测什么"的彻底解耦。
+
+| 目录 | 职责 | 变更频率 | 示例 |
+|------|------|---------|------|
+| `src/main/java/.../client/` | API 客户端封装（A2A 协议调用） | 仅当协议变更时修改 | `A2aServiceClient.java` |
+| `src/main/java/.../config/` | 环境配置管理（多环境切换） | 新增环境时修改 | `TestConfig.java` |
+| `src/main/java/.../utils/` | 通用工具（JSON、异步等待、数据加载） | 极少修改 | `WaitUtils.java` |
+| `src/test/java/.../base/` | 测试基类（三级继承体系） | 框架升级时修改 | `BaseIntegrationTest.java` |
+| `src/test/java/.../cases/` | 测试用例（按层级和模块组织） | **频繁变更** | `A2aRunPollingTest.java` |
+| `src/test/java/.../suites/` | 测试套件（Tag 驱动动态组合） | 新增执行策略时修改 | `SmokeTestSuite.java` |
+
+**关键收益**：当 A2A 接口变更时，只需修改 `src/main/.../client/` 下的封装代码，不影响数百个测试用例。
+
+### 10.2 协议层：A2A Java SDK
+
+框架使用官方 `a2a-java-sdk-client` 作为协议调用层，**不直接使用 HTTP 客户端**。
+
+```xml
+<dependency>
+    <groupId>org.a2aproject.sdk</groupId>
+    <artifactId>a2a-java-sdk-client</artifactId>
+</dependency>
+```
+
+核心 API 对应关系：
+
+| 测试操作 | SDK API | 返回类型 |
+|----------|---------|---------|
+| Agent 发现 / 健康检查 | `A2A.getAgentCard(url)` | `AgentCard` |
+| 发送消息 / 创建任务 | `client.sendMessage(message, consumers, errorHandler)` | 通过 consumer 获取 task ID |
+| 查询任务状态 | `client.getTask(new TaskQueryParams(taskId))` | `Task` |
+| 取消任务 | `client.cancelTask(new CancelTaskParams(taskId))` | `Task` |
+| 创建用户消息 | `A2A.toUserMessage("text")` | `Message` |
+
+### 10.3 用例四层目录结构
+
+用例按测试层级组织，与本文档 §2.2 三层验证体系对齐：
+
+```
+src/test/java/.../cases/
+├── component/        # L1 组件级：模块边界，外部依赖可 Mock
+│   ├── service/      #   A2A 协议层自身的行为验证
+│   └── agents/       #   具体 Agent 内部行为（意图识别、Prompt 调优）
+├── integration/      # L2 子链路级：2~3 模块叠加，验证模块间契约
+│   ├── service_2_agent/   # A2A 接口 → Agent 调度
+│   ├── bus_2_engine/      # (未来) Bus → Engine
+│   └── service_2_middleware/ # (未来) Service → Middleware Hook
+├── e2e/              # L3 端到端级：全链路闭环，禁止 Mock
+└── performance/      # L4 性能级：长耗时、高并发、基准测试
+```
+
+层级约束规则：
+
+| 规则 | 说明 |
+|------|------|
+| **Mock 策略递减** | L1 可 Mock 外部不稳定依赖；L2 仅 Mock LLM 等不稳定服务；L3/L4 禁止 Mock |
+| **依赖方向单向** | `performance` 可以复用 `e2e` 的基础设施，但反之不行 |
+| **预留目录即占位** | `client/`、`engine/`、`bus/` 目录已创建但为空，未来模块发布时直接填充 |
+
+### 10.4 测试基类三级继承体系
+
+```
+BaseIntegrationTest (通用基类)
+├── 初始化 TestConfig（环境感知配置加载）
+├── 初始化 A2aServiceClient（A2A SDK Client 封装）
+├── 初始化 AgentClient（Agent 高层触发客户端）
+│
+├── BaseComponentTest
+│   └── @Tag("component") — 轻量启动，Mock 友好
+│
+└── BaseE2ETest
+    ├── @Tag("e2e") — 全链路启动
+    └── @BeforeAll awaitSutHealthy() — 自动等待 SUT 就绪
+```
+
+**继承选择指南**：
+
+| 测试类型 | 继承哪个基类 | 典型场景 |
+|----------|-------------|---------|
+| 单接口协议校验 | `BaseComponentTest` | 验证 `sendMessage` 返回合法 task ID |
+| 多模块组合验证 | `BaseIntegrationTest` | 验证 A2A → Weather Agent 子链路 |
+| 全链路用户旅程 | `BaseE2ETest` | 模拟真实用户天气查询全流程 |
+
+### 10.5 用例编写约束
+
+#### 10.5.1 Tag 标注规范（强制）
+
+每个测试类**必须**标注至少一个层级 Tag，可选标注功能 Tag：
+
+```java
+@Tag("component")       // 层级 Tag（必须）：component | integration | e2e | performance
+@Tag("smoke")           // 功能 Tag（可选）：smoke 标记核心主链路用例
+class A2aHealthTest extends BaseComponentTest { ... }
+```
+
+Tag 与 Suite 的对应关系：
+
+| Suite | 捞取策略 | 包含哪些 Tag |
+|-------|---------|-------------|
+| `SmokeTestSuite` | `@IncludeTags("smoke")` | 跨所有层级捞取 `smoke` 用例 |
+| `SubLinkRegressionSuite` | `@SelectPackages("...integration")` | `integration` 目录下全部用例 |
+| `E2EAcceptanceSuite` | `@SelectPackages("...e2e")` | `e2e` 目录下全部用例 |
+| `PerformanceBenchmarkSuite` | `@SelectPackages("...performance")` | `performance` 目录下全部用例 |
+
+#### 10.5.2 测试方法命名规范
+
+```java
+@Test
+@DisplayName("GET /v1/health returns 200 with healthy status")  // 英文描述
+void health_shouldReturn200WithHealthyStatus() {                 // 方法名：what_shouldExpected
+    // given — 准备数据
+    // when  — 执行操作
+    // then  — 断言结果
+}
+```
+
+#### 10.5.3 断言规范
+
+- 使用 AssertJ 流式断言（`assertThat(...).isNotBlank()`），不用 JUnit 原生 `assertEquals`
+- 任务状态断言使用 SDK `TaskState` 枚举值：
+
+```java
+// 正确 ✓
+assertThat(task.status().state()).isEqualTo(TaskState.TASK_STATE_COMPLETED);
+
+// 终态判断使用 SDK 内置方法 ✓
+assertThat(task.status().state().isFinal()).isTrue();
+
+// 错误 ✗ — 不要使用字符串比较
+assertThat(task.status().state().name()).isEqualTo("COMPLETED");
+```
+
+#### 10.5.4 异步等待规范
+
+- **禁止**使用 `Thread.sleep()`
+- 使用 `WaitUtils.pollUntilTerminal()` 封装的 Awaitility 轮询：
+
+```java
+Task finalState = WaitUtils.pollUntilTerminal(
+        () -> a2aClient.getTask(taskId),
+        config.getPollTimeoutSeconds(),   // 超时时间
+        config.getPollIntervalMs());      // 轮询间隔
+```
+
+#### 10.5.5 测试数据外部化
+
+复杂的 JSON payload 应从 Java 代码中抽离到 `src/test/resources/testdata/`，目录结构与 `cases/` 对齐：
+
+```
+testdata/
+├── component/service/       # 组件级测试数据
+├── integration/service_2_agent/
+├── e2e/
+└── performance/
+```
+
+加载方式：
+
+```java
+List<Map<String, Object>> cases = TestDataLoader.loadList("component/service/create-run-invalid-inputs.json");
+```
+
+### 10.6 运行方法
+
+#### 10.6.1 使用 Maven Wrapper（推荐）
+
+```bash
+# 默认：运行 component + integration 层（排除 e2e 和 performance）
+./mvnw test
+
+# 仅运行冒烟测试
+./mvnw test -Dsurefire.includeTags=smoke
+
+# 运行指定层级的用例
+./mvnw test -Dgroups=component
+./mvnw test -Dgroups=integration
+
+# 运行端到端验收（通过 Failsafe 插件）
+./mvnw verify -Dgroups=e2e
+
+# 运行性能基准测试
+./mvnw test -Dtest=PerformanceBenchmarkSuite -Dgroups=performance
+
+# 运行指定测试类
+./mvnw test -Dtest=A2aHealthTest
+
+# 指定环境（默认 LOCAL）
+./mvnw test -Dtest.env=SIT
+```
+
+#### 10.6.2 Surefire / Failsafe 分工
+
+| 插件 | 阶段 | 默认包含 | 默认排除 |
+|------|------|---------|---------|
+| `maven-surefire-plugin` | `test` | component + integration | e2e, performance |
+| `maven-failsafe-plugin` | `integration-test` | e2e | component, integration, performance |
+
+这种分工确保：日常开发快速反馈（surefire），发布前跑全链路验收（failsafe）。
+
+#### 10.6.3 通过 JUnit Suite 类运行
+
+```bash
+# 冒烟测试套件
+./mvnw test -Dtest=SmokeTestSuite
+
+# 子链路回归套件
+./mvnw test -Dtest=SubLinkRegressionSuite
+
+# 端到端验收套件
+./mvnw verify -Dtest=E2EAcceptanceSuite
+
+# 性能基准套件
+./mvnw test -Dtest=PerformanceBenchmarkSuite -Dgroups=performance
+```
+
+#### 10.6.4 环境配置
+
+测试通过 `TestEnvironment` 枚举选择配置文件：
+
+| 环境 | 配置文件 | 激活方式 |
+|------|---------|---------|
+| LOCAL | `application-local.yml` | 默认 / `-Dtest.env=LOCAL` |
+| SIT | `application-sit.yml` | `-Dtest.env=SIT` |
+| UAT | `application-uat.yml` | `-Dtest.env=UAT` |
+
+敏感信息（Bearer Token、Tenant ID）通过环境变量注入，**禁止硬编码**：
+
+```bash
+export SPRING_AI_ASCEND_BEARER_TOKEN="your-token"
+export SPRING_AI_ASCEND_TENANT_ID="your-tenant"
+./mvnw test
+```
+
+### 10.7 测试数据目录结构
+
+```
+src/test/resources/
+├── application-sit.yml          # SIT 环境配置
+├── application-uat.yml          # UAT 环境配置
+├── application-local.yml        # 本地开发配置
+├── logback-test.xml             # 测试日志配置
+└── testdata/                    # 外部化测试数据（与 cases/ 四层对齐）
+    ├── component/
+    │   ├── service/
+    │   └── agents/weather/
+    ├── integration/service_2_agent/
+    ├── e2e/
+    └── performance/
+```
+
+---
+
+## 11. 附录：与 W0/W1/W2/W3/W4 波次的对齐
 
 | 波次 | SIT 重点 | 新增测试组合 | 备注 |
 |-----|---------|-------------|------|

@@ -1,0 +1,14 @@
+# UAT environment configuration
+# Override sut.base.url and auth for the UAT environment.
+
+sut:
+  base:
+    url: http://uat-ascend.internal:8080
+  auth:
+    bearer-token: ${SPRING_AI_ASCEND_BEARER_TOKEN}
+    tenant-id: ${SPRING_AI_ASCEND_TENANT_ID}
+  timeout:
+    poll-seconds: 60
+    poll-interval-ms: 2000
+    connect-timeout-seconds: 15
+    read-timeout-seconds: 60

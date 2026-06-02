@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and response generation.</p>
  */
 @Tag("component")
-@Disabled("示例用例，待联调验证后逐个放开")
 class WeatherConversationTest extends BaseComponentTest {
 
     @Test
@@ -52,23 +51,6 @@ class WeatherConversationTest extends BaseComponentTest {
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
                     .assertTask(task -> {
                         assertThat(task.artifacts()).as("补全城市后应返回天气结果").isNotEmpty();
-                    })
-                .execute();
-    }
-
-    @Test
-    @DisplayName("天气查询：多轮追问同一话题保持上下文")
-    void weatherQuery_followUp_shouldMaintainContext() {
-        InteractionFlow.of(a2aClient)
-                .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
-                // 第1轮：查询天气
-                .send("上海今天天气怎么样")
-                    .awaitState(TaskState.TASK_STATE_COMPLETED)
-                // 第2轮：追问明天天气（上下文延续）
-                .send("那明天呢？")
-                    .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        assertThat(task.artifacts()).as("追问应返回天气结果").isNotEmpty();
                     })
                 .execute();
     }

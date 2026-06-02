@@ -5,6 +5,7 @@ import org.a2aproject.sdk.client.MessageEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
 import org.a2aproject.sdk.spec.AgentCard;
+import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
 import org.awaitility.Awaitility;
 
@@ -15,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.stream.Stream;
 
 /**
  * Thread-safe async event collector for A2A client events.
@@ -24,152 +26,146 @@ import java.util.function.BiConsumer;
  * Provides Awaitility-based await methods for synchronous-style assertions
  * on asynchronous events.</p>
  *
+ * <h3>Internal queue structure:</h3>
+ * <ul>
+ *   <li>{@code allEvents} — every {@link ClientEvent} received (unfiltered)</li>
+ *   <li>{@code taskBearingEvents} — {@link TaskEvent} and {@link TaskUpdateEvent}
+ *       merged into a single queue, since both carry a {@link Task} and are
+ *       processed with identical logic (extract task → check state → get ID).
+ *       Merging avoids the dual-queue scan bug and reduces per-method complexity.</li>
+ *   <li>{@code messageEvents} — {@link MessageEvent} instances (distinct processing)</li>
+ * </ul>
+ *
  * <h3>Method categories:</h3>
  * <ul>
  *   <li><b>Find methods</b> ({@code findXxx}) — non-destructive peek; return
- *       {@link Optional} of the matching event element. Queues are <em>unmodified</em>.
- *       Used by Awaitility polling and callers that only need to <em>observe</em> state.</li>
- *   <li><b>Await methods</b> ({@code awaitXxx}) — blocking convenience wrappers over
- *       find methods; return extracted primitives (TaskState, boolean) for assertion ease.</li>
- *   <li><b>Snapshot methods</b> ({@code snapshotXxx}) — non-destructive; return a
- *       defensive copy of all elements. Queues are <em>unmodified</em>.</li>
+ *       {@link Optional} of the matching event. Queues are <em>unmodified</em>.</li>
+ *   <li><b>Await methods</b> ({@code awaitXxx}) — blocking convenience wrappers;
+ *       return extracted primitives (TaskState, boolean) for assertion ease.</li>
+ *   <li><b>Snapshot methods</b> ({@code snapshotXxx}) — non-destructive defensive copies.</li>
  * </ul>
- *
- * <h3>Why no {@code pollInSameThread()}?</h3>
- * <p>All internal collections are {@link ConcurrentLinkedQueue} — inherently thread-safe.
- * Awaitility's default condition executor runs the polling callable in a separate thread,
- * which is both safe and avoids blocking the test thread during polling intervals.</p>
  *
  * <h3>Usage pattern:</h3>
  * <pre>{@code
  * A2aEventCollector collector = new A2aEventCollector();
  * a2aClient.sendMessage(message, List.of(collector.createConsumer()), errorHandler);
  *
- * // Block until a terminal state is observed
  * TaskState finalState = collector.awaitTerminalState(30_000);
- * assertThat(finalState).isEqualTo(TaskState.TASK_STATE_COMPLETED);
- *
- * // Inspect the event directly (non-destructive)
- * Optional<TaskEvent> terminal = collector.findTerminalTaskEvent();
- *
+ * String taskId = collector.findFirstTaskId();
+ * List<ClientEvent> events = collector.snapshotAllEvents();
  * }</pre>
  */
 public class A2aEventCollector {
 
     private final ConcurrentLinkedQueue<ClientEvent> allEvents = new ConcurrentLinkedQueue<>();
-    private final ConcurrentLinkedQueue<TaskEvent> taskEvents = new ConcurrentLinkedQueue<>();
-    private final ConcurrentLinkedQueue<TaskUpdateEvent> updateEvents = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<ClientEvent> taskBearingEvents = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<MessageEvent> messageEvents = new ConcurrentLinkedQueue<>();
 
     /**
      * Create a consumer suitable for registering with {@code Client.sendMessage}.
      *
-     * <p>Events are dispatched by type into separate typed queues
-     * for convenient filtering during assertions.</p>
+     * <p>Events are dispatched by type: {@link TaskEvent} and {@link TaskUpdateEvent}
+     * share the {@code taskBearingEvents} queue; {@link MessageEvent} gets its own queue.</p>
      */
     public BiConsumer<ClientEvent, AgentCard> createConsumer() {
         return (event, card) -> {
             allEvents.add(event);
-            if (event instanceof TaskEvent te) taskEvents.add(te);
-            else if (event instanceof TaskUpdateEvent ue) updateEvents.add(ue);
-            else if (event instanceof MessageEvent me) messageEvents.add(me);
+            if (event instanceof TaskEvent || event instanceof TaskUpdateEvent) {
+                taskBearingEvents.add(event);
+            } else if (event instanceof MessageEvent me) {
+                messageEvents.add(me);
+            }
         };
+    }
+
+    // ===== Internal: unified Task extraction =====
+
+    /**
+     * Extract the {@link Task} from a task-bearing event.
+     *
+     * @return the Task if the event is TaskEvent or TaskUpdateEvent, otherwise empty
+     */
+    private static Optional<Task> extractTask(ClientEvent event) {
+        if (event instanceof TaskEvent te) return Optional.of(te.getTask());
+        if (event instanceof TaskUpdateEvent ue) return Optional.of(ue.getTask());
+        return Optional.empty();
+    }
+
+    /** Stream of Tasks extracted from the task-bearing events queue. */
+    private Stream<Task> taskStream() {
+        return taskBearingEvents.stream()
+                .map(A2aEventCollector::extractTask)
+                .flatMap(Optional::stream);
     }
 
     // ===== Non-destructive find methods (return event elements) =====
 
     /**
-     * Find the first {@link TaskEvent} with a terminal (final) state.
+     * Find the first task-bearing event ({@link TaskEvent} or {@link TaskUpdateEvent})
+     * with a terminal (final) state.
      *
-     * <p>Non-destructive: scans via {@code stream().filter().findFirst()} —
-     * the queue remains unmodified.</p>
+     * <p>Non-destructive: the queue remains unmodified.</p>
      *
-     * @return the first TaskEvent whose task state {@link TaskState#isFinal()},
-     *         or empty if none found
+     * @return the first event whose task state {@link TaskState#isFinal()}, or empty
      */
-    public Optional<TaskEvent> findTerminalTaskEvent() {
-        return taskEvents.stream()
-                .filter(te -> te.getTask().status().state().isFinal())
+    public Optional<ClientEvent> findTerminalEvent() {
+        return taskBearingEvents.stream()
+                .filter(e -> extractTask(e)
+                        .map(t -> t.status().state().isFinal())
+                        .orElse(false))
                 .findFirst();
     }
 
     /**
-     * Find the first {@link TaskUpdateEvent} with a terminal (final) state.
-     *
-     * <p>Non-destructive: scans via {@code stream().filter().findFirst()}.</p>
-     *
-     * @return the first TaskUpdateEvent whose task state is final, or empty if none found
-     */
-    public Optional<TaskUpdateEvent> findTerminalUpdateEvent() {
-        return updateEvents.stream()
-                .filter(ue -> ue.getTask().status().state().isFinal())
-                .findFirst();
-    }
-
-    /**
-     * Find the first {@link TaskUpdateEvent} with {@code INPUT_REQUIRED} state.
-     *
-     * <p>Non-destructive: scans without consuming. In the A2A protocol,
-     * INPUT_REQUIRED is only signaled via {@link TaskUpdateEvent}, never
-     * via {@link TaskEvent}.</p>
-     *
-     * @return the first TaskUpdateEvent whose state is INPUT_REQUIRED, or empty if none found
-     */
-    public Optional<TaskUpdateEvent> findInputRequiredEvent() {
-        return updateEvents.stream()
-                .filter(ue -> ue.getTask().status().state() == TaskState.TASK_STATE_INPUT_REQUIRED)
-                .findFirst();
-    }
-
-    /**
-     * Find the first {@link TaskEvent} (any state).
-     *
-     * <p>Non-destructive: returns the head element without consuming.</p>
-     *
-     * @return the first TaskEvent, or empty if queue is empty
-     */
-    public Optional<TaskEvent> findFirstTaskEvent() {
-        return taskEvents.stream().findFirst();
-    }
-
-    /**
-     * Find the first {@link TaskUpdateEvent} (any state).
+     * Find the first task-bearing event with {@code INPUT_REQUIRED} state.
      *
      * <p>Non-destructive.</p>
      *
-     * @return the first TaskUpdateEvent, or empty if queue is empty
+     * @return the first event whose task state is INPUT_REQUIRED, or empty
      */
-    public Optional<TaskUpdateEvent> findFirstUpdateEvent() {
-        return updateEvents.stream().findFirst();
+    public Optional<ClientEvent> findInputRequiredEvent() {
+        return taskBearingEvents.stream()
+                .filter(e -> extractTask(e)
+                        .map(t -> t.status().state() == TaskState.TASK_STATE_INPUT_REQUIRED)
+                        .orElse(false))
+                .findFirst();
+    }
+
+    /**
+     * Find the first task-bearing event (any state).
+     *
+     * <p>Non-destructive.</p>
+     *
+     * @return the first TaskEvent or TaskUpdateEvent, or empty
+     */
+    public Optional<ClientEvent> findFirstTaskBearingEvent() {
+        return taskBearingEvents.stream().findFirst();
     }
 
     /**
      * Find the first {@link MessageEvent}.
      *
      * <p>Non-destructive.</p>
-     *
-     * @return the first MessageEvent, or empty if queue is empty
      */
     public Optional<MessageEvent> findFirstMessageEvent() {
         return messageEvents.stream().findFirst();
     }
 
     /**
-     * Convenience: extract the task ID from the first TaskEvent.
+     * Convenience: extract the task ID from the first task-bearing event.
      *
-     * <p>Non-destructive.</p>
+     * <p>Non-destructive. Checks both {@link TaskEvent} and {@link TaskUpdateEvent}.</p>
      *
-     * @return the task ID, or empty string if no TaskEvent received
+     * @return the task ID, or empty string if no task-bearing event received
      */
     public String findFirstTaskId() {
-        return findFirstTaskEvent()
-                .map(te -> te.getTask().id())
+        return taskStream()
+                .map(Task::id)
+                .findFirst()
                 .orElse("");
     }
 
-    /**
-     * Number of events collected so far.
-     */
+    /** Number of events collected so far. */
     public int eventCount() {
         return allEvents.size();
     }
@@ -179,8 +175,7 @@ public class A2aEventCollector {
     /**
      * Block until a task event with a terminal (final) state is observed.
      *
-     * <p>Non-destructive: composes {@link #findTerminalTaskEvent()} and
-     * {@link #findTerminalUpdateEvent()} to search both queues.</p>
+     * <p>Non-destructive.</p>
      *
      * @param timeoutMs maximum wait time in milliseconds
      * @return the terminal TaskState
@@ -190,19 +185,16 @@ public class A2aEventCollector {
         return Awaitility.await("terminal task state")
                 .atMost(timeoutMs, TimeUnit.MILLISECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
-                .until(() -> findTerminalTaskEvent()
-                                .<TaskState>map(te -> te.getTask().status().state())
-                                .orElseGet(() -> findTerminalUpdateEvent()
-                                        .map(ue -> ue.getTask().status().state())
-                                        .orElse(null)),
+                .until(() -> findTerminalEvent()
+                                .flatMap(e -> extractTask(e).map(t -> t.status().state()))
+                                .orElse(null),
                         Objects::nonNull);
     }
 
     /**
      * Block until a task event with any non-null state is observed.
      *
-     * <p>Non-destructive: composes {@link #findFirstTaskEvent()} and
-     * {@link #findFirstUpdateEvent()}.</p>
+     * <p>Non-destructive.</p>
      *
      * @param timeoutMs maximum wait time in milliseconds
      * @return the first observed TaskState
@@ -211,23 +203,20 @@ public class A2aEventCollector {
         return Awaitility.await("any task state")
                 .atMost(timeoutMs, TimeUnit.MILLISECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
-                .until(() -> findFirstTaskEvent()
-                                .<TaskState>map(te -> te.getTask().status().state())
-                                .orElseGet(() -> findFirstUpdateEvent()
-                                        .map(ue -> ue.getTask().status().state())
-                                        .orElse(null)),
+                .until(() -> findFirstTaskBearingEvent()
+                                .flatMap(e -> extractTask(e).map(t -> t.status().state()))
+                                .orElse(null),
                         Objects::nonNull);
     }
 
     /**
      * Block until the task reaches INPUT_REQUIRED state (interrupt).
      *
-     * <p>Non-destructive: checks {@link #findInputRequiredEvent()} on the
-     * update-events queue (INPUT_REQUIRED is only signaled via TaskUpdateEvent).
-     * Returns {@code false} early if a terminal state is observed instead.</p>
+     * <p>Non-destructive. Returns {@code false} early if a terminal state
+     * is observed instead (no more events expected).</p>
      *
      * @param timeoutMs maximum wait time in milliseconds
-     * @return true if INPUT_REQUIRED was observed, false if a different terminal state arrived first
+     * @return true if INPUT_REQUIRED was observed, false if a terminal state arrived first
      */
     public boolean awaitInputRequired(long timeoutMs) {
         return Awaitility.await("INPUT_REQUIRED state")
@@ -235,16 +224,15 @@ public class A2aEventCollector {
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .until(() -> {
                     if (findInputRequiredEvent().isPresent()) return true;
-                    boolean hasTerminal = findTerminalTaskEvent().isPresent()
-                            || findTerminalUpdateEvent().isPresent();
-                    return hasTerminal ? false : null;
+                    if (findTerminalEvent().isPresent()) return false;
+                    return null;
                 }, Boolean.TRUE::equals);
     }
 
     /**
      * Block until at least one MessageEvent is received.
      *
-     * <p>Non-destructive: delegates to {@link #findFirstMessageEvent()}.</p>
+     * <p>Non-destructive.</p>
      *
      * @param timeoutMs maximum wait time in milliseconds
      * @return the first MessageEvent
@@ -258,13 +246,7 @@ public class A2aEventCollector {
 
     // ===== Snapshot accessors (non-destructive, return defensive copies) =====
 
-    /**
-     * Snapshot all collected events.
-     *
-     * <p>Non-destructive: returns a defensive copy; internal queues are unmodified.</p>
-     *
-     * @return unmodifiable copy of all events collected so far
-     */
+    /** Snapshot all collected events (defensive copy, queue unmodified). */
     public List<ClientEvent> snapshotAllEvents() {
         return new ArrayList<>(allEvents);
     }
@@ -272,9 +254,7 @@ public class A2aEventCollector {
     /** Clear all collected events from every queue. */
     public void clear() {
         allEvents.clear();
-        taskEvents.clear();
-        updateEvents.clear();
+        taskBearingEvents.clear();
         messageEvents.clear();
     }
-
 }

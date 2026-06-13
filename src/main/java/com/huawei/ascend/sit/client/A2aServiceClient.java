@@ -5,18 +5,16 @@ import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.Client;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
-import org.a2aproject.sdk.client.TaskUpdateEvent;
 import org.a2aproject.sdk.client.config.ClientConfig;
 import org.a2aproject.sdk.client.transport.jsonrpc.JSONRPCTransport;
 import org.a2aproject.sdk.client.transport.jsonrpc.JSONRPCTransportConfig;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.CancelTaskParams;
 import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.MessageSendParams;
 import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskQueryParams;
-import org.a2aproject.sdk.spec.TaskState;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -147,45 +145,29 @@ public class A2aServiceClient {
     public void sendMessage(Message message,
                             List<BiConsumer<ClientEvent, AgentCard>> consumers,
                             Consumer<Throwable> errorHandler) {
-        a2aClient.sendMessage(message, consumers, errorHandler);
+        sendMessage(message, null, consumers, errorHandler);
     }
 
     /**
-     * Send a message and collect all events until task reaches a terminal state.
+     * Send a message with per-request metadata, custom event consumers and error handler.
      *
-     * @return list of all events received during execution
+     * <p>Uses {@link MessageSendParams} to carry metadata alongside the message.
+     * Metadata is merged with any global metadata from {@link ClientConfig}.</p>
+     *
+     * @param message     the A2A message to send
+     * @param metadata    per-request metadata (may be null to use global config metadata only)
+     * @param consumers   event consumers for streaming responses
+     * @param errorHandler error handler for stream failures
      */
-    public List<ClientEvent> sendMessageAndCollect(String text) {
-        List<ClientEvent> events = new ArrayList<>();
-        CountDownLatch terminalLatch = new CountDownLatch(1);
-
-        List<BiConsumer<ClientEvent, AgentCard>> consumers = List.of(
-                (event, card) -> {
-                    events.add(event);
-                    if (event instanceof TaskEvent taskEvent) {
-                        TaskState state = taskEvent.getTask().status().state();
-                        if (state.isFinal()) {
-                            terminalLatch.countDown();
-                        }
-                    } else if (event instanceof TaskUpdateEvent updateEvent) {
-                        TaskState state = updateEvent.getTask().status().state();
-                        if (state.isFinal()) {
-                            terminalLatch.countDown();
-                        }
-                    }
-                }
-        );
-
-        Message message = A2A.toUserMessage(text);
-        a2aClient.sendMessage(message, consumers, error -> terminalLatch.countDown());
-
-        try {
-            terminalLatch.await(60, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        return events;
+    public void sendMessage(Message message,
+                            Map<String, Object> metadata,
+                            List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                            Consumer<Throwable> errorHandler) {
+        MessageSendParams params = MessageSendParams.builder()
+                .message(message)
+                .metadata(metadata)
+                .build();
+        a2aClient.sendMessage(params, consumers, errorHandler, null);
     }
 
     // ===== Get Task =====

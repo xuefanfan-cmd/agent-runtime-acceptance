@@ -9,6 +9,7 @@ import org.a2aproject.sdk.spec.TaskState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -52,6 +53,7 @@ public class InteractionFlow {
     private final A2aServiceClient client;
     private final List<RoundDefinition> rounds = new ArrayList<>();
     private long timeoutMs = 30_000;
+    private Map<String, Object> defaultMetadata;
 
     private InteractionFlow(A2aServiceClient client) {
         this.client = client;
@@ -65,6 +67,18 @@ public class InteractionFlow {
     /** Set the timeout for each round's state waiting (default: 30s). */
     public InteractionFlow withTimeoutMs(long timeoutMs) {
         this.timeoutMs = timeoutMs;
+        return this;
+    }
+
+    /**
+     * Set default metadata for all rounds in this flow.
+     *
+     * <p>Individual rounds can override this via {@link RoundDefinition#withMetadata(Map)}.</p>
+     *
+     * @param metadata per-request metadata passed to the A2A SDK
+     */
+    public InteractionFlow withMetadata(Map<String, Object> metadata) {
+        this.defaultMetadata = metadata;
         return this;
     }
 
@@ -115,7 +129,11 @@ public class InteractionFlow {
             LOG.warning("Stream error: " + error.getMessage());
         };
 
-        client.sendMessage(message, consumers, errorHandler);
+        // Resolve effective metadata: round-specific > flow-default > null
+        Map<String, Object> effectiveMetadata = round.metadata != null
+                ? round.metadata : defaultMetadata;
+
+        client.sendMessage(message, effectiveMetadata, consumers, errorHandler);
 
         // Await the expected state
         TaskState observedState;
@@ -196,6 +214,7 @@ public class InteractionFlow {
         private final String inputText;
         private TaskState expectedState;
         private boolean expectStateRequired = true;
+        private Map<String, Object> metadata;
         private Consumer<Task> taskAsserter;
         private Consumer<Integer> eventsAsserter;
         private Consumer<RoundContext> genericAsserter;
@@ -234,6 +253,18 @@ public class InteractionFlow {
         /** Generic assertion with full round context. */
         public RoundDefinition assertThat(Consumer<RoundContext> asserter) {
             this.genericAsserter = asserter;
+            return this;
+        }
+
+        /**
+         * Set per-round metadata that overrides the flow-level default.
+         *
+         * <p>Precedence: round metadata > flow {@code withMetadata()} > null.</p>
+         *
+         * @param metadata per-request metadata for this round only
+         */
+        public RoundDefinition withMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
             return this;
         }
 

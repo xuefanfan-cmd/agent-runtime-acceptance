@@ -21,7 +21,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <a2a-sdk.version>1.0.0.CR2-SNAPSHOT</a2a-sdk.version>
+        <a2a-sdk.version>1.0.0.CR1</a2a-sdk.version>
         <awaitility.version>4.2.2</awaitility.version>
         <testcontainers.version>1.20.4</testcontainers.version>
     </properties>

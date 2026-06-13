@@ -19,6 +19,7 @@ Thumbs.db
 
 # Local logs and runtime artifacts produced by test runs
 logs/
+third_party/
 *.log
 reports/runtime/
 

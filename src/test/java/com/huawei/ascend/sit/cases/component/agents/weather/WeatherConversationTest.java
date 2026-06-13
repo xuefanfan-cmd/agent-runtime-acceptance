@@ -4,7 +4,6 @@ import com.huawei.ascend.sit.base.BaseComponentTest;
 import com.huawei.ascend.sit.client.InteractionFlow;
 import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

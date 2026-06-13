@@ -12,3 +12,20 @@ sut:
     poll-interval-ms: 500
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
+    startup-seconds: 60
+  # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
+  # The framework launches these as black-box java -jar processes. third_party jars
+  # are for code analysis only and are never used at runtime.
+  agents:
+    mainplan:
+      group: com.huawei.ascend
+      artifact: agent-travel-mainplan-a2a
+      version: 0.1.0-SNAPSHOT
+    trip:
+      group: com.huawei.ascend
+      artifact: agent-trip-a2a
+      version: 0.1.0-SNAPSHOT
+    hotel:
+      group: com.huawei.ascend
+      artifact: agent-hotel-a2a
+      version: 0.1.0-SNAPSHOT

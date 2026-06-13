@@ -1,0 +1,12 @@
+{
+  "_doc": "A-01 Agent Card contract — field path (dotted) -> expected value, asserted against the raw JSON served at /.well-known/agent.json. Grounded in the actual main-plan-agent card. Port-dependent fields (url, supportedInterfaces[].url) are asserted separately on shape (suffix /a2a), not pinned here.",
+  "name": "main-plan-agent",
+  "version": "0.1.0",
+  "capabilities.streaming": true,
+  "capabilities.pushNotifications": true,
+  "capabilities.extendedAgentCard": false,
+  "preferredTransport": "JSONRPC",
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text", "artifact"],
+  "provider.organization": "spring-ai-ascend"
+}

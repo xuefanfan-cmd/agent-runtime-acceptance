@@ -55,7 +55,7 @@ depends_on: [mainplan fat jar 可构建（mvn -pl :agent-travel-mainplan-a2a -am
 ## 4. 可观测子断言（PASS / FAIL / INCONCLUSIVE）
 
 > 黑盒边界：仅经 HTTP 发现端点 + A2A SDK 解析观测，不读 mainplan 内部类/配置文件。
-> 三态语义同 [PHILOSOPHY.md](../../PHILOSOPHY.md)：PASS 满足、FAIL 违反、INCONCLUSIVE 表面不足以判定。
+> 三态语义：PASS 满足、FAIL 违反、INCONCLUSIVE 表面不足以判定。
 
 ### A-01.A — Card 可达性与媒体类型
 - **Given**：mainplan 已就绪（就绪探针通过）。

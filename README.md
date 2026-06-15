@@ -1,99 +1,102 @@
 # agent-runtime-acceptance
 
-A black-box acceptance test suite for agent runtime systems.
+System Integration Test (SIT) framework for the **spring-ai-ascend** agent
+runtime. The suite launches one or more spring-ai-ascend agents as black-box
+`java -jar` processes, drives them through their A2A endpoints, and asserts
+the resulting behaviour at four scopes: component, integration, end-to-end,
+and performance.
 
-This repository defines the externally-observable behaviour that any system
-calling itself an "agent runtime" must exhibit. It is implementation-
-agnostic: the same test suite can validate any conforming SUT (System Under
-Test), regardless of language, framework, or deployment topology.
+## Tech stack
 
-The repository is intentionally independent of any specific agent runtime
-project. Tests cite first principles, industry standards, and human-factors
-literature — never the internal authority documents of a particular
-product. This independence is structural, not aspirational: it prevents the
-test corpus from being shaped to fit the convenience of any single
-implementation.
-
-## Status
-
-Bootstrap. Repository ships:
-
-- [PHILOSOPHY.md](PHILOSOPHY.md) — the methodology this repo enforces.
-- [sut/sut-contract.md](sut/sut-contract.md) — the abstract surface every SUT
-  must expose to be testable, plus boot-profile and capacity declarations
-  introduced by lifecycle / load tests.
-- [specs/000-state-vocabulary.md](specs/000-state-vocabulary.md) — shared
-  vocabulary used across test cases.
-- Five test specifications under [specs/](specs/):
-  - [AT-001](specs/AT-001-async-task-boundary.md) — async long-running task boundary
-  - [AT-002](specs/AT-002-multi-tenant-isolation.md) — multi-tenant read/write isolation
-  - [AT-003](specs/AT-003-submission-schema-strict-matching.md) — submission schema strict matching
-  - [AT-004](specs/AT-004-fail-closed-startup.md) — fail-closed startup under production posture
-  - [AT-005](specs/AT-005-control-plane-liveness-under-load.md) — control-plane liveness under data-plane saturation
-- [sut/adapters/spring-ai-ascend/](sut/adapters/spring-ai-ascend/) — one
-  sample SUT adapter showing how an implementation binds to the suite,
-  including SUT-specific feature coverage and observability maps.
-- [docs/spring-ai-ascend-integration-acceptance-plan.md](docs/spring-ai-ascend-integration-acceptance-plan.md) —
-  SUT-specific integration acceptance plan for architecture-aware external
-  integration testing.
-
-Test implementations (Java), boot/teardown scripts, CI, tooling, and
-certification reports follow in subsequent iterations.
+- Java 21 + Spring Boot 4.0.5
+- A2A Protocol SDK (`org.a2aproject.sdk:a2a-java-sdk-client`, JSON-RPC transport)
+- JUnit 5 + AssertJ
+- Awaitility for async state polling
+- Testcontainers (reserved for future scenarios)
 
 ## Layout
 
 ```
-docs/                        # SUT-specific acceptance planning notes
-  spring-ai-ascend-integration-acceptance-plan.md
-
-specs/                       # Test case specifications (markdown, not code)
-  README.md                  # How to author a spec; author checklist
-  000-state-vocabulary.md    # Shared abstract state names
-  AT-001-...md               # Sample test case
-
-sut/                         # System Under Test abstraction
-  README.md                  # What an SUT is; how to add one
-  sut-contract.md            # What capabilities an SUT must expose
-  adapters/                  # One subdirectory per SUT
-    spring-ai-ascend/        # First SUT adapter (sample)
-      README.md
-      adapter.yaml
-      feature-coverage.yaml
-      observability-map.yaml
+docs/
+  cases/                                       # Per-case design docs (A-NN)
+  spring-ai-ascend-integration-test-design.md
+  spring-ai-ascend-tc-quality-gate-design.md
+src/
+  main/java/com/huawei/ascend/sit/
+    lifecycle/                                 # SutStack / ProcessLauncher / AgentConfig
+    client/                                    # A2A SDK wrapper + scenario executor
+    config/                                    # TestConfig / TestEnvironment
+    utils/                                     # JsonUtils / WaitUtils / AuthUtils / ...
+  test/java/com/huawei/ascend/sit/
+    base/                                      # Base{Component,Integration,E2E,ManagedStack}Test
+    cases/component/                           # @Tag("component")
+    cases/integration/                         # @Tag("integration")
+    cases/e2e/                                 # @Tag("e2e")
+    cases/performance/                         # @Tag("performance")
+    suites/                                    # Smoke / E2E / Performance / Regression
+  test/resources/
+    application-{local,sit,uat}.yml
+    testdata/                                  # Externalised inputs / contracts
 ```
 
-## How to read this repo
+## How a case runs
 
-1. [PHILOSOPHY.md](PHILOSOPHY.md) — why this repo exists and why it stays
-   independent.
-2. [sut/sut-contract.md](sut/sut-contract.md) — the abstract surface.
-3. [specs/AT-001-async-task-boundary.md](specs/AT-001-async-task-boundary.md) —
-   the test case format.
-4. [sut/adapters/spring-ai-ascend/](sut/adapters/spring-ai-ascend/) — what an
-   SUT-specific binding looks like, including feature coverage and
-   observability evidence maps.
-5. [docs/spring-ai-ascend-integration-acceptance-plan.md](docs/spring-ai-ascend-integration-acceptance-plan.md) —
-   how the spring-ai-ascend adapter applies architecture-aware external
-   integration acceptance.
+`SutStack` launches the declared agents **leaf-first**, allocating a random
+free port per agent and wiring each upstream's
+`agent-runtime.remote-agents[0].url` to the downstream's resolved base URL.
+Tests obtain an A2A client through `stack.client("<agent-name>")` and
+assert externally observable behaviour (HTTP responses, agent card, A2A run
+lifecycle, etc.).
 
-## How to add a new SUT
+Single-agent example (no chain, no LLM):
 
-Create a new subdirectory under `sut/adapters/<your-sut-id>/` and supply an
-`adapter.yaml` declaring how your SUT realises the abstract capabilities in
-[sut/sut-contract.md](sut/sut-contract.md). No change to `specs/` is
-required.
+```java
+SutStack stack = SutStack.builder(config)
+        .agent("mainplan")
+        .start();
+AgentCard card = stack.client("mainplan").getAgentCard();
+```
 
-## How to add a new test case
+Full chain (auto-wires mainplan → trip → hotel):
 
-Add a file under `specs/` following the format of
-[AT-001](specs/AT-001-async-task-boundary.md). Cite first principles,
-standards, and literature — never another repo's rules, ADRs, or section
-numbers. See [specs/README.md](specs/README.md) for the author checklist.
+```java
+SutStack stack = SutStack.builder(config)
+        .agent("hotel")
+        .agent("trip",     a -> a.role(MIDDLE).downstream("hotel"))
+        .agent("mainplan", a -> a.role(ENTRY).downstream("trip"))
+        .start();
+```
 
-## Reciprocal independence
+See [src/main/java/com/huawei/ascend/sit/lifecycle/SutStack.java](src/main/java/com/huawei/ascend/sit/lifecycle/SutStack.java)
+for the top-level abstraction and
+[docs/cases/A-01-agent-card-discovery.md](docs/cases/A-01-agent-card-discovery.md)
+for a worked case example.
 
-This repository does not import code from any SUT. SUTs do not import code
-from this repository. The only coupling is observational: the test suite
-talks to each SUT through the SUT's `adapter.yaml`, and through adapter-local
-coverage / observability maps that explain SUT-specific evidence without
-changing the SUT-agnostic specs.
+## Running tests
+
+```bash
+# Component + integration (Surefire default; e2e and performance excluded)
+./mvnw test
+
+# Smoke suite
+./mvnw -Dtest=SmokeTestSuite test
+
+# E2E (Failsafe, requires the configured profile to be reachable)
+./mvnw verify
+```
+
+Profiles live in `src/test/resources/application-{local,sit,uat}.yml`.
+Agent Maven coordinates are configured under
+`sut.agents.<name>.{group,artifact,version}`; `ProcessLauncher` resolves the
+jar from the local `~/.m2/repository` (override via `sut.m2.repo`).
+
+## Authoring a new case
+
+1. Add a design doc under `docs/cases/A-NN-<slug>.md` following the format
+   of [A-01](docs/cases/A-01-agent-card-discovery.md).
+2. Add the test under `src/test/java/com/huawei/ascend/sit/cases/<layer>/`,
+   extending the right base class (`BaseComponentTest`,
+   `BaseIntegrationTest`, `BaseManagedStackTest`, or `BaseE2ETest`).
+3. Tag the test with `@Tag("<layer>")` so it lands in the right Surefire /
+   Failsafe selection.
+4. Externalise inputs under `src/test/resources/testdata/<layer>/...`.

@@ -18,14 +18,32 @@ sut:
   # are for code analysis only and are never used at runtime.
   agents:
     mainplan:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a
       version: 0.1.0-SNAPSHOT
     trip:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-trip-a2a
       version: 0.1.0-SNAPSHOT
     hotel:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-hotel-a2a
       version: 0.1.0-SNAPSHOT
+  # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
+  # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
+  # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.
+  # Uncomment and fill for your environment. Secrets (e.g. LLM_API_KEY) prefer the LLM_* env
+  # path (agents read ${LLM_*} natively) rather than this tracked file.
+#  java:
+#    system-properties:
+#      # —— HTTP proxy + no-proxy (standard JVM proxy properties) ——
+#      http.proxyHost:
+#      http.proxyPort:
+#      https.proxyHost:
+#      https.proxyPort:
+#      http.nonProxyHosts:
+#      # —— LLM (optional; overrides/aligns the agents' ${LLM_*}) ——
+#      LLM_PROVIDER:
+#      LLM_API_BASE:
+#      LLM_MODEL:
+#      LLM_API_KEY:

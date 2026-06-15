@@ -51,10 +51,12 @@ public final class SutStack implements AutoCloseable {
     private final SutLauncher launcher;
     private final Map<String, Entry> specs;     // declaration order
     private final Map<String, SutInstance> instances = new LinkedHashMap<>();
+    private final boolean streaming;
 
-    private SutStack(SutLauncher launcher, Map<String, Entry> specs) {
+    private SutStack(SutLauncher launcher, Map<String, Entry> specs, boolean streaming) {
         this.launcher = launcher;
         this.specs = specs;
+        this.streaming = streaming;
     }
 
     /** Begin describing a stack against the given configuration. */
@@ -110,8 +112,10 @@ public final class SutStack implements AutoCloseable {
     public A2aServiceClient client(String name) {
         String baseUrl = requireInstance(name).baseUrl();
         AgentCard card = A2A.getAgentCard(baseUrl);
+        // sync (message/send) unless the stack opted into streaming (message/stream).
         ClientConfig clientConfig = new ClientConfig.Builder()
                 .setAcceptedOutputModes(List.of("text"))
+                .setStreaming(streaming)
                 .build();
         Client client = Client.builder(card)
                 .clientConfig(clientConfig)
@@ -149,6 +153,7 @@ public final class SutStack implements AutoCloseable {
 
         private final TestConfig config;
         private SutLauncher launcher;
+        private boolean streaming = false;
         private final Map<String, Entry> specs = new LinkedHashMap<>();
 
         private Builder(TestConfig config) {
@@ -158,6 +163,16 @@ public final class SutStack implements AutoCloseable {
         /** Override the default {@link ProcessLauncher} backend. */
         public Builder launcher(SutLauncher launcher) {
             this.launcher = launcher;
+            return this;
+        }
+
+        /**
+         * Whether clients built by {@link #client(String)} use streaming ({@code message/stream},
+         * {@code true}) or synchronous ({@code message/send}, {@code false}). Defaults to sync
+         * ({@code false}); the SUT does not currently support streaming.
+         */
+        public Builder streaming(boolean streaming) {
+            this.streaming = streaming;
             return this;
         }
 
@@ -186,7 +201,7 @@ public final class SutStack implements AutoCloseable {
             if (launcher == null) {
                 launcher = new ProcessLauncher(config);
             }
-            return new SutStack(launcher, specs).start();
+            return new SutStack(launcher, specs, streaming).start();
         }
     }
 

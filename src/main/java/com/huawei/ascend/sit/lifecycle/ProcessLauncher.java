@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,6 +41,7 @@ public final class ProcessLauncher implements SutLauncher {
     private final String m2RepoRoot;
     private final int startupTimeoutSeconds;
     private final String javaBin;
+    private final Map<String, String> jvmSystemProperties;
     private final HttpClient http = HttpClient.newHttpClient();
 
     public ProcessLauncher(TestConfig config) {
@@ -47,6 +49,10 @@ public final class ProcessLauncher implements SutLauncher {
                 System.getProperty("user.home") + "/.m2/repository");
         this.startupTimeoutSeconds = config.getInt("sut.timeout.startup-seconds", 60);
         this.javaBin = javaBin();
+        // JVM -D system properties applied to every launched agent (e.g. http.proxyHost,
+        // https.nonProxyHosts; Spring also resolves the agents' ${LLM_*} from these). Set via
+        // sut.java.system-properties in application-<env>.yml.
+        this.jvmSystemProperties = config.getStringMap("sut.java.system-properties");
     }
 
     @Override
@@ -58,6 +64,10 @@ public final class ProcessLauncher implements SutLauncher {
         Path logFile = logFile(agent.name(), port);
         List<String> command = new ArrayList<>();
         command.add(javaBin);
+        // JVM -D system properties MUST precede -jar. Rendered from sut.java.system-properties
+        // (e.g. -Dhttp.proxyHost=... -Dhttp.nonProxyHosts=... ; also -DLLM_API_KEY=... works,
+        // since Spring resolves the agents' ${LLM_*} from system properties).
+        jvmSystemProperties.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
         command.addAll(config.toProgramArgs());

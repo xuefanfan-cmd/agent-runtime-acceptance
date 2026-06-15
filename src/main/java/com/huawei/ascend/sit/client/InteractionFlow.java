@@ -44,6 +44,9 @@ import java.util.Objects;
  *   <li>Chain expectations and assertions on the round result</li>
  *   <li>{@link A2aEventCollector} + Awaitility handles async→sync under the hood</li>
  *   <li>All rounds are executed in order on {@code .execute()}</li>
+ *   <li>Multi-turn continuity: each round after the first carries the previous round's
+ *       {@code contextId}, so {@code .send(a).send(b)} is <em>one</em> conversation, not two
+ *       independent sends — a follow-up turn sees the full lineage</li>
  * </ul>
  */
 public class InteractionFlow {
@@ -98,6 +101,9 @@ public class InteractionFlow {
     public FlowResult execute() {
         List<RoundResult> results = new ArrayList<>();
         String lastTaskId = null;
+        // Carried into the next round so a follow-up turn continues the same conversation
+        // (message.contextId) rather than starting an independent one.
+        String lastContextId = null;
 
         LOG.info("▶ Starting InteractionFlow (" + rounds.size() + " rounds)");
 
@@ -105,7 +111,7 @@ public class InteractionFlow {
             RoundDefinition round = rounds.get(i);
             LOG.info("  → Round " + (i + 1) + ": send \"" + truncate(round.inputText, 50) + "\"");
 
-            RoundResult result = executeRound(round, client, timeoutMs);
+            RoundResult result = executeRound(round, client, timeoutMs, lastContextId);
             results.add(result);
 
             LOG.info("  ✓ State: " + result.taskState()
@@ -113,17 +119,24 @@ public class InteractionFlow {
                     + ", events: " + result.eventCount() + ")");
 
             lastTaskId = result.taskId;
+            lastContextId = result.contextId();
         }
 
         LOG.info("✔ InteractionFlow completed (" + results.size() + " rounds)");
         return new FlowResult(results, lastTaskId);
     }
 
-    private RoundResult executeRound(RoundDefinition round, A2aServiceClient client, long timeoutMs) {
+    private RoundResult executeRound(RoundDefinition round, A2aServiceClient client, long timeoutMs,
+                                     String continuationContextId) {
         A2aEventCollector collector = new A2aEventCollector();
 
-        // Build and send message
-        Message message = A2A.toUserMessage(round.inputText);
+        // Build and send message. A non-null continuationContextId (from the previous round)
+        // makes this a follow-up turn within the same conversation — message.contextId is set so
+        // the agent sees the full lineage (e.g. supplying info it asked for in the prior turn).
+        Message message = continuationContextId == null
+                ? A2A.toUserMessage(round.inputText)
+                : Message.builder(A2A.toUserMessage(round.inputText))
+                        .contextId(continuationContextId).build();
         List<BiConsumer<ClientEvent, AgentCard>> consumers = List.of(collector.createConsumer());
         Consumer<Throwable> errorHandler = error -> {
             LOG.warning("Stream error: " + error.getMessage());
@@ -178,6 +191,8 @@ public class InteractionFlow {
 
         // Snapshot the full event stream before assertions
         List<ClientEvent> events = collector.snapshotAllEvents();
+        // Context ID of this round's task — carried into the next round for multi-turn continuation.
+        String contextId = collector.findFirstContextId();
 
         // Run custom assertions
         if (round.taskAsserter != null) {
@@ -193,11 +208,11 @@ public class InteractionFlow {
         // Run generic assertion with full round context (including event stream)
         if (round.genericAsserter != null) {
             RoundContext ctx = new RoundContext(taskId, observedState, eventCount,
-                    client.getTask(taskId), events);
+                    client.getTask(taskId), events, contextId);
             round.genericAsserter.accept(ctx);
         }
 
-        return new RoundResult(round.inputText, taskId, observedState, eventCount, events);
+        return new RoundResult(round.inputText, taskId, observedState, eventCount, events, contextId);
     }
 
     private static String truncate(String s, int max) {
@@ -290,7 +305,8 @@ public class InteractionFlow {
             TaskState taskState,
             int eventCount,
             Task task,
-            List<ClientEvent> events
+            List<ClientEvent> events,
+            String contextId
     ) {}
 
     /**
@@ -304,7 +320,8 @@ public class InteractionFlow {
             String taskId,
             TaskState taskState,
             int eventCount,
-            List<ClientEvent> events
+            List<ClientEvent> events,
+            String contextId
     ) {}
 
     /**

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -100,6 +101,26 @@ public class TestConfig {
         return value != null ? Long.parseLong(value) : defaultValue;
     }
 
+    /**
+     * Get a nested YAML block as a string map (leaf values stringified, insertion-ordered).
+     *
+     * <p>Used for blocks like {@code sut.java.system-properties}: each entry becomes a
+     * {@code -D<key>=<value>} JVM arg passed to every launched agent. Returns an empty map if
+     * the key is absent or the node is not a map.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getStringMap(String dottedKey) {
+        Object node = nestedNode(dottedKey);
+        if (!(node instanceof Map)) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : ((Map<String, Object>) node).entrySet()) {
+            result.put(e.getKey(), e.getValue() == null ? "" : String.valueOf(e.getValue()));
+        }
+        return result;
+    }
+
     // --- Convenience accessors for common SUT config ---
 
     /** SUT base URL (e.g. http://localhost:8080) */
@@ -132,7 +153,7 @@ public class TestConfig {
     // --- Internal ---
 
     @SuppressWarnings("unchecked")
-    private String getNestedValue(String dottedKey) {
+    private Object nestedNode(String dottedKey) {
         String[] parts = dottedKey.split("\\.");
         Object current = properties;
         for (String part : parts) {
@@ -142,6 +163,11 @@ public class TestConfig {
                 return null;
             }
         }
-        return current != null ? current.toString() : null;
+        return current;
+    }
+
+    private String getNestedValue(String dottedKey) {
+        Object node = nestedNode(dottedKey);
+        return node != null ? node.toString() : null;
     }
 }

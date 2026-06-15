@@ -50,9 +50,11 @@ public class A2aServiceClient {
         // Resolve the agent card via A2A.getAgentCard()
         this.agentCard = A2A.getAgentCard(baseUrl);
 
-        // Build the A2A client with JSON-RPC transport
+        // Build the A2A client with JSON-RPC transport. streaming=false ⇒ synchronous
+        // message/send: the call blocks until the server returns the terminal task.
         ClientConfig clientConfig = new ClientConfig.Builder()
                 .setAcceptedOutputModes(List.of("text"))
+                .setStreaming(false)
                 .build();
 
         this.a2aClient = Client.builder(agentCard)

@@ -165,6 +165,23 @@ public class A2aEventCollector {
                 .orElse("");
     }
 
+    /**
+     * Convenience: extract the context ID from the first task-bearing event.
+     *
+     * <p>Non-destructive. Used by {@link InteractionFlow} to continue a multi-turn
+     * conversation: each subsequent round carries the previous round's contextId so
+     * the agent sees the full conversation lineage (e.g. a follow-up turn that only
+     * makes sense in the prior context).
+     *
+     * @return the context ID, or empty string if no task-bearing event received
+     */
+    public String findFirstContextId() {
+        return taskStream()
+                .map(Task::contextId)
+                .findFirst()
+                .orElse("");
+    }
+
     /** Number of events collected so far. */
     public int eventCount() {
         return allEvents.size();

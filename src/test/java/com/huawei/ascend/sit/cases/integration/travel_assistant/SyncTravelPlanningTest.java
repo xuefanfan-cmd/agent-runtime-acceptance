@@ -1,0 +1,181 @@
+package com.huawei.ascend.sit.cases.integration.travel_assistant;
+
+import com.huawei.ascend.sit.base.BaseManagedStackTest;
+import com.huawei.ascend.sit.client.InteractionFlow;
+import com.huawei.ascend.sit.config.TestConfig;
+import com.huawei.ascend.sit.lifecycle.SutAgent;
+import com.huawei.ascend.sit.lifecycle.SutStack;
+import org.a2aproject.sdk.spec.Artifact;
+import org.a2aproject.sdk.spec.Part;
+import org.a2aproject.sdk.spec.Task;
+import org.a2aproject.sdk.spec.TaskState;
+import org.a2aproject.sdk.spec.TextPart;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * A-07 / A-08 — 差旅规划（同步模式 {@code message/send}）业务问答 (特性 3-1).
+ *
+ * <p>The first cases that exercise the <em>full travel chain</em> (mainplan → trip → hotel) over
+ * the <b>sync</b> path and assert a valid 差旅规划 (travel-plan) result. mainplan is the entry
+ * ReAct agent: it collects the trip requirements, then dispatches to trip via the remote-a2a
+ * {@code dispatch_travel_plan} tool, and trip in turn may dispatch to hotel. A "valid answer"
+ * therefore needs all three agents wired <em>and</em> a real LLM behind each. mainplan also
+ * registers a {@code request_user_input} rail, so an incomplete request pauses in
+ * {@code INPUT_REQUIRED} rather than completing — that is what A-08 drives.
+ *
+ * <ul>
+ *   <li><b>A-07 — one-shot complete input</b>: a single fully-specified request must reach
+ *       {@code COMPLETED} with a non-empty, substantive itinerary.</li>
+ *   <li><b>A-08 — multi-turn supplementary input</b>: an incomplete first turn must reach
+ *       {@code INPUT_REQUIRED} (the agent asks for the missing field) with a valid reply, then a
+ *       follow-up turn — continuing the same {@code contextId} — must reach {@code COMPLETED}
+ *       with a valid itinerary.</li>
+ * </ul>
+ *
+ * <p><b>Driven through {@link InteractionFlow}.</b> The stack is built with {@code streaming(false)},
+ * so the A2A client uses {@code message/send} (sync): each round blocks until the server returns the
+ * terminal task, then {@code awaitState} / {@code assertTask} judge it inline. {@link InteractionFlow}
+ * also carries each round's {@code contextId} into the next, so A-08's two {@code .send(...)} calls
+ * are one continued conversation (turn 2 supplies the info mainplan asked for in turn 1).
+ *
+ * <p><b>A-07.A is enabled; A-08.A stays {@code @Disabled}.</b> The chain now boots (jars rebuilt),
+ * but A-07.A is the first end-to-end case to exercise the real LLM-driven ReAct dispatch. Enable
+ * each further method one at a time as the LLM credentials and chain are validated.
+ *
+ * <p><b>Credentials &amp; proxy.</b> Export the unified {@code LLM_*} env once — all three agents read
+ * {@code ${LLM_*}} natively, and {@code ProcessLauncher} passes the test JVM's env to each child.
+ * HTTP proxy / no-proxy go as JVM {@code -D} system properties via {@code sut.java.system-properties}
+ * in {@code application-local.yml} (rendered before {@code -jar} on every agent). Then run
+ * {@code ./mvnw -Dtest=SyncTravelPlanningTest test}.
+ */
+@Tag("integration")
+class SyncTravelPlanningTest extends BaseManagedStackTest {
+
+    /** Single fully-specified turn expected to complete the whole trip with no follow-ups. */
+    private static final String COMPLETE_REQUEST = "明天从上海到北京出差3天，住宿2晚";
+
+    /** A-08 turn 1 — incomplete: has destination + duration, lacks departure date / origin. */
+    private static final String INCOMPLETE_TURN_1 = "到北京出差3天";
+
+    /** A-08 turn 2 — supplies the missing departure date + origin, completing the request. */
+    private static final String INCOMPLETE_TURN_2 = "明天从上海出发";
+
+    @Override
+    protected SutStack.Builder buildStack(TestConfig config) {
+        // Full chain, declared leaf-first. SutStack injects each downstream's resolved base URL
+        // into its upstream's agent-runtime.remote-agents[0].url. streaming(false) ⇒ synchronous
+        // message/send. All three agents read the unified LLM_* natively — their bundled yaml uses
+        // ${LLM_*} placeholders, and ProcessLauncher passes the test JVM's env to each child — so
+        // no per-agent LLM wiring is needed (export LLM_* once; proxy via sut.java.system-properties
+        // in application-local.yml).
+        return SutStack.builder(config)
+                .streaming(false)
+                .agent("hotel")
+                .agent("trip", a -> a.role(SutAgent.Role.MIDDLE).downstream("hotel"))
+                .agent("mainplan", a -> a.role(SutAgent.Role.ENTRY).downstream("trip"));
+    }
+
+    // ---- A-07: 同步模式 — 一次性完整输入问答 ----
+
+    /**
+     * A-07.A — a fully-specified request completes in a single sync turn with a valid 差旅规划.
+     *
+     * <p>Expected: terminal state {@code COMPLETED}; answer text non-blank and substantive
+     * (a complete itinerary from mainplan→trip→hotel, not an error/empty refusal).
+     */
+    @Test
+    @DisplayName("A-07.A: one-shot complete travel request reaches COMPLETED with a valid plan")
+    void completeSingleTurnRequestReachesCompleted() {
+        InteractionFlow.of(client("mainplan"))
+                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
+                        "sessionId", "manual-session-001"))
+                .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
+                .send(COMPLETE_REQUEST)
+                    .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .assertTask(task -> {
+                        String answer = textOf(task);
+                        assertThat(answer).as("completed travel-plan text").isNotBlank();
+                        // A valid itinerary is substantive, not a bare error message.
+                        assertThat(answer.length())
+                                .as("answer is substantive (not a bare error/refusal)")
+                                .isGreaterThan(8);
+                    })
+                .execute();
+    }
+
+    // ---- A-08: 同步模式 — 多次请求补充输入场景 ----
+
+    /**
+     * A-08.A — an incomplete turn yields {@code INPUT_REQUIRED} (with a valid clarifying reply),
+     * then a follow-up turn continuing the same {@code contextId} reaches {@code COMPLETED}
+     * (with a valid final itinerary).
+     *
+     * <p>Each round must carry a valid answer: turn 1's answer is the agent's clarifying question;
+     * turn 2's answer is the completed itinerary. {@link InteractionFlow} threads turn 1's
+     * {@code contextId} into turn 2 automatically, so the follow-up is the same conversation.
+     */
+    @Test
+    @Disabled("待 A-07.A 验证通过后再启用：本例额外依赖 mainplan 的 request_user_input rail，"
+            + "首缺信息轮次应返回 INPUT_REQUIRED，补齐后（InteractionFlow 自动续同一 contextId）"
+            + "续轮应 COMPLETED。链路调通并先验证 A-07.A 后再启用本例。")
+    @DisplayName("A-08.A: incomplete turn yields INPUT_REQUIRED, follow-up completes (same contextId)")
+    void incompleteThenFollowUpProgressesInputRequiredToCompleted() {
+        InteractionFlow.of(client("mainplan"))
+                .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
+                // Turn 1 — incomplete (no departure date / origin): agent should pause for more input.
+                .send(INCOMPLETE_TURN_1)
+                    .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
+                    .assertTask(task -> assertThat(textOf(task))
+                            .as("turn-1 reply (clarifying question) is a valid answer")
+                            .isNotBlank())
+                // Turn 2 — supply the missing field. InteractionFlow continues the same contextId,
+                // so mainplan sees the full conversation and can complete the itinerary.
+                .send(INCOMPLETE_TURN_2)
+                    .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .assertTask(task -> {
+                        String finalAnswer = textOf(task);
+                        assertThat(finalAnswer).as("turn-2 completed travel-plan text").isNotBlank();
+                        assertThat(finalAnswer.length())
+                                .as("final itinerary is substantive").isGreaterThan(8);
+                    })
+                .execute();
+    }
+
+    // ---- helpers ----
+
+    /** Concatenate the task's textual output: artifacts → status message → last history message. */
+    private static String textOf(Task task) {
+        StringBuilder sb = new StringBuilder();
+        if (task.artifacts() != null) {
+            for (Artifact artifact : task.artifacts()) {
+                appendText(sb, artifact.parts());
+            }
+        }
+        if (sb.length() == 0 && task.status() != null && task.status().message() != null) {
+            appendText(sb, task.status().message().parts());
+        }
+        if (sb.length() == 0 && task.history() != null && !task.history().isEmpty()) {
+            appendText(sb, task.history().get(task.history().size() - 1).parts());
+        }
+        return sb.toString().trim();
+    }
+
+    private static void appendText(StringBuilder sb, List<Part<?>> parts) {
+        if (parts == null) {
+            return;
+        }
+        for (Part<?> part : parts) {
+            if (part instanceof TextPart textPart && textPart.text() != null) {
+                sb.append(textPart.text());
+            }
+        }
+    }
+}

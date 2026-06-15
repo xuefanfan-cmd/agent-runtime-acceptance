@@ -18,14 +18,14 @@ sut:
   # are for code analysis only and are never used at runtime.
   agents:
     mainplan:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a
       version: 0.1.0-SNAPSHOT
     trip:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-trip-a2a
       version: 0.1.0-SNAPSHOT
     hotel:
-      group: com.huawei.ascend
+      group: com.huawei.ascend.examples
       artifact: agent-hotel-a2a
       version: 0.1.0-SNAPSHOT

@@ -1,0 +1,14 @@
+{
+  "_doc": "A-02 — the fields a2a-sdk AgentCard.Builder.build() enforces non-null via checkNotNullParam. This is the authoritative 'required' completeness baseline (not the SUT's self-description). The served card must carry all of them; skills MAY be an empty list. Keep this list in sync with the SDK build() contract.",
+  "source": "org.a2aproject.sdk.spec.AgentCard$Builder#build() checkNotNullParam enforcement",
+  "required": [
+    "name",
+    "description",
+    "version",
+    "capabilities",
+    "defaultInputModes",
+    "defaultOutputModes",
+    "skills",
+    "supportedInterfaces"
+  ]
+}

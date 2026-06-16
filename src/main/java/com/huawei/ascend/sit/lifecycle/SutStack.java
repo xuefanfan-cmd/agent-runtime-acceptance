@@ -16,24 +16,25 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * An ordered set of SUT agents launched together and wired into a chain.
+ * An ordered set of SUT agents brought up together and wired into a chain.
  *
- * <p>This is the framework's top-level lifecycle abstraction. A test (typically
- * per-class, via {@code BaseManagedStackTest}) declares <em>which</em> agents it
- * needs and <em>how</em> each is configured; {@code start()} launches them
- * <strong>leaf-first</strong>, reading each downstream's resolved base URL and
- * injecting it into its upstream's {@code agent-runtime.remote-agents[0].url}.
- * Random free ports make multiple stacks coexist in one JVM without conflict.
+ * <p>This is the framework's top-level lifecycle abstraction. A test (typically per-class,
+ * via {@code BaseManagedStackTest}) declares <em>which</em> agents it needs and <em>how</em>
+ * each is provided — either {@linkplain Builder#agent(String) managed} (launched as a
+ * {@code java -jar} process on a random port) or {@linkplain Builder#remoteAgent(String, String)
+ * remote} (a pre-deployed service used by address only). {@code start()} brings them up in
+ * dependency order and, for each <em>managed</em> upstream, injects its downstream's resolved
+ * base URL into {@code agent-runtime.remote-agents[0].url}.
  *
- * <p>Example — single agent (A-01, no chain, no LLM):
- * <pre>{@code
- * SutStack stack = SutStack.builder(config)
- *         .agent("mainplan")
- *         .start();
- * AgentCard card = stack.client("mainplan").getAgentCard();
- * }</pre>
+ * <p><b>Launch order is derived, not imposed.</b> The only constraint is that an upstream's
+ * downstream must already be ready (its base URL known) before the upstream is launched —
+ * because the downstream URL is injected as a startup arg. A managed downstream becomes ready
+ * when its PID-resolved port serves the agent card; a remote downstream is ready immediately.
+ * For a linear chain this yields leaf-first order; independent agents may be brought up in any
+ * order. Random ports (via {@code --server.port=0}, resolved from the PID) make multiple stacks
+ * coexist in one JVM without conflict.
  *
- * <p>Example — full chain (auto-wires mainplan→trip→hotel):
+ * <p>Example — full managed chain (auto-wires mainplan→trip→hotel):
  * <pre>{@code
  * SutStack stack = SutStack.builder(config)
  *         .agent("hotel")
@@ -42,9 +43,19 @@ import java.util.function.Consumer;
  *         .start();
  * }</pre>
  *
- * <p>Agent coordinates and base profile default from {@code sut.agents.<name>.*}
- * in {@code application-*.yml}; the per-agent consumer overrides anything.
- * Implements {@link AutoCloseable} so it can back {@code @AfterAll} teardown.
+ * <p>Example — fully remote chain (no processes launched; the framework only talks to them):
+ * <pre>{@code
+ * SutStack stack = SutStack.builder(config)
+ *         .remoteAgent("hotel", "http://hotel.host:8081")
+ *         .remoteAgent("trip",  "http://trip.host:13001")
+ *         .remoteAgent("mainplan", "http://mainplan.host:8080")
+ *         .start();
+ * }</pre>
+ *
+ * <p>Agent coordinates and base profile default from {@code sut.agents.<name>.*} in
+ * {@code application-*.yml}; the per-agent consumer overrides anything. Implements
+ * {@link AutoCloseable} so it can back {@code @AfterAll} teardown (managed agents are stopped;
+ * remote agents are left untouched).
  */
 public final class SutStack implements AutoCloseable {
 
@@ -64,44 +75,60 @@ public final class SutStack implements AutoCloseable {
         return new Builder(config);
     }
 
-    /** Launch all declared agents leaf-first, wiring each upstream to its downstream. */
+    /**
+     * Bring up all declared agents in dependency order. Remote agents are registered by address
+     * (no launch); managed agents are launched once their downstream is ready, with that
+     * downstream's resolved base URL injected into {@code agent-runtime.remote-agents[0].url}.
+     */
     public SutStack start() {
-        Set<String> launched = new java.util.HashSet<>();
-        while (launched.size() < specs.size()) {
+        Set<String> ready = new java.util.HashSet<>();
+        while (ready.size() < specs.size()) {
             boolean progressed = false;
             for (Entry entry : specs.values()) {
                 String name = entry.agent.name();
-                if (launched.contains(name)) {
+                if (ready.contains(name)) {
                     continue;
                 }
                 String downstream = entry.agent.downstream();
-                if (downstream != null && !launched.contains(downstream)) {
-                    continue; // wait until the downstream is up so we know its URL
+                if (downstream != null && !ready.contains(downstream)) {
+                    continue; // wait until the downstream is ready so its base URL is known
                 }
-                if (downstream != null) {
-                    entry.config.downstreamUrl(instances.get(downstream).baseUrl());
+                if (entry.agent.isRemote()) {
+                    instances.put(name, new RemoteSutInstance(name, entry.agent.remoteUrl()));
+                } else {
+                    if (downstream != null) {
+                        entry.config.downstreamUrl(instances.get(downstream).baseUrl());
+                    }
+                    instances.put(name, launcher.start(entry.agent, entry.config));
                 }
-                instances.put(name, launcher.start(entry.agent, entry.config));
-                launched.add(name);
+                ready.add(name);
                 progressed = true;
             }
             if (!progressed) {
                 throw new IllegalStateException(
-                        "Could not resolve leaf-first launch order (cycle or unknown downstream) "
+                        "Could not resolve launch order (cycle or unknown downstream) "
                                 + "for agents: " + specs.keySet());
             }
         }
         return this;
     }
 
-    /** Base URL of a launched agent, e.g. {@code http://localhost:38211}. */
+    /** Base URL of an agent, e.g. {@code http://localhost:38211} (managed) or a remote address. */
     public String baseUrl(String name) {
         return requireInstance(name).baseUrl();
     }
 
-    /** Resolved port of a launched agent. */
+    /**
+     * Resolved port of a <em>managed</em> agent. Remote agents have no framework-allocated port;
+     * call {@link #baseUrl(String)} for those.
+     */
     public int port(String name) {
-        return requireInstance(name).port();
+        SutInstance instance = requireInstance(name);
+        if (instance instanceof ManagedSutInstance managed) {
+            return managed.port();
+        }
+        throw new IllegalStateException(
+                "Agent '" + name + "' is remote (" + instance.baseUrl() + "); no managed port.");
     }
 
     /**
@@ -124,13 +151,16 @@ public final class SutStack implements AutoCloseable {
         return new A2aServiceClient(baseUrl, client, card);
     }
 
-    /** Stop all agents in reverse launch order. */
+    /**
+     * Tear down in reverse launch order: managed agents are stopped; remote agents are left
+     * untouched (the framework never stops a service it did not start).
+     */
     @Override
     public void close() {
         List<String> order = new java.util.ArrayList<>(instances.keySet());
         java.util.Collections.reverse(order);
         for (String name : order) {
-            instances.get(name).stop();
+            instances.get(name).close();
         }
     }
 
@@ -182,6 +212,16 @@ public final class SutStack implements AutoCloseable {
         }
 
         /**
+         * Declare a <em>pre-deployed</em> agent at the given base URL (with port). The framework
+         * assumes it is already up — it is never launched or stopped; only its address is used.
+         * Equivalent to {@code agent(name, a -> a.remoteUrl(url).downstream(...))} with further
+         * overrides.
+         */
+        public Builder remoteAgent(String name, String remoteUrl) {
+            return agent(name, a -> a.remoteUrl(remoteUrl));
+        }
+
+        /**
          * Declare an agent and configure it. The consumer receives an
          * {@link AgentBuilder} pre-seeded with config defaults (artifact, profile).
          */
@@ -211,6 +251,7 @@ public final class SutStack implements AutoCloseable {
         private final TestConfig config;
         private final String name;
         private MavenArtifact artifact;
+        private String remoteUrl;                        // non-null => pre-deployed (no launch)
         private SutAgent.Role role = SutAgent.Role.LEAF;
         private String downstream;
         private String remoteAgentsProperty = AgentConfig.REMOTE_AGENTS_URL;
@@ -224,6 +265,16 @@ public final class SutStack implements AutoCloseable {
         /** Set the artifact; defaults to {@code sut.agents.<name>.*} coordinates. */
         public AgentBuilder artifact(String gav) {
             this.artifact = MavenArtifact.parse(gav);
+            return this;
+        }
+
+        /**
+         * Mark this agent as <em>pre-deployed</em> at the given base URL (with port). The
+         * framework uses it by address only — never launches or stops it. Mutually exclusive
+         * with {@link #artifact(String)}: setting a remote URL makes the agent remote.
+         */
+        public AgentBuilder remoteUrl(String remoteUrl) {
+            this.remoteUrl = remoteUrl;
             return this;
         }
 
@@ -257,6 +308,11 @@ public final class SutStack implements AutoCloseable {
         }
 
         private Entry build() {
+            // Remote (pre-deployed): address-only, no artifact/profile/port resolution.
+            if (remoteUrl != null && !remoteUrl.isBlank()) {
+                SutAgent agent = new SutAgent(name, null, remoteUrl, role, downstream, remoteAgentsProperty);
+                return new Entry(agent, configOverrides);
+            }
             MavenArtifact resolvedArtifact = artifact != null ? artifact : defaultArtifact();
             if (configOverrides.profile() == null || configOverrides.profile().isBlank()) {
                 String defaultProfile = config.getString("sut.agents." + name + ".profile", "");

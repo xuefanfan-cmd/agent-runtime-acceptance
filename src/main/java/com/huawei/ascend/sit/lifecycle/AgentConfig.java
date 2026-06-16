@@ -22,7 +22,7 @@ public final class AgentConfig {
     public static final String REMOTE_AGENTS_URL = "agent-runtime.remote-agents[0].url";
 
     private String profile = "";
-    private int port = 0; // 0 => the launcher selects a free port
+    private int port = 0; // 0 => the OS assigns a random port (--server.port=0)
     private final Map<String, String> properties = new LinkedHashMap<>();
     private final Map<String, String> environment = new LinkedHashMap<>();
 
@@ -70,15 +70,13 @@ public final class AgentConfig {
     }
 
     /**
-     * Build the Spring Boot program-argument list: resolved {@code server.port},
-     * active profile, then property overrides in insertion order. The launcher is
-     * responsible for setting the resolved port before calling this.
+     * Build the Spring Boot program-argument list: {@code server.port} (always emitted —
+     * {@code 0} lets the OS pick a random port, which the launcher then resolves from the
+     * PID), active profile, then property overrides in insertion order.
      */
     public List<String> toProgramArgs() {
         List<String> args = new ArrayList<>(properties.size() + 2);
-        if (port > 0) {
-            args.add("--server.port=" + port);
-        }
+        args.add("--server.port=" + port);
         if (profile != null && !profile.isBlank()) {
             args.add("--spring.profiles.active=" + profile);
         }

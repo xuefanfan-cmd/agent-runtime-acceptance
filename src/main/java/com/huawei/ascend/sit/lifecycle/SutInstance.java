@@ -1,75 +1,36 @@
 package com.huawei.ascend.sit.lifecycle;
 
-import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
-
 /**
- * A running SUT agent process.
+ * A ready SUT agent the framework can talk to.
  *
- * <p>Created by a {@link SutLauncher} once the agent is ready (its
- * {@code /.well-known/agent.json} endpoint responds 200). Holds everything
- * needed to talk to it and to tear it down: resolved port, base URL, the live
- * {@link Process}, and the log file the launcher redirected output to.
+ * <p>Closed by {@link SutStack} in reverse launch order. There are two kinds:
+ * <ul>
+ *   <li>{@link Managed} — a {@code java -jar} process the framework launched (random port via
+ *       {@code --server.port=0}, actual port resolved from its PID); {@link Managed#close()}
+ *       stops that process.</li>
+ *   <li>{@link Remote} — a pre-deployed service used by address only; {@link Remote#close()}
+ *       is a <strong>no-op</strong>: the framework never starts or stops a service it does
+ *       not own.</li>
+ * </ul>
+ * The sealed hierarchy makes "never stop a remote service" a compile-time-checked invariant.
  */
-public final class SutInstance implements AutoCloseable {
+public sealed interface SutInstance extends AutoCloseable permits ManagedSutInstance, RemoteSutInstance {
 
-    private final String name;
-    private final int port;
-    private final String baseUrl;
-    private final Process process;
-    private final Path logFile;
-
-    public SutInstance(String name, int port, String baseUrl, Process process, Path logFile) {
-        this.name = name;
-        this.port = port;
-        this.baseUrl = baseUrl;
-        this.process = process;
-        this.logFile = logFile;
-    }
-
-    public String name() {
-        return name;
-    }
-
-    public int port() {
-        return port;
-    }
+    /** Logical agent name (the key used in {@code SutStack.agent(name, ...)}). */
+    String name();
 
     /** Base URL without trailing slash, e.g. {@code http://localhost:38211}. */
-    public String baseUrl() {
-        return baseUrl;
-    }
+    String baseUrl();
 
-    public Path logFile() {
-        return logFile;
-    }
-
-    public boolean isAlive() {
-        return process.isAlive();
+    /** {@code true} if this instance is a pre-deployed service the framework does not own. */
+    default boolean isRemote() {
+        return false;
     }
 
     /**
-     * Stop the agent: SIGTERM and wait up to 10s, then SIGKILL if still alive.
-     * Idempotent — safe to call on an already-terminated instance.
+     * Tear the instance down. Narrowed from {@link AutoCloseable#close()} to throw nothing:
+     * managed agents stop their process idempotently; remote agents are a no-op.
      */
-    public void stop() {
-        if (!process.isAlive()) {
-            return;
-        }
-        process.destroy();
-        try {
-            if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                process.waitFor(5, TimeUnit.SECONDS);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-        }
-    }
-
     @Override
-    public void close() {
-        stop();
-    }
+    void close();
 }

@@ -3,7 +3,6 @@ package com.huawei.ascend.sit.lifecycle;
 import com.huawei.ascend.sit.config.TestConfig;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,7 +13,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Default {@link SutLauncher}: runs an agent as a black-box {@code java -jar}
@@ -24,11 +25,14 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li>resolve the fat jar by Maven coordinates from {@code ~/.m2/repository}
  *       (overridable via {@code sut.m2.repo});</li>
- *   <li>select a free port if {@link AgentConfig#port()} is 0 and record it on
- *       the config so callers (chain wiring) can read it back;</li>
  *   <li>redirect stdout/stderr to a temp log file for diagnosability;</li>
- *   <li>poll {@code GET /.well-known/agent.json} until 200, failing fast if the
- *       process exits early.</li>
+ *   <li>launch with {@code --server.port} = {@link AgentConfig#port()} — {@code 0} lets the
+ *       OS pick a random port atomically (no pick-then-bind race);</li>
+ *   <li>capture the {@link Process#pid() PID};</li>
+ *   <li>when the port is random, resolve the actual listening port from the PID via
+ *       {@link ListeningPorts} and confirm readiness by probing {@code /.well-known/agent.json}
+ *       (also disambiguates the server port if the process opens more than one listener);</li>
+ *   <li>for a fixed port, probe {@code /.well-known/agent.json} directly.</li>
  * </ol>
  *
  * <p>No SUT classes are required on the test classpath — the agent is observed
@@ -37,6 +41,8 @@ import java.util.concurrent.TimeUnit;
 public final class ProcessLauncher implements SutLauncher {
 
     private static final String WELL_KNOWN = "/.well-known/agent.json";
+    /** Monotonic launch counter, so each agent's log file is unique even for random ports. */
+    private static final AtomicLong LAUNCH_SEQ = new AtomicLong();
 
     private final String m2RepoRoot;
     private final int startupTimeoutSeconds;
@@ -56,12 +62,10 @@ public final class ProcessLauncher implements SutLauncher {
     }
 
     @Override
-    public SutInstance start(SutAgent agent, AgentConfig config) {
+    public ManagedSutInstance start(SutAgent agent, AgentConfig config) {
         Path jar = resolveJar(agent);
-        int port = config.port() > 0 ? config.port() : pickFreePort();
-        config.port(port); // record the resolved port for chain wiring
+        Path logFile = logFile(agent.name());
 
-        Path logFile = logFile(agent.name(), port);
         List<String> command = new ArrayList<>();
         command.add(javaBin);
         // JVM -D system properties MUST precede -jar. Rendered from sut.java.system-properties
@@ -70,6 +74,7 @@ public final class ProcessLauncher implements SutLauncher {
         jvmSystemProperties.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
+        // config.port() drives --server.port (0 = OS-assigned random port).
         command.addAll(config.toProgramArgs());
 
         ProcessBuilder pb = new ProcessBuilder(command)
@@ -84,11 +89,14 @@ public final class ProcessLauncher implements SutLauncher {
             throw new IllegalStateException(
                     "Failed to start " + agent.name() + " from " + jar, e);
         }
+        long pid = process.pid();
+
+        int port = config.port() > 0
+                ? awaitFixedPort(agent, config.port(), process, logFile)
+                : resolveRandomPort(agent, pid, process, logFile);
 
         String baseUrl = "http://localhost:" + port;
-        SutInstance instance = new SutInstance(agent.name(), port, baseUrl, process, logFile);
-        awaitReady(agent, baseUrl, instance);
-        return instance;
+        return new ManagedSutInstance(agent.name(), pid, port, baseUrl, process, logFile);
     }
 
     private Path resolveJar(SutAgent agent) {
@@ -102,52 +110,80 @@ public final class ProcessLauncher implements SutLauncher {
         return jar;
     }
 
-    private void awaitReady(SutAgent agent, String baseUrl, SutInstance instance) {
-        URI uri = URI.create(baseUrl + WELL_KNOWN);
+    /**
+     * Fixed-port path: the port is known a priori, so just wait until it serves the agent card.
+     */
+    private int awaitFixedPort(SutAgent agent, int port, Process process, Path logFile) {
         long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(startupTimeoutSeconds);
         while (System.nanoTime() < deadlineNanos) {
-            if (!instance.isAlive()) {
-                throw new IllegalStateException(agent.name()
-                        + " process exited before becoming ready.\n--- log tail ---\n"
-                        + tailLog(instance));
-            }
-            try {
-                HttpResponse<Void> response = http.send(
-                        HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(3)).GET().build(),
-                        HttpResponse.BodyHandlers.discarding());
-                if (response.statusCode() == 200) {
-                    return;
-                }
-            } catch (Exception notReadyYet) {
-                // connection refused / not bound yet — keep polling
+            failFastIfExited(agent, process, logFile);
+            if (probeReady(port)) {
+                return port;
             }
             sleep500ms();
         }
-        throw new IllegalStateException(agent.name() + " did not become ready within "
-                + startupTimeoutSeconds + "s (probed " + uri + ").\n--- log tail ---\n"
-                + tailLog(instance));
+        throw notReady(agent, "http://localhost:" + port, logFile);
     }
 
-    private static int pickFreePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException("Could not allocate a free port", e);
+    /**
+     * Random-port path: poll the PID's listening ports (via {@link ListeningPorts}) and return the
+     * first that serves the agent card. This both recovers the OS-assigned port and confirms
+     * readiness, disambiguating the server port if the process opens extra listeners.
+     */
+    private int resolveRandomPort(SutAgent agent, long pid, Process process, Path logFile) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(startupTimeoutSeconds);
+        while (System.nanoTime() < deadlineNanos) {
+            failFastIfExited(agent, process, logFile);
+            Set<Integer> candidates = ListeningPorts.of(pid);
+            for (int port : candidates) {
+                if (probeReady(port)) {
+                    return port;
+                }
+            }
+            sleep500ms();
+        }
+        throw notReady(agent, "PID " + pid + " (random port, not yet resolved)", logFile);
+    }
+
+    /** {@code true} iff the agent card endpoint responds 200 on {@code localhost:port}. */
+    private boolean probeReady(int port) {
+        try {
+            HttpResponse<Void> response = http.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + WELL_KNOWN))
+                            .timeout(Duration.ofSeconds(3)).GET().build(),
+                    HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() == 200;
+        } catch (Exception notReadyYet) {
+            return false; // connection refused / not bound yet / not ready
         }
     }
 
-    private static Path logFile(String agentName, int port) {
-        String tmp = System.getProperty("java.io.tmpdir");
-        return Path.of(tmp, "sit-sut-" + agentName + "-" + port + ".log");
+    private void failFastIfExited(SutAgent agent, Process process, Path logFile) {
+        if (!process.isAlive()) {
+            throw new IllegalStateException(agent.name()
+                    + " process exited before becoming ready.\n--- log tail ---\n"
+                    + tailLog(logFile));
+        }
     }
 
-    private static String tailLog(SutInstance instance) {
+    private IllegalStateException notReady(SutAgent agent, String where, Path logFile) {
+        return new IllegalStateException(agent.name() + " did not become ready within "
+                + startupTimeoutSeconds + "s (probed " + where + ").\n--- log tail ---\n"
+                + tailLog(logFile));
+    }
+
+    private static Path logFile(String agentName) {
+        String tmp = System.getProperty("java.io.tmpdir");
+        return Path.of(tmp, "sit-sut-" + agentName + "-" + LAUNCH_SEQ.incrementAndGet() + ".log");
+    }
+
+    private static String tailLog(Path logFile) {
         try {
-            List<String> lines = Files.readAllLines(instance.logFile());
+            List<String> lines = Files.readAllLines(logFile);
             int from = Math.max(0, lines.size() - 40);
             return String.join("\n", lines.subList(from, lines.size()));
         } catch (Exception e) {
-            return "(could not read log " + instance.logFile() + ": " + e.getMessage() + ")";
+            return "(could not read log " + logFile + ": " + e.getMessage() + ")";
         }
     }
 

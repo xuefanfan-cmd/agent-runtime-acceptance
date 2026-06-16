@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#
+# Shared pre-commit hook — installed via:
+#   git config core.hooksPath githooks
+#
+# Keeps hook logic thin and version-controlled; the real check lives in
+# scripts/check-secrets.sh so it can also run in CI or manually (--all).
+
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh" "$@"

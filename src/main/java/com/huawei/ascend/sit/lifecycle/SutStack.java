@@ -183,7 +183,7 @@ public final class SutStack implements AutoCloseable {
 
         private final TestConfig config;
         private SutLauncher launcher;
-        private boolean streaming = false;
+        private boolean streaming = true;
         private final Map<String, Entry> specs = new LinkedHashMap<>();
 
         private Builder(TestConfig config) {

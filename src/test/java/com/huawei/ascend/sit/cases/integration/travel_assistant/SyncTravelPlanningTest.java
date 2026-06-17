@@ -60,13 +60,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SyncTravelPlanningTest extends BaseManagedStackTest {
 
     /** Single fully-specified turn expected to complete the whole trip with no follow-ups. */
-    private static final String COMPLETE_REQUEST = "明天从上海到北京出差3天，住宿2晚";
+    private static final String COMPLETE_REQUEST = "明天从上海到北京出差3天，住宿2晚。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：国贸附近，需要会议室。";
 
     /** A-08 turn 1 — incomplete: has destination + duration, lacks departure date / origin. */
     private static final String INCOMPLETE_TURN_1 = "到北京出差3天";
 
     /** A-08 turn 2 — supplies the missing departure date + origin, completing the request. */
-    private static final String INCOMPLETE_TURN_2 = "明天从上海出发";
+    private static final String INCOMPLETE_TURN_2 = "明天从上海出发。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：国贸附近，需要会议室。";
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
@@ -77,7 +77,6 @@ class SyncTravelPlanningTest extends BaseManagedStackTest {
         // no per-agent LLM wiring is needed (export LLM_* once; proxy via sut.java.system-properties
         // in application-local.yml).
         return SutStack.builder(config)
-                .streaming(false)
                 .agent("hotel")
                 .agent("trip", a -> a.role(SutAgent.Role.MIDDLE).downstream("hotel"))
                 .agent("mainplan", a -> a.role(SutAgent.Role.ENTRY).downstream("trip"));
@@ -123,12 +122,11 @@ class SyncTravelPlanningTest extends BaseManagedStackTest {
      * {@code contextId} into turn 2 automatically, so the follow-up is the same conversation.
      */
     @Test
-    @Disabled("待 A-07.A 验证通过后再启用：本例额外依赖 mainplan 的 request_user_input rail，"
-            + "首缺信息轮次应返回 INPUT_REQUIRED，补齐后（InteractionFlow 自动续同一 contextId）"
-            + "续轮应 COMPLETED。链路调通并先验证 A-07.A 后再启用本例。")
     @DisplayName("A-08.A: incomplete turn yields INPUT_REQUIRED, follow-up completes (same contextId)")
     void incompleteThenFollowUpProgressesInputRequiredToCompleted() {
         InteractionFlow.of(client("mainplan"))
+                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
+                        "sessionId", "manual-session-001"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // Turn 1 — incomplete (no departure date / origin): agent should pause for more input.
                 .send(INCOMPLETE_TURN_1)

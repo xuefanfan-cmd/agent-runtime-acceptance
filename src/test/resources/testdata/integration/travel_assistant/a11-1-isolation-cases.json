@@ -1,0 +1,15 @@
+{
+  "_doc": "A-02 concurrent session isolation — N session cases driven through the mainplan→trip→hotel chain in parallel. Each entry: sessionId (carried in A2A metadata), input (user-stated travel-planning ask covering who/when/where/duration/hotel-type), expectedKeyword (required substring of the final artifact's text). Keyword choice rule: the destination city — MUST be a Chinese provincial capital or municipality directly under the central government — and the LLM cannot reasonably omit it when returning a trip + hotel plan; the keywords across cases must NOT be substrings of one another.",
+  "sessions": [
+    {
+      "sessionId": "manual-session-a",
+      "input": "我是张三，计划 2026-07-01 飞北京出差 3 天，帮我订一家四星级商务酒店",
+      "expectedKeyword": "北京"
+    },
+    {
+      "sessionId": "manual-session-b",
+      "input": "我是李四，计划 2026-07-10 飞上海出差 5 天，帮我订一家经济型连锁酒店",
+      "expectedKeyword": "上海"
+    }
+  ]
+}

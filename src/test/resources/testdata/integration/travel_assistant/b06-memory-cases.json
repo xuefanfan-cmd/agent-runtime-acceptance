@@ -1,0 +1,28 @@
+{
+  "_doc": "B-06 cross-session user-level memory — 4 serial sessions sharing one userId (sharedUserId, carried in metadata.userId), each with its own contextId. Each pair: plan (sessionId, destination, input) → recall (sessionId, input). plan input mirrors A-11-1 style — fully specified (origin/depart-date/return-date/duration/spec/preference) so mainplan completes in one shot without falling into INPUT_REQUIRED. recall input references the destination by name and asks for the previously recommended hotel. Destinations MUST be provincial capitals / municipalities AND mutually non-substring (南京 / 杭州 ✓). Origins (成都 / 广州) chosen to avoid colliding with destinations or hotel brand names. The plan input mentions a brand whitelist (协议品牌) as a user-side constraint — this is NOT the test's extraction whitelist; the test extracts whatever mainplan actually returns via regex over artifact text.",
+  "sharedUserId": "b06-recall-user-001",
+  "pairs": [
+    {
+      "plan": {
+        "sessionId": "b06-plan-A",
+        "destination": "南京",
+        "input": "我是张三，计划 2026-07-01 从成都出发飞南京出差 4 天，返程 2026-07-04，帮我订一家四星级商务酒店。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：新街口附近，需要会议室。"
+      },
+      "recall": {
+        "sessionId": "b06-recall-NJ",
+        "input": "我是张三，上次到南京出差你给我推荐的是哪家酒店？把酒店品牌名告诉我。"
+      }
+    },
+    {
+      "plan": {
+        "sessionId": "b06-plan-B",
+        "destination": "杭州",
+        "input": "我是张三，计划 2026-07-10 从广州出发飞杭州出差 6 天，返程 2026-07-15，帮我订一家四星级商务酒店。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：西湖附近，需要会议室。"
+      },
+      "recall": {
+        "sessionId": "b06-recall-HZ",
+        "input": "我是张三，上次到杭州出差你给我推荐的是哪家酒店？把酒店品牌名告诉我。"
+      }
+    }
+  ]
+}

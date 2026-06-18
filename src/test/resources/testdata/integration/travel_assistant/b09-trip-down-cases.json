@@ -1,0 +1,6 @@
+{
+  "_doc": "B-09 graceful degradation when trip-agent is stopped. Single full travel request to mainplan; mainplan must reply gracefully (no hang, no stack trace leak, no hallucinated success). userId / sessionId get a per-run UUID suffix appended at test time to avoid pollution with concurrent runs / other cases.",
+  "userId": "b09-degraded-user-001",
+  "sessionId": "b09-trip-down-session",
+  "input": "我是张三，计划 2026-07-01 从成都出发飞南京出差 4 天，返程 2026-07-04，帮我订一家四星级商务酒店。差标：每晚不超过 800 元、最低 4 星。偏好：新街口附近，需要会议室。"
+}

@@ -1,14 +1,14 @@
 {
-  "_doc": "A-02 concurrent session isolation — N session cases driven through the mainplan→trip→hotel chain in parallel. Each entry: sessionId (carried in A2A metadata), input (user-stated travel-planning ask covering who/when/where/duration/hotel-type), expectedKeyword (required substring of the final artifact's text). Keyword choice rule: the destination city — MUST be a Chinese provincial capital or municipality directly under the central government — and the LLM cannot reasonably omit it when returning a trip + hotel plan; the keywords across cases must NOT be substrings of one another.",
+  "_doc": "A-11-1 concurrent session isolation — N session cases driven through the mainplan→trip→hotel chain in parallel. Each entry: sessionId (carried in message.contextId), input (a fully-specified trip-planning ask: who/origin/depart-date/destination/return-date/duration/hotel-tier/budget/brand-preference/area-preference, so mainplan completes in one shot without follow-up), expectedKeyword (required substring of the final artifact text). Keyword rule: the destination city — MUST be a Chinese provincial capital or municipality directly under the central government — and the LLM cannot reasonably omit it in a trip + hotel plan. Cross-case keywords MUST NOT be substrings of one another, and a session's input MUST NOT contain the other session's keyword (origin / brand / area names chosen accordingly).",
   "sessions": [
     {
       "sessionId": "manual-session-a",
-      "input": "我是张三，计划 2026-07-01 飞北京出差 3 天，帮我订一家四星级商务酒店",
+      "input": "我是张三，计划 2026-07-01 从深圳出发飞北京出差 3 天，返程 2026-07-04，帮我订一家四星级商务酒店。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：国贸附近，需要会议室。",
       "expectedKeyword": "北京"
     },
     {
       "sessionId": "manual-session-b",
-      "input": "我是李四，计划 2026-07-10 飞上海出差 5 天，帮我订一家经济型连锁酒店",
+      "input": "我是李四，计划 2026-07-10 从深圳出发飞上海出差 5 天，返程 2026-07-15，帮我订一家经济型连锁酒店。差标：每晚不超过 500 元、连锁品牌 汉庭/如家/7天。偏好：人民广场附近，便于地铁出行。",
       "expectedKeyword": "上海"
     }
   ]

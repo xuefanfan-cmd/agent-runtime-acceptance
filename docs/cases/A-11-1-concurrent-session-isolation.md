@@ -22,7 +22,7 @@ depends_on:
 > **协议字段**与**业务输出**两个层面均不串扰。
 >
 > 覆盖：特性 2「Runtime session（外部连续会话管理）与 Agent session 分离」
-> 在并发维度下的运行时不变量；特性 4「A2A `message/send`」在并发下的 task 隔离。
+> 在并发维度下的运行时不变量；特性 4「A2A `message/stream`」在并发下的 task 隔离。
 
 ---
 
@@ -53,12 +53,12 @@ depends_on:
 
 | # | 动作 | 协议 / 方法 | 预期 |
 |---|------|------------|------|
-| 1 | 拉起栈：leaf-first 顺序启动 hotel → trip → mainplan，自动注入 downstream URL；栈 `.streaming(false)` ⇒ 同步 `message/send` | `SutStack` + 就绪探针 | 三 agent 均就绪；`GET /.well-known/agent.json` 返回 200 |
+| 1 | 拉起栈：leaf-first 顺序启动 hotel → trip → mainplan，自动注入 downstream URL；栈走默认 streaming 模式（`message/stream` SSE） | `SutStack` + 就绪探针 | 三 agent 均就绪；`GET /.well-known/agent.json` 返回 200 |
 | 2 | 加载用例数据 a11-1-isolation-cases.json | classpath | 两个 SessionCase（A / B），各自含 `sessionId / input / expectedKeyword` |
 | 3 | 用 Java 21 virtual threads + `CountDownLatch(1)` 准备两路并发任务 | — | 两路同时释放 |
-| 4 | A 路：向 mainplan 发 `message/send`，**`message.contextId="manual-session-a"`** + metadata `userId/agentId`，消息 "我是张三，计划 2026-07-01 飞北京出差 3 天，帮我订一家四星级商务酒店" | A2A SDK | mainplan→trip→hotel 串联回填，A 路 collector 持续收事件 |
-| 5 | B 路：向 mainplan 发 `message/send`，**`message.contextId="manual-session-b"`** + metadata `userId/agentId`，消息 "我是李四，计划 2026-07-10 飞上海出差 5 天，帮我订一家经济型连锁酒店" | A2A SDK | 同上 |
-| 6 | 两路各自 `awaitTerminalState(60s)` | Awaitility | 各自到达终态 COMPLETED |
+| 4 | A 路：向 mainplan 发 `message/stream`，**`message.contextId="manual-session-a"`** + metadata `userId/agentId`，消息 "我是张三，计划 2026-07-01 飞北京出差 3 天，帮我订一家四星级商务酒店" | A2A SDK | mainplan→trip→hotel 串联回填，A 路 collector 持续收事件 |
+| 5 | B 路：向 mainplan 发 `message/stream`，**`message.contextId="manual-session-b"`** + metadata `userId/agentId`，消息 "我是李四，计划 2026-07-10 飞上海出差 5 天，帮我订一家经济型连锁酒店" | A2A SDK | 同上 |
+| 6 | 两路各自 `awaitTerminalState(120s)` | Awaitility | 各自到达终态 COMPLETED |
 | 7 | 两路各自 `getTask(taskId)` 取完整 Task | A2A SDK | 用于 artifact 抽取 |
 | 8 | 断言 A-11-1.A / B / C / D | — | 见 §4 |
 
@@ -68,7 +68,7 @@ depends_on:
 > 三态语义：PASS 满足、FAIL 违反、INCONCLUSIVE 表面不足以判定。
 
 ### A-11-1.A — task.id 唯一
-- **Given**：两路并发 `message/send` 均完成。
+- **Given**：两路并发 `message/stream` 均完成。
 - **When**：从各自首个 task-bearing 事件取 `task.id`。
 - **Then**：两 `task.id` 均非空、且彼此不同。
 - **PASS**：满足。**FAIL**：相等或为空。**INCONCLUSIVE**：不适用（A2A 强制每次 send 产新 task）。
@@ -113,10 +113,10 @@ depends_on:
 |----|----|
 | 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/travel_assistant/ConcurrentSessionIsolationTest.java` |
 | 标签 | `@Tag("integration")`（依赖全链 + 真 LLM，归 integration 层，与 `SyncTravelPlanningTest` 同层） |
-| 基类 | `BaseManagedStackTest`（per-class 管理栈），栈描述 = hotel(LEAF) + trip(MIDDLE→hotel) + mainplan(ENTRY→trip) + `.streaming(false)` |
+| 基类 | `BaseManagedStackTest`（per-class 管理栈），栈描述 = hotel(LEAF) + trip(MIDDLE→hotel) + mainplan(ENTRY→trip) + 默认 streaming 模式|
 | 并发原语 | Java 21 `Executors.newVirtualThreadPerTaskExecutor()` + `CountDownLatch(1)` 同时起跑 |
 | 客户端调用 | `client("mainplan").sendMessage(message, metadata, consumers, errorHandler)` —— **不**走 `InteractionFlow`（DSL 为串行设计）；`message.contextId` = 该路 sessionId（驱动 `RuntimeIdentity.sessionId` 派生，见 §9 contextId 路由说明） |
-| 事件收集 | 每路独立 `A2aEventCollector` + `awaitTerminalState(60s)` |
+| 事件收集 | 每路独立 `A2aEventCollector` + `awaitTerminalState(120s)` |
 | 断言 | AssertJ；contextId / taskId 集合用 `doesNotHaveDuplicates / doesNotContain`；终态文本用 `contains(expectedKeyword)` + `doesNotContain(otherKeyword)` |
 | 数据 | `testdata/integration/travel_assistant/a11-1-isolation-cases.json` |
 
@@ -138,7 +138,7 @@ depends_on:
 | 特性 | 子断言 | 覆盖 |
 |------|--------|------|
 | 特性 2 Runtime session 隔离（并发维度） | A-11-1.B / C / D | ✅ |
-| 特性 4 A2A `message/send` 并发 task 隔离 | A-11-1.A / B / C | ✅ |
+| 特性 4 A2A `message/stream` 并发 task 隔离 | A-11-1.A / B / C | ✅ |
 
 ## 9. 风险与备注
 

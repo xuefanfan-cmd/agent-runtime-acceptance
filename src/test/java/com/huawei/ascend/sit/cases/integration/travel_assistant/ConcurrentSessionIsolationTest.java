@@ -55,14 +55,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 在并发判定下两路 collector 各持一份事件队列才能验"互不污染"。
  *
  * <p>同 {@code SyncTravelPlanningTest}，本类依赖三 agent 全链 + 真 LLM，归 {@code integration} 层。
- * 栈用 {@code .streaming(false)} 显式声明同步模式（{@code message/send}）。
+ * 栈走默认 streaming 模式（{@code message/stream} SSE，与 {@link SutStack.Builder} 默认一致）。
  */
 @Tag("integration")
 class ConcurrentSessionIsolationTest extends BaseManagedStackTest {
 
     private static final String CASES_RESOURCE =
             "testdata/integration/travel_assistant/a11-1-isolation-cases.json";
-    private static final long ROUND_TIMEOUT_MS = 60_000;
+    private static final long ROUND_TIMEOUT_MS = 120_000;
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";
     private static final String HOTEL = "hotel";
@@ -72,7 +72,6 @@ class ConcurrentSessionIsolationTest extends BaseManagedStackTest {
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
         return SutStack.builder(config)
-                .streaming(false)
                 .agent(HOTEL)
                 .agent(TRIP, a -> a.role(SutAgent.Role.MIDDLE).downstream(HOTEL))
                 .agent(MAINPLAN, a -> a.role(SutAgent.Role.ENTRY).downstream(TRIP));

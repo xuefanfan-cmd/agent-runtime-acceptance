@@ -5,9 +5,10 @@ package com.huawei.ascend.sit.lifecycle;
  *
  * <p>The framework did not launch it and <strong>does not own its lifecycle</strong>: no port
  * is allocated, no process is held, and {@link #close()} is a no-op (the framework never stops
- * a service it did not start). The base URL — including its port — is provided by the test
- * (e.g. {@code SutStack.Builder.remoteAgent(name, url)}). Use the same as any other instance:
- * {@link SutStack#client(String)} binds an A2A client to {@link #baseUrl()}.
+ * a service it did not start). The base URL — including its port — comes from
+ * {@code sut.agents.<name>.url} in YAML (the test declares the agent with
+ * {@code SutStack.Builder.agent(name)}; a configured {@code url} makes it remote). Use the same
+ * as any other instance: {@link SutStack#client(String)} binds an A2A client to {@link #baseUrl()}.
  */
 public final class RemoteSutInstance implements SutInstance {
 

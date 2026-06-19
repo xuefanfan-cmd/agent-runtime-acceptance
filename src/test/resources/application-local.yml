@@ -8,7 +8,7 @@ sut:
     bearer-token: ${SPRING_AI_ASCEND_BEARER_TOKEN:local-dev-token}
     tenant-id: ${SPRING_AI_ASCEND_TENANT_ID:default-tenant}
   timeout:
-    poll-seconds: 60
+    poll-seconds: 120
     poll-interval-ms: 500
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
@@ -20,15 +20,15 @@ sut:
     mainplan:
       group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a
-      version: 0.1.0-SNAPSHOT
+      version: 0.2.0-SNAPSHOT
     trip:
       group: com.huawei.ascend.examples
       artifact: agent-trip-a2a
-      version: 0.1.0-SNAPSHOT
+      version: 0.2.0-SNAPSHOT
     hotel:
       group: com.huawei.ascend.examples
       artifact: agent-hotel-a2a
-      version: 0.1.0-SNAPSHOT
+      version: 0.2.0-SNAPSHOT
   # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
   # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
   # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.
@@ -47,3 +47,4 @@ sut:
 #      LLM_API_BASE:
 #      LLM_MODEL:
 #      LLM_API_KEY:
+#      LLM_SSL_VERIFY:

@@ -58,6 +58,16 @@ public class TestConfig {
     }
 
     /**
+     * Build a config backed directly by the given nested map. Intended for tests and programmatic
+     * construction (e.g. asserting framework behaviour against an in-memory config without writing
+     * a YAML file). {@link #getString(String)} still applies its system-property / env-var layers
+     * on top, then falls back to this map. The supplied map is copied (defensive).
+     */
+    public static TestConfig fromMap(Map<String, Object> properties) {
+        return new TestConfig(properties == null ? Map.of() : new LinkedHashMap<>(properties));
+    }
+
+    /**
      * Get a string property, with fallback to system property then environment variable.
      */
     public String getString(String key) {

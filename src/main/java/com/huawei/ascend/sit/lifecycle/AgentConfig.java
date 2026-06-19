@@ -18,8 +18,11 @@ import java.util.Map;
  */
 public final class AgentConfig {
 
-    /** Spring property used to wire an upstream agent to its downstream in the chain. */
-    public static final String REMOTE_AGENTS_URL = "agent-runtime.remote-agents[0].url";
+    /**
+     * Spring property prefix for wiring an upstream agent to its downstreams. Spring Boot binds a
+     * list from indexed keys, so the i-th downstream goes to {@code agent-runtime.remote-agents[i].url}.
+     */
+    public static final String REMOTE_AGENTS_URL_PREFIX = "agent-runtime.remote-agents";
 
     private String profile = "";
     private int port = 0; // 0 => the OS assigns a random port (--server.port=0)
@@ -64,9 +67,12 @@ public final class AgentConfig {
         return environment;
     }
 
-    /** Wire the downstream agent's base URL into this upstream's remote-agents slot. */
-    public AgentConfig downstreamUrl(String url) {
-        return property(REMOTE_AGENTS_URL, url);
+    /**
+     * Wire a downstream agent's base URL into this upstream's i-th remote-agents slot:
+     * {@code agent-runtime.remote-agents[i].url}. Index order is the caller's (declaration order).
+     */
+    public AgentConfig downstreamUrl(int index, String url) {
+        return property(REMOTE_AGENTS_URL_PREFIX + "[" + index + "].url", url);
     }
 
     /**

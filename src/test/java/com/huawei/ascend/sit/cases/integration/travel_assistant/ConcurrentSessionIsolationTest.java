@@ -6,7 +6,6 @@ import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
-import com.huawei.ascend.sit.lifecycle.SutAgent;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
@@ -73,8 +72,8 @@ class ConcurrentSessionIsolationTest extends BaseManagedStackTest {
     protected SutStack.Builder buildStack(TestConfig config) {
         return SutStack.builder(config)
                 .agent(HOTEL)
-                .agent(TRIP, a -> a.role(SutAgent.Role.MIDDLE).downstream(HOTEL))
-                .agent(MAINPLAN, a -> a.role(SutAgent.Role.ENTRY).downstream(TRIP));
+                .agent(TRIP, a -> a.downstream(HOTEL))
+                .agent(MAINPLAN, a -> a.downstream(TRIP));
     }
 
     @Test

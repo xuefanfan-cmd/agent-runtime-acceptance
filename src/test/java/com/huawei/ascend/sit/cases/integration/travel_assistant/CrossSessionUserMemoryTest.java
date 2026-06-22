@@ -16,7 +16,6 @@ import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
 import org.a2aproject.sdk.spec.TextPart;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -58,8 +57,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * contextId"协议面。
  */
 @Tag("integration")
-@Disabled("B-06 暂挂：mainplan 尚未实现 user-level memory 跨 session 召回；recall 路必 FAIL。"
-        + " mainplan 侧补完召回逻辑后摘除本注解即可恢复执行。详见 docs/cases/B-06-*.md §9。")
 class CrossSessionUserMemoryTest extends BaseManagedStackTest {
 
     private static final String CASES_RESOURCE =
@@ -73,6 +70,12 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
     // 规则刻意不预设品牌白名单——brand-token 是 mainplan 返回什么就记什么。详见 B-06 doc §6。
     private static final Pattern HOTEL_BRAND_PATTERN =
             Pattern.compile("([\\u4e00-\\u9fa5]{2,5})酒店");
+
+    // LLM <think> 块剥离：SUT 会把 LLM 思考链原样 stream 进 artifact，里面常带跨 session
+    // memory 的诊断痕迹（"系统注入的 Relevant memory 包含杭州/南京两条…"），不算用户可见输出。
+    // B-06 全部断言只看用户面，所以统一在 extractArtifactText 里剥掉 <think>...</think>。
+    private static final Pattern THINK_BLOCK_PATTERN =
+            Pattern.compile("<think>[\\s\\S]*?</think>");
     private static final Set<String> STOP_WORDS = Set.of(
             "四星级", "五星级", "三星级",
             "商务", "经济型", "经济", "快捷", "连锁",
@@ -109,6 +112,8 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
         PlanOutcome planB = runPlan(client, sharedUserId, withSuffix(bundle.pairs().get(1).plan(), runSuffix));
         RecallOutcome recallNJ = runRecall(client, sharedUserId, withSuffix(bundle.pairs().get(0).recall(), runSuffix));
         RecallOutcome recallHZ = runRecall(client, sharedUserId, withSuffix(bundle.pairs().get(1).recall(), runSuffix));
+
+        dumpOutcomesForDiagnostics(planA, planB, recallNJ, recallHZ);
 
         assertNoStreamErrors(planA, planB, recallNJ, recallHZ);
         assertPlansHaveObservableBrand(planA, planB);
@@ -170,6 +175,29 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
         return new RoundResult(finalState, finalTask, streamError.get());
     }
 
+    // ---- diagnostics ----
+
+    /**
+     * 临时诊断：dump 四路 artifact 文本头，便于定位 brand 抽取 vs 真 cross-pollination 的歧义。
+     * 跑稳后可移除；保留时注意 stdout 噪声。
+     */
+    private static void dumpOutcomesForDiagnostics(
+            PlanOutcome planA, PlanOutcome planB,
+            RecallOutcome recallNJ, RecallOutcome recallHZ) {
+        System.out.println("==== B-06 diagnostic dump ====");
+        System.out.println("[plan-A " + planA.destination() + "] brand='" + planA.extractedBrand()
+                + "' state=" + planA.finalState() + "\n  artifact head: "
+                + truncate(planA.artifactText(), 400));
+        System.out.println("[plan-B " + planB.destination() + "] brand='" + planB.extractedBrand()
+                + "' state=" + planB.finalState() + "\n  artifact head: "
+                + truncate(planB.artifactText(), 400));
+        System.out.println("[recall-NJ] state=" + recallNJ.finalState()
+                + "\n  artifact head: " + truncate(recallNJ.artifactText(), 400));
+        System.out.println("[recall-HZ] state=" + recallHZ.finalState()
+                + "\n  artifact head: " + truncate(recallHZ.artifactText(), 400));
+        System.out.println("==== end diagnostic dump ====");
+    }
+
     // ---- B-06 assertions ----
 
     private static void assertNoStreamErrors(SessionOutcome... outcomes) {
@@ -218,7 +246,16 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
                 .contains(plan.extractedBrand());
     }
 
-    /** B-06.D — 两路 recall 不交叉污染（仅当 brand-A != brand-B 时可判）. */
+    /**
+     * B-06.D — 两路 recall 不交叉污染（仅当 brand-A != brand-B 时可判）.
+     *
+     * <p>裸品牌 token 不可判：plan 输入里"协议品牌 全季/亚朵/希尔顿欢朋"会被 recall 忠实回放
+     * 原始筛选条件，这是召回的合法行为，不是污染。改用两路证据：
+     * <ul>
+     *   <li>"&lt;brand&gt;酒店" 后缀——只有真的把对方推荐写进答复才会命中；</li>
+     *   <li>对方目的地名（南京 / 杭州）——recall-NJ 提到杭州即明确的上下文串流。</li>
+     * </ul>
+     */
     private static void assertRecallsDoNotCrossPollinate(
             RecallOutcome recallNJ, RecallOutcome recallHZ,
             PlanOutcome planA, PlanOutcome planB) {
@@ -226,12 +263,18 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
                 planA.extractedBrand().equals(planB.extractedBrand()),
                 "B-06.D INCONCLUSIVE: plan-A / plan-B 巧合推同品牌 '%s'，cross-pollination 观测面坍塌"
                         .formatted(planA.extractedBrand()));
+        String brandBHotel = planB.extractedBrand() + "酒店";
+        String brandAHotel = planA.extractedBrand() + "酒店";
         assertThat(recallNJ.artifactText())
-                .as("B-06.D: recall-NJ 不应包含 plan-B 的品牌 '%s'", planB.extractedBrand())
-                .doesNotContain(planB.extractedBrand());
+                .as("B-06.D: recall-NJ 不应包含 plan-B 的实际推荐 '%s' 或目的地 '%s'\nrecall-NJ 文本头 300 字: %s",
+                        brandBHotel, planB.destination(), truncate(recallNJ.artifactText(), 300))
+                .doesNotContain(brandBHotel)
+                .doesNotContain(planB.destination());
         assertThat(recallHZ.artifactText())
-                .as("B-06.D: recall-HZ 不应包含 plan-A 的品牌 '%s'", planA.extractedBrand())
-                .doesNotContain(planA.extractedBrand());
+                .as("B-06.D: recall-HZ 不应包含 plan-A 的实际推荐 '%s' 或目的地 '%s'\nrecall-HZ 文本头 300 字: %s",
+                        brandAHotel, planA.destination(), truncate(recallHZ.artifactText(), 300))
+                .doesNotContain(brandAHotel)
+                .doesNotContain(planA.destination());
     }
 
     // ---- text / brand extraction ----
@@ -272,7 +315,13 @@ class CrossSessionUserMemoryTest extends BaseManagedStackTest {
         if (sb.length() == 0 && task.history() != null && !task.history().isEmpty()) {
             appendText(sb, task.history().get(task.history().size() - 1).parts());
         }
-        return sb.toString();
+        return stripThinkBlocks(sb.toString());
+    }
+
+    /** 剥掉 LLM 思考链：&lt;think&gt;...&lt;/think&gt; 不属于用户可见契约，B-06 全部断言只看剥后文本。 */
+    private static String stripThinkBlocks(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return THINK_BLOCK_PATTERN.matcher(text).replaceAll("");
     }
 
     private static void appendText(StringBuilder sb, List<Part<?>> parts) {

@@ -1,0 +1,6 @@
+{
+  "_doc": "A-05 tasks/get — sync send then query completed task. See docs/cases/A-05-task-get-completed.md §7.",
+  "inputText": "你好",
+  "sendTimeoutMs": 60000,
+  "expectedTerminalState": "TASK_STATE_COMPLETED"
+}

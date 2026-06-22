@@ -1,0 +1,10 @@
+{
+  "_doc": "C-07 long travel message — min length + template padding builder. See docs/cases/C-07-long-message.md §7.",
+  "minInputChars": 5000,
+  "travelTemplatePrefix": "我要安排一次出差：从上海到北京，出发日期下周三，停留5天4晚。请根据以下详细要求给出规划建议。",
+  "paddingSentence": "此外还需要考虑市内交通、会议间隙用餐、发票与报销凭证、以及与同事拼车往返机场等细节。",
+  "healthProbeText": "你好",
+  "longMessageTimeoutMs": 180000,
+  "healthProbeTimeoutMs": 60000,
+  "healthProbeExpectedTerminalState": "TASK_STATE_COMPLETED"
+}

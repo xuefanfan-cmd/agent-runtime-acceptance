@@ -1,0 +1,17 @@
+{
+  "_doc": "B-03 Redis checkpointer — two-turn dialogue. See docs/cases/B-03-redis-checkpointer-multi-turn.md §7.",
+  "turn1Text": "我要出差",
+  "turn2Text": "2026年6月19日从深圳去北京出差3天，给我推荐酒店，没有任何要求，随机选一个就好",
+  "turn1TimeoutMs": 90000,
+  "turn2TimeoutMs": 120000,
+  "turn1AllowedTerminalStates": ["TASK_STATE_COMPLETED", "TASK_STATE_INPUT_REQUIRED"],
+  "turn2ExpectedTerminalState": "TASK_STATE_COMPLETED",
+  "turn2MustMatchAny": ["北京", "出差"],
+  "turn2MustNotMatchAny": [
+    "您要去哪里出差",
+    "请问您要去哪里",
+    "请告诉我您的目的地",
+    "您打算去哪里"
+  ],
+  "redisStartupMs": 30000
+}

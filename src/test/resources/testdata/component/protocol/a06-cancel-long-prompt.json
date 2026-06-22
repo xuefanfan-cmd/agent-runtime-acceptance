@@ -1,0 +1,9 @@
+{
+  "_doc": "A-06 tasks/cancel — long prompt to keep task in-flight for cancel window. See docs/cases/A-06-task-cancel.md §7.",
+  "inputText": "请为我规划一条详细的出差方案：下周三从上海虹桥到北京，出差5天4晚。请分章节详细阐述交通方式对比（高铁与航班）、每日会议日程建议、酒店区域选择、每日餐饮与市内交通预算，以及注意事项。内容尽可能完整、篇幅尽量长。",
+  "taskIdWaitMs": 15000,
+  "cancelWaitMs": 30000,
+  "cancelPollMs": 10000,
+  "streamTimeoutMs": 60000,
+  "expectedTerminalStateAfterCancel": "TASK_STATE_CANCELED"
+}

@@ -1,0 +1,11 @@
+{
+  "_doc": "C-06 empty user message — sync + stream sub-scenarios. See docs/cases/C-06-empty-message.md §7.",
+  "inputText": "",
+  "healthProbeText": "你好",
+  "emptyMessageTimeoutMs": 30000,
+  "healthProbeTimeoutMs": 60000,
+  "expectedTerminalState": "TASK_STATE_FAILED",
+  "expectedErrorCode": "INVALID_INPUT",
+  "expectedErrorDetailFragments": ["no text"],
+  "healthProbeExpectedTerminalState": "TASK_STATE_COMPLETED"
+}

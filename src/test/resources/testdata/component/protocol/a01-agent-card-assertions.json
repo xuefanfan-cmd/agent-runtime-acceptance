@@ -6,6 +6,6 @@
   "capabilities.pushNotifications": true,
   "capabilities.extendedAgentCard": false,
   "defaultInputModes": ["text"],
-  "defaultOutputModes": ["text", "artifact"],
+  "defaultOutputModes": ["text"],
   "provider.organization": "spring-ai-ascend"
 }

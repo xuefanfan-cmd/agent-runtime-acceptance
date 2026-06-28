@@ -11,6 +11,9 @@ public enum TestEnvironment {
     /** Local development environment (default) */
     LOCAL,
 
+    /** Openjiuwen travel-chain agents ({@code agent-openjiuwen-travel-*}) */
+    OPENJIUWEN,
+
     /** System Integration Testing environment */
     SIT,
 

@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.integration.checkpointer;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
-import com.huawei.ascend.sit.lifecycle.SutAgent;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.model.integration.checkpointer.B03ScenarioData;
 import org.junit.jupiter.api.DisplayName;
@@ -55,9 +54,9 @@ class RedisCheckpointerMultiTurnTest extends BaseManagedStackTest {
         return SutStack.builder(config)
                 .streaming(true)
                 .agent("hotel")
-                .agent("trip", a -> a.role(SutAgent.Role.MIDDLE).downstream("hotel"))
+                .agent("trip", a -> a.downstream("hotel"))
                 .agent("mainplan", a -> {
-                    a.role(SutAgent.Role.ENTRY).downstream("trip");
+                    a.downstream("trip");
                     a.property("main-plan-agent.checkpointer", "redis");
                     a.property("main-plan-agent.redis-url", redisUrl);
                     String apiKey = System.getenv(B03Gate.LLM_KEY_ENV);

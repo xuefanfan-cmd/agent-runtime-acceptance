@@ -2,12 +2,14 @@ package com.huawei.ascend.sit.lifecycle;
 
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
+import com.huawei.ascend.sit.fault.FaultLink;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.Client;
 import org.a2aproject.sdk.client.config.ClientConfig;
 import org.a2aproject.sdk.client.transport.jsonrpc.JSONRPCTransport;
 import org.a2aproject.sdk.client.transport.jsonrpc.JSONRPCTransportConfig;
 import org.a2aproject.sdk.spec.AgentCard;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,8 +25,10 @@ import java.util.function.Consumer;
  * via {@code BaseManagedStackTest}) declares <em>which</em> agents it needs and the
  * <em>topology</em> — for each agent, its downstream(s). {@code start()} brings them up in
  * dependency order and, for each <em>managed</em> upstream, injects each downstream's resolved
- * base URL into {@code agent-runtime.remote-agents[i].url} (one slot per downstream, in
- * declaration order). An agent with several downstreams gets several slots.
+ * base URL into {@code <remoteAgentsPrefix>[i].url} — by default {@code agent-runtime.remote-agents[i].url}
+ * (the agent-runtime convention), overridable per agent via {@code sut.agents.<name>.remote-agents-prefix}
+ * for agents built on a different runtime framework (one slot per downstream, in declaration order).
+ * An agent with several downstreams gets several slots.
  *
  * <p><b>Managed vs remote is resolved from YAML — there is no code override.</b> For an agent
  * declared with {@code .agent(name)}, the framework reads {@code sut.agents.<name>}: a
@@ -76,10 +80,24 @@ public final class SutStack implements AutoCloseable {
     private final Map<String, SutInstance> instances = new LinkedHashMap<>();
     private final boolean streaming;
 
-    private SutStack(SutLauncher launcher, Map<String, Entry> specs, boolean streaming) {
+    /** Fault links created for agents that declared cardEndpointRedirect, keyed by agent name. */
+    private final Map<String, FaultLink> faultLinks = new LinkedHashMap<>();
+
+    /**
+     * The toxiproxy container backing the fault links. {@code explicitContainer} is provided by the
+     * test (the test owns its lifecycle); {@code ownedContainer} is started on demand by the stack
+     * when some agent declares a redirect and no container was provided. {@link #container()}
+     * resolves whichever is set.
+     */
+    private final ToxiproxyContainer explicitContainer;
+    private ToxiproxyContainer ownedContainer;
+
+    private SutStack(SutLauncher launcher, Map<String, Entry> specs, boolean streaming,
+                     ToxiproxyContainer explicitContainer) {
         this.launcher = launcher;
         this.specs = specs;
         this.streaming = streaming;
+        this.explicitContainer = explicitContainer;
     }
 
     /** Begin describing a stack against the given configuration. */
@@ -94,6 +112,13 @@ public final class SutStack implements AutoCloseable {
      * (in declaration order).
      */
     public SutStack start() {
+        // If any agent opts into a cardEndpointRedirect and the test didn't provide a container,
+        // the stack owns one for the duration of its life (stopped in close()).
+        if (needsFaultContainer() && container() == null) {
+            ownedContainer = new ToxiproxyContainer("ghcr.io/shopify/toxiproxy:latest");
+            ownedContainer.start();
+        }
+
         Set<String> ready = new java.util.HashSet<>();
         while (ready.size() < specs.size()) {
             boolean progressed = false;
@@ -112,7 +137,7 @@ public final class SutStack implements AutoCloseable {
                     for (int i = 0; i < downstreams.size(); i++) {
                         entry.config.downstreamUrl(i, instances.get(downstreams.get(i)).baseUrl());
                     }
-                    instances.put(name, launcher.start(entry.agent, entry.config));
+                    instances.put(name, startManaged(name, entry));
                 }
                 ready.add(name);
                 progressed = true;
@@ -124,6 +149,66 @@ public final class SutStack implements AutoCloseable {
             }
         }
         return this;
+    }
+
+    /**
+     * Launch one managed agent, optionally threading its advertised agent-card endpoint through a
+     * toxiproxy fault link. Two-phase wiring (the ordering is the crux): the link and its listen URL
+     * must exist <em>before</em> launch so the redirect property can carry that URL as a launch arg;
+     * the link's upstream can only be associated to the agent's <em>real</em> port <em>after</em>
+     * launch resolves it. Both phases complete before this returns.
+     */
+    private SutInstance startManaged(String name, Entry entry) {
+        FaultLink link = null;
+        if (entry.config.cardEndpointRedirectKey() != null) {
+            // Placeholder upstream — listenUrl() is already stable and gets baked into the launch arg.
+            link = FaultLink.toxiproxy(container(), "fault-" + name);
+            entry.config.property(entry.config.cardEndpointRedirectKey(),
+                    link.listenUrl() + entry.config.cardEndpointRedirectPath());
+        }
+        SutInstance instance = launcher.start(entry.agent, entry.config);
+        if (link != null) {
+            if (!(instance instanceof ManagedSutInstance managed)) {
+                throw new IllegalStateException(
+                        "Agent '" + name + "' declared cardEndpointRedirect but the launcher returned a "
+                                + "non-managed instance; redirect needs a resolvable managed port.");
+            }
+            // Associate the link to the agent's real port now that launch resolved it. listen stays put.
+            link.retarget(FaultLink.DEFAULT_UPSTREAM_HOST, managed.port());
+            faultLinks.put(name, link);
+        }
+        return instance;
+    }
+
+    /** Whether any declared agent opted into a cardEndpointRedirect (i.e. needs a toxiproxy container). */
+    private boolean needsFaultContainer() {
+        for (Entry entry : specs.values()) {
+            if (entry.config.cardEndpointRedirectKey() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The toxiproxy container backing fault links: the test-provided one, else the stack-owned one. */
+    private ToxiproxyContainer container() {
+        return explicitContainer != null ? explicitContainer : ownedContainer;
+    }
+
+    /**
+     * The fault link for an agent that declared {@code cardEndpointRedirect} — call
+     * {@code resetPeer()}/{@code restore()} on it to inject/recover a TCP break.
+     *
+     * @throws IllegalStateException if the agent did not declare a redirect (and thus has no link).
+     */
+    public FaultLink faultLink(String name) {
+        FaultLink link = faultLinks.get(name);
+        if (link == null) {
+            throw new IllegalStateException("Agent '" + name
+                    + "' did not declare cardEndpointRedirect, so no fault link exists for it. "
+                    + "Agents with a redirect: " + faultLinks.keySet());
+        }
+        return link;
     }
 
     /** Base URL of an agent, e.g. {@code http://localhost:38211} (managed) or a remote address. */
@@ -241,8 +326,10 @@ public final class SutStack implements AutoCloseable {
     }
 
     /**
-     * Tear down in reverse launch order: managed agents are stopped; remote agents are left
-     * untouched (the framework never stops a service it did not start).
+     * Tear down in the only correct order: managed agents first (reverse launch order; remote agents
+     * untouched), then fault links (proxy.delete — needs the container still alive), then the
+     * stack-owned toxiproxy container. A test-provided ({@code explicitContainer}) is never stopped
+     * here — its lifecycle is the test's.
      */
     @Override
     public void close() {
@@ -250,6 +337,14 @@ public final class SutStack implements AutoCloseable {
         java.util.Collections.reverse(order);
         for (String name : order) {
             instances.get(name).close();
+        }
+        for (FaultLink link : faultLinks.values()) {
+            link.close();
+        }
+        faultLinks.clear();
+        if (ownedContainer != null) {
+            ownedContainer.stop();
+            ownedContainer = null;
         }
     }
 
@@ -273,10 +368,22 @@ public final class SutStack implements AutoCloseable {
         private final TestConfig config;
         private SutLauncher launcher;
         private boolean streaming = true;
+        private ToxiproxyContainer explicitContainer;
         private final Map<String, Entry> specs = new LinkedHashMap<>();
 
         private Builder(TestConfig config) {
             this.config = config;
+        }
+
+        /**
+         * Provide a toxiproxy container the stack should use for any {@code cardEndpointRedirect}
+         * agents (advanced — e.g. sharing one container across stacks). The stack never stops it;
+         * its lifecycle stays the test's. When omitted, the stack starts (and stops) its own
+         * container on demand the moment some agent declares a redirect.
+         */
+        public Builder toxiproxy(ToxiproxyContainer container) {
+            this.explicitContainer = container;
+            return this;
         }
 
         /** Override the default {@link ProcessLauncher} backend. */
@@ -318,12 +425,35 @@ public final class SutStack implements AutoCloseable {
             return this;
         }
 
+        /**
+         * Declare a remote (pre-deployed) agent at an explicit URL, overriding the YAML-driven mode
+         * resolution. Use when the address is not the standard {@code sut.agents.<name>.url} — e.g. a
+         * per-phase URL (B-04) or a fault variant ({@code url-llm-down}, C-09). The framework never
+         * launches or stops it; any downstream wiring is the deployer's responsibility.
+         */
+        public Builder remoteAgent(String name, String url) {
+            return remoteAgent(name, url, a -> {});
+        }
+
+        /** Variant of {@link #remoteAgent(String, String)} with per-agent configuration. */
+        public Builder remoteAgent(String name, String url, Consumer<AgentBuilder> configure) {
+            AgentBuilder builder = new AgentBuilder(config, name);
+            builder.forceRemote(url);
+            configure.accept(builder);
+            Entry entry = builder.build();
+            if (specs.containsKey(name)) {
+                throw new IllegalStateException("Agent '" + name + "' declared twice");
+            }
+            specs.put(name, entry);
+            return this;
+        }
+
         /** Launch the declared agents and return the started stack. */
         public SutStack start() {
             if (launcher == null) {
                 launcher = new ProcessLauncher(config);
             }
-            return new SutStack(launcher, specs, streaming).start();
+            return new SutStack(launcher, specs, streaming, explicitContainer).start();
         }
     }
 
@@ -335,9 +465,22 @@ public final class SutStack implements AutoCloseable {
         private final List<String> downstreams = new ArrayList<>();
         private final AgentConfig configOverrides = new AgentConfig();
 
+        /** When set, build() emits a remote entry at this URL, overriding YAML mode resolution. */
+        private String forcedRemoteUrl;
+
         private AgentBuilder(TestConfig config, String name) {
             this.config = config;
             this.name = name;
+        }
+
+        /**
+         * Force this agent remote at an explicit URL — the escape hatch behind
+         * {@link Builder#remoteAgent(String, String)} for addresses not carried by
+         * {@code sut.agents.<name>.url} (per-phase / fault-variant URLs).
+         */
+        AgentBuilder forceRemote(String url) {
+            this.forcedRemoteUrl = url;
+            return this;
         }
 
         /**
@@ -380,13 +523,41 @@ public final class SutStack implements AutoCloseable {
             return this;
         }
 
+        /**
+         * Redirect this agent's advertised agent-card endpoint through a toxiproxy fault link so any
+         * caller discovering it via its card routes JSON-RPC through the proxy. The framework injects
+         * {@code --<propertyKey>=<proxyListenUrl>/a2a} at launch; once the stack is up, retrieve the
+         * link via {@link SutStack#faultLink(String)} to {@code resetPeer()}/{@code restore()}.
+         * Only meaningful for managed agents — declaring it on a remote agent fails fast at build().
+                 */
+        public AgentBuilder cardEndpointRedirect(String propertyKey) {
+            return cardEndpointRedirect(propertyKey, "/a2a");
+        }
+
+        /**
+         * Variant of {@link #cardEndpointRedirect(String)} with an explicit A2A endpoint path (default
+         * {@code /a2a}). Override only if the agent serves A2A at a different path; never pass empty.
+         */
+        public AgentBuilder cardEndpointRedirect(String propertyKey, String path) {
+            this.configOverrides.cardEndpointRedirect(propertyKey, path);
+            return this;
+        }
+
         private Entry build() {
-            // Mode is resolved purely from YAML: a configured `url` ⇒ remote (address only);
-            // otherwise the group/artifact/version block ⇒ managed (launched). There is no code
-            // override — switching an agent between managed and remote is a YAML edit.
+            // Mode is resolved from YAML by default — a configured `url` ⇒ remote (address only),
+            // otherwise the group/artifact/version block ⇒ managed (launched). forceRemote() overrides
+            // this for tests that must point at an address not under sut.agents.<name>.url (e.g. a
+            // per-phase URL, or a fault variant like url-llm-down).
             String yamlUrl = config.getString("sut.agents." + name + ".url", "");
-            if (!yamlUrl.isBlank()) {
-                return remoteEntry(yamlUrl);
+            String remoteUrl = forcedRemoteUrl != null ? forcedRemoteUrl : yamlUrl;
+            boolean remote = !remoteUrl.isBlank();
+            if (remote && configOverrides.cardEndpointRedirectKey() != null) {
+                throw new IllegalStateException("Agent '" + name + "' is remote (url=" + remoteUrl
+                        + "); cardEndpointRedirect is only supported on managed agents — the framework "
+                        + "cannot inject a launch property into a pre-deployed service.");
+            }
+            if (remote) {
+                return remoteEntry(remoteUrl);
             }
             MavenArtifact resolvedArtifact = defaultArtifact();
             if (configOverrides.profile() == null || configOverrides.profile().isBlank()) {
@@ -395,6 +566,14 @@ public final class SutStack implements AutoCloseable {
                     configOverrides.profile(defaultProfile);
                 }
             }
+            String yamlPrefix = config.getString("sut.agents." + name + ".remote-agents-prefix", "");
+            if (!yamlPrefix.isBlank()) {
+                configOverrides.remoteAgentsPrefix(yamlPrefix);
+            }
+            config.getStringMap("sut.agents." + name + ".java.system-properties")
+                    .forEach(configOverrides::jvmSystemProperty);
+            config.getStringMap("sut.agents." + name + ".spring.properties")
+                    .forEach(configOverrides::property);
             SutAgent agent = new SutAgent(name, resolvedArtifact, downstreams);
             return new Entry(agent, configOverrides);
         }

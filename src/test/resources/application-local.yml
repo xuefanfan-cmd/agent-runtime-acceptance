@@ -1,21 +1,37 @@
 # Local development environment configuration
 # Suitable for running tests against a local SUT instance.
+# Select with: ./mvnw -Dtest.env=LOCAL ... (the default when test.env / TEST_ENV is unset).
+
+# Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
+# The framework launches these as black-box java -jar processes. third_party jars
+# are for code analysis only and are never used at runtime.
+  # Per-agent JVM -D system properties (overrides same-named keys in the global
+  # sut.java.system-properties and appends its own). Default: none. Set only when an agent
+  # needs JVM -D different from the global set, e.g.:
+  #   some-agent:
+  #     java:
+  #       system-properties:
+  # Per-agent Spring Boot -- command-line properties (one --key=value per entry). Use this — NOT
+  # java.system-properties (-D) — for Spring config keys with [i] indexes or dots, e.g.:
+  #   some-agent:
+  #     spring:
+  #       properties:
+  #         my.service.a2a.remote-agents[0].name: trip
+  # Per-agent override of the downstream-URL property-key prefix. Default is
+  # agent-runtime.remote-agents (the agent-runtime convention); set this only for an agent built
+  # on a different runtime framework, e.g.:
+  #   some-agent:
+  #     remote-agents-prefix: my.service.a2a.remote-agents
+  # —— The original travel chain (agent-travel-*-a2a). For the openjiuwen variant use
+  #    -Dtest.env=openjiuwen (see application-openjiuwen.yml). ——
 
 sut:
-  base:
-    url: http://localhost:8080
-  auth:
-    bearer-token: ${SPRING_AI_ASCEND_BEARER_TOKEN:local-dev-token}
-    tenant-id: ${SPRING_AI_ASCEND_TENANT_ID:default-tenant}
   timeout:
     poll-seconds: 120
     poll-interval-ms: 500
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
     startup-seconds: 60
-  # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
-  # The framework launches these as black-box java -jar processes. third_party jars
-  # are for code analysis only and are never used at runtime.
   agents:
     mainplan:
       group: com.huawei.ascend.examples
@@ -29,6 +45,16 @@ sut:
       group: com.huawei.ascend.examples
       artifact: agent-hotel-a2a
       version: 0.2.0-SNAPSHOT
+    # —— Expense Review（单 jar 双 profile；main profile 经 remote-agents[0] 调 workflow）——
+    expense-review-workflow:
+      group: com.huawei.ascend.examples
+      artifact: agent-workflow-expense-review
+      version: 0.2.0-SNAPSHOT
+    expense-review-main:
+      group: com.huawei.ascend.examples
+      artifact: agent-workflow-expense-review
+      version: 0.2.0-SNAPSHOT
+      profile: main
   # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
   # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
   # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.

@@ -44,9 +44,15 @@ import java.util.Objects;
  *   <li>Chain expectations and assertions on the round result</li>
  *   <li>{@link A2aEventCollector} + Awaitility handles async→sync under the hood</li>
  *   <li>All rounds are executed in order on {@code .execute()}</li>
- *   <li>Multi-turn continuity: each round after the first carries the previous round's
- *       {@code contextId}, so {@code .send(a).send(b)} is <em>one</em> conversation, not two
- *       independent sends — a follow-up turn sees the full lineage</li>
+ *   <li>Multi-turn continuity (A2A protocol): a round whose previous round did <b>not</b> reach a
+ *       terminal state (e.g. {@code INPUT_REQUIRED} — task still open, awaiting more input) is a
+ *       <b>continuation</b> — it carries the previous round's {@code taskId} <em>and</em>
+ *       {@code contextId} (both, per protocol, to resume the <em>same</em> task). Once a round
+ *       reaches a terminal state ({@code COMPLETED}/{@code FAILED}/{@code CANCELED}) the next round
+ *       is <b>fresh</b> — it carries neither, letting the server assign a new task/contextId
+ *       (captured from the response, overwriting any stale local value). Use
+ *       {@link #withContextId(String)} to pin one {@code contextId} across the whole flow regardless
+ *       of terminal boundaries.</li>
  * </ul>
  */
 public class InteractionFlow {
@@ -57,6 +63,7 @@ public class InteractionFlow {
     private final List<RoundDefinition> rounds = new ArrayList<>();
     private long timeoutMs = 30_000;
     private Map<String, Object> defaultMetadata;
+    private String fixedContextId;
 
     private InteractionFlow(A2aServiceClient client) {
         this.client = client;
@@ -85,6 +92,22 @@ public class InteractionFlow {
         return this;
     }
 
+    /**
+     * Pin a {@code contextId} carried on <em>every</em> round (including fresh rounds that follow a
+     * terminal state).
+     *
+     * <p>By default a fresh round (the first round, or any round after the previous reached a
+     * terminal state) sends no {@code contextId} and lets the server allocate one; a continuation
+     * round carries the previous round's server-assigned {@code contextId}. Setting this overrides
+     * both: every round carries this exact {@code contextId}, grouping the whole flow under one
+     * conversation even across terminal boundaries. {@code taskId} is unaffected — continuation
+     * rounds still carry the previous task, fresh rounds still let the server assign a new one.
+     */
+    public InteractionFlow withContextId(String contextId) {
+        this.fixedContextId = contextId;
+        return this;
+    }
+
     /** Start a new interaction round by sending the given text. */
     public RoundDefinition send(String text) {
         RoundDefinition round = new RoundDefinition(this, text);
@@ -101,9 +124,8 @@ public class InteractionFlow {
     public FlowResult execute() {
         List<RoundResult> results = new ArrayList<>();
         String lastTaskId = null;
-        // Carried into the next round so a follow-up turn continues the same conversation
-        // (message.contextId) rather than starting an independent one.
         String lastContextId = null;
+        TaskState lastState = null;
 
         LOG.info("▶ Starting InteractionFlow (" + rounds.size() + " rounds)");
 
@@ -111,15 +133,29 @@ public class InteractionFlow {
             RoundDefinition round = rounds.get(i);
             LOG.info("  → Round " + (i + 1) + ": send \"" + truncate(round.inputText, 50) + "\"");
 
-            RoundResult result = executeRound(round, client, timeoutMs, lastContextId);
+            // 续轮判定（A2A 协议契约）：
+            //   上一轮存在且未到终态（如 INPUT_REQUIRED —— 任务仍开放、可补输入）
+            //   ⇒ 本轮续传**同一任务**：携带上一轮的 taskId + contextId。
+            //   上一轮已终态（COMPLETED/FAILED/CANCELED —— 收到 COMPLETED 后即视为会话结束）
+            //   ⇒ 本轮是新会话：不携带旧 taskId/contextId，由服务端重新分配；
+            //     result 里的 taskId/contextId 即为服务端新生成的值，用来覆盖本地缓存。
+            boolean continuation = lastTaskId != null && !lastTaskId.isEmpty()
+                    && lastState != null && !lastState.isFinal();
+            RoundResult result = executeRound(round, client, timeoutMs,
+                    continuation ? lastTaskId : null,
+                    continuation ? lastContextId : null);
             results.add(result);
 
             LOG.info("  ✓ State: " + result.taskState()
                     + " (task: " + result.taskId()
-                    + ", events: " + result.eventCount() + ")");
+                    + ", ctx: " + result.contextId()
+                    + ", events: " + result.eventCount() + ")"
+                    + (continuation ? "  [continuation]" : "  [fresh]"));
 
-            lastTaskId = result.taskId;
+            // 非续轮时这两个值是服务端新生成的；续轮时是服务端回显的携带值 —— 都用它覆盖本地缓存。
+            lastTaskId = result.taskId();
             lastContextId = result.contextId();
+            lastState = result.taskState();
         }
 
         LOG.info("✔ InteractionFlow completed (" + results.size() + " rounds)");
@@ -127,16 +163,22 @@ public class InteractionFlow {
     }
 
     private RoundResult executeRound(RoundDefinition round, A2aServiceClient client, long timeoutMs,
-                                     String continuationContextId) {
+                                     String continuationTaskId, String continuationContextId) {
         A2aEventCollector collector = new A2aEventCollector();
 
-        // Build and send message. A non-null continuationContextId (from the previous round)
-        // makes this a follow-up turn within the same conversation — message.contextId is set so
-        // the agent sees the full lineage (e.g. supplying info it asked for in the prior turn).
-        Message message = continuationContextId == null
-                ? A2A.toUserMessage(round.inputText)
-                : Message.builder(A2A.toUserMessage(round.inputText))
-                        .contextId(continuationContextId).build();
+        // 续轮：携带上一轮的 taskId + contextId —— A2A 协议要求两者都带方可在原任务上继续
+        // （仅带 contextId 会被服务端当作同会话下的新任务，taskId 互异，不符合"续传同一任务"）。
+        // 非续轮：两者都不带，由服务端新生成；contextId 若有 flow 级固定值（withContextId）则始终携带。
+        Message.Builder builder = Message.builder(A2A.toUserMessage(round.inputText));
+        if (continuationTaskId != null && !continuationTaskId.isEmpty()) {
+            builder.taskId(continuationTaskId);
+        }
+        String effectiveContextId = (continuationContextId != null && !continuationContextId.isEmpty())
+                ? continuationContextId : fixedContextId;
+        if (effectiveContextId != null && !effectiveContextId.isEmpty()) {
+            builder.contextId(effectiveContextId);
+        }
+        Message message = builder.build();
         List<BiConsumer<ClientEvent, AgentCard>> consumers = List.of(collector.createConsumer());
         Consumer<Throwable> errorHandler = error -> {
             LOG.warning("Stream error: " + error.getMessage());

@@ -138,18 +138,6 @@ public class TestConfig {
         return getString("sut.base.url", "http://localhost:8080");
     }
 
-    /** Bearer token for authentication */
-    public String getBearerToken() {
-        return getString("sut.auth.bearer-token",
-                System.getenv("SPRING_AI_ASCEND_BEARER_TOKEN"));
-    }
-
-    /** Tenant ID for X-Tenant-Id header */
-    public String getTenantId() {
-        return getString("sut.auth.tenant-id",
-                System.getenv("SPRING_AI_ASCEND_TENANT_ID"));
-    }
-
     /** Default poll timeout in seconds for async operations */
     public int getPollTimeoutSeconds() {
         return getInt("sut.timeout.poll-seconds", 30);

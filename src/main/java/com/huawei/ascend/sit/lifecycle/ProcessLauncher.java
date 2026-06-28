@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,6 +51,22 @@ public final class ProcessLauncher implements SutLauncher {
     private final Map<String, String> jvmSystemProperties;
     private final HttpClient http = HttpClient.newHttpClient();
 
+    /**
+     * Merge global and per-agent JVM system properties: the global map provides defaults, the
+     * per-agent map replaces same-named keys and appends its own. Iteration order is the global
+     * order (replaced values keep their original position) followed by per-agent-only keys. The
+     * result contains exactly one entry per key.
+     *
+     * <p>Package-private so {@link ProcessLauncher} can emit one {@code -D} per key, and directly
+     * unit-testable without launching a process.
+     */
+    static Map<String, String> mergeJvmSystemProperties(Map<String, String> global,
+                                                        Map<String, String> perAgent) {
+        Map<String, String> merged = new LinkedHashMap<>(global);
+        merged.putAll(perAgent);
+        return merged;
+    }
+
     public ProcessLauncher(TestConfig config) {
         this.m2RepoRoot = config.getString("sut.m2.repo",
                 System.getProperty("user.home") + "/.m2/repository");
@@ -68,10 +85,11 @@ public final class ProcessLauncher implements SutLauncher {
 
         List<String> command = new ArrayList<>();
         command.add(javaBin);
-        // JVM -D system properties MUST precede -jar. Rendered from sut.java.system-properties
-        // (e.g. -Dhttp.proxyHost=... -Dhttp.nonProxyHosts=... ; also -DLLM_API_KEY=... works,
-        // since Spring resolves the agents' ${LLM_*} from system properties).
-        jvmSystemProperties.forEach((key, value) -> command.add("-D" + key + "=" + value));
+        // JVM -D system properties MUST precede -jar. Global sut.java.system-properties provide
+        // defaults; this agent's per-agent overrides (sut.agents.<name>.java.system-properties)
+        // replace same-named keys and append their own — merged so each key emits exactly one -D.
+        mergeJvmSystemProperties(jvmSystemProperties, config.jvmSystemProperties())
+                .forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
         // config.port() drives --server.port (0 = OS-assigned random port).

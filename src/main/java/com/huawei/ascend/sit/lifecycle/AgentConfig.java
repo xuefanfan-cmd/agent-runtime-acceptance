@@ -1,6 +1,7 @@
 package com.huawei.ascend.sit.lifecycle;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,8 +20,10 @@ import java.util.Map;
 public final class AgentConfig {
 
     /**
-     * Spring property prefix for wiring an upstream agent to its downstreams. Spring Boot binds a
-     * list from indexed keys, so the i-th downstream goes to {@code agent-runtime.remote-agents[i].url}.
+     * Default Spring property-key prefix for wiring an upstream agent to its downstreams (the
+     * spring-ai-ascend agent-runtime convention). Spring Boot binds a list from indexed keys, so the
+     * i-th downstream goes to {@code agent-runtime.remote-agents[i].url}. Override per agent — e.g.
+     * for one built on a different runtime framework — via {@code sut.agents.<name>.remote-agents-prefix}.
      */
     public static final String REMOTE_AGENTS_URL_PREFIX = "agent-runtime.remote-agents";
 
@@ -28,6 +31,32 @@ public final class AgentConfig {
     private int port = 0; // 0 => the OS assigns a random port (--server.port=0)
     private final Map<String, String> properties = new LinkedHashMap<>();
     private final Map<String, String> environment = new LinkedHashMap<>();
+
+    /**
+     * Property-key prefix used to inject a downstream agent's base URL: the i-th downstream goes to
+     * {@code <prefix>[i].url}. Defaults to {@link #REMOTE_AGENTS_URL_PREFIX}; overridden per agent
+     * from {@code sut.agents.<name>.remote-agents-prefix} for agents built on a different runtime
+     * framework (e.g. {@code openjiuwen.service.a2a.remote-agents}).
+     */
+    private String remoteAgentsPrefix = REMOTE_AGENTS_URL_PREFIX;
+
+    /**
+     * Per-agent JVM {@code -D} system-property overrides, layered on top of the global
+     * {@code sut.java.system-properties} (a per-agent value replaces the same-named global one).
+     * Seeded from {@code sut.agents.<name>.java.system-properties} by
+     * {@code SutStack.AgentBuilder.build()}.
+     */
+    private final Map<String, String> jvmSystemProperties = new LinkedHashMap<>();
+
+    /**
+     * When non-null, the framework redirects this managed agent's advertised agent-card endpoint
+     * through a toxiproxy fault link: at launch it injects {@code --<key>=<listenUrl><path>} so the
+     * agent advertises the proxy (not its real address) in its card. Any caller that discovers the
+     * agent via its card then routes JSON-RPC through the proxy — {@code resetPeer()} can sever it.
+     * {@code null} (default) ⇒ no redirect. See {@code SutStack} for the two-phase wiring.
+     */
+    private String cardEndpointRedirectKey;
+    private String cardEndpointRedirectPath = "/a2a";
 
     public AgentConfig profile(String profile) {
         this.profile = profile;
@@ -68,11 +97,88 @@ public final class AgentConfig {
     }
 
     /**
+     * The property-key prefix used to inject downstream URLs ({@code <prefix>[i].url}); defaults to
+     * {@link #REMOTE_AGENTS_URL_PREFIX}. Overridden per agent from YAML.
+     */
+    public String remoteAgentsPrefix() {
+        return remoteAgentsPrefix;
+    }
+
+    /**
+     * Override the property-key prefix for downstream URL injection. Package-private — set only by
+     * {@code SutStack.AgentBuilder.build()} from {@code sut.agents.<name>.remote-agents-prefix}; not
+     * exposed on the public builder API (YAML-only, consistent with managed/remote/profile). A blank
+     * value is a no-op (keeps the default); otherwise the value is trimmed and a single trailing dot
+     * is stripped (guards against a {@code "foo.bar."} typo producing {@code foo.bar.[i].url}).
+     */
+    AgentConfig remoteAgentsPrefix(String prefix) {
+        if (prefix == null || prefix.isBlank()) {
+            return this;
+        }
+        String normalized = prefix.trim();
+        if (normalized.endsWith(".")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        this.remoteAgentsPrefix = normalized;
+        return this;
+    }
+
+    /**
+     * Per-agent JVM {@code -D} overrides (read-only view). Layered on top of the global
+     * {@code sut.java.system-properties}; a per-agent value replaces the same-named global one.
+     */
+    public Map<String, String> jvmSystemProperties() {
+        return Collections.unmodifiableMap(jvmSystemProperties);
+    }
+
+    /**
+     * Add one per-agent JVM {@code -D} override. Package-private — seeded only by
+     * {@code SutStack.AgentBuilder.build()} from {@code sut.agents.<name>.java.system-properties};
+     * not exposed on the public builder API (YAML-only, consistent with remoteAgentsPrefix).
+     */
+    AgentConfig jvmSystemProperty(String key, String value) {
+        jvmSystemProperties.put(key, value);
+        return this;
+    }
+
+    /**
      * Wire a downstream agent's base URL into this upstream's i-th remote-agents slot:
-     * {@code agent-runtime.remote-agents[i].url}. Index order is the caller's (declaration order).
+     * {@code <remoteAgentsPrefix>[i].url} (default {@code agent-runtime.remote-agents[i].url}).
+     * Index order is the caller's (declaration order).
      */
     public AgentConfig downstreamUrl(int index, String url) {
-        return property(REMOTE_AGENTS_URL_PREFIX + "[" + index + "].url", url);
+        return property(remoteAgentsPrefix + "[" + index + "].url", url);
+    }
+
+    /**
+     * Redirect this agent's advertised agent-card endpoint through a toxiproxy fault link, using the
+     * default path {@code /a2a}. The framework injects {@code --<propertyKey>=<listenUrl>/a2a} at
+     * launch. Equivalent to {@link #cardEndpointRedirect(String, String)} with {@code "/a2a"}.
+     */
+    public AgentConfig cardEndpointRedirect(String propertyKey) {
+        return cardEndpointRedirect(propertyKey, "/a2a");
+    }
+
+    /**
+     * Redirect this agent's advertised agent-card endpoint through a toxiproxy fault link, injecting
+     * {@code --<propertyKey>=<listenUrl><path>} at launch. The path defaults to {@code /a2a} (the
+     * A2A endpoint path); override it only if an agent serves A2A at a different path — never pass
+     * an empty string (a bare base makes the SDK POST the root path → 404).
+     */
+    public AgentConfig cardEndpointRedirect(String propertyKey, String path) {
+        this.cardEndpointRedirectKey = propertyKey;
+        this.cardEndpointRedirectPath = path;
+        return this;
+    }
+
+    /** The Spring property key whose value is redirected to the proxy, or {@code null} if no redirect. */
+    public String cardEndpointRedirectKey() {
+        return cardEndpointRedirectKey;
+    }
+
+    /** The path appended to the proxy listen URL in the injected property value (default {@code /a2a}). */
+    public String cardEndpointRedirectPath() {
+        return cardEndpointRedirectPath;
     }
 
     /**

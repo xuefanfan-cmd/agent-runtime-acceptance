@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -60,6 +62,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code ./mvnw -Dtest=StreamingTravelPlanningTest test}.
  */
 @Tag("integration")
+// Run this class's @Test methods concurrently against the single shared managed
+// stack (mainplan → trip → hotel), brought up once at @BeforeAll. The stack and
+// config fields are set in @BeforeAll and only read here, so they are safe to
+// share across the concurrent methods. Requires junit.jupiter.execution.parallel
+// .enabled=true (see src/test/resources/junit-platform.properties); the suite
+// default stays same_thread, so only opting-in classes run in parallel.
+@Execution(ExecutionMode.CONCURRENT)
 class StreamingTravelPlanningTest extends BaseManagedStackTest {
 
     /** Single fully-specified turn expected to complete the whole trip with no follow-ups. */
@@ -145,7 +154,7 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
     void incompleteThenFollowUpFollowsExpectedStateSequences() {
         InteractionFlow.of(client("mainplan"))
                 .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
-                        "sessionId", "manual-session-001"))
+                        "sessionId", "manual-session-002"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // Turn 1 — incomplete (no departure date / origin): agent should pause for more input.
                 .send(INCOMPLETE_TURN_1)
@@ -168,7 +177,6 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(distinctStatesInOrder(ctx.events()))
                             .as("A-08 turn-2 streamed state sequence: WORKING → COMPLETED")
                             .containsExactly(
-                                    TaskState.TASK_STATE_SUBMITTED,
                                     TaskState.TASK_STATE_WORKING,
                                     TaskState.TASK_STATE_COMPLETED))
                     .assertTask(task -> {
@@ -200,7 +208,7 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
     void threeTurnCollectionFollowsExpectedStateSequences() {
         InteractionFlow.of(client("mainplan"))
                 .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
-                        "sessionId", "manual-session-002"))
+                        "sessionId", "manual-session-003"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // Turn 1 — intent + destination only (no dates, no origin): rail should ask for more.
                 .send(COLLECTION_TURN_1)
@@ -220,7 +228,6 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(distinctStatesInOrder(ctx.events()))
                             .as("C-03 turn-2 streamed state sequence: WORKING → INPUT_REQUIRED")
                             .containsExactly(
-                                    TaskState.TASK_STATE_SUBMITTED,
                                     TaskState.TASK_STATE_WORKING,
                                     TaskState.TASK_STATE_INPUT_REQUIRED))
                     .assertTask(task -> assertThat(textOf(task))
@@ -232,7 +239,6 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(distinctStatesInOrder(ctx.events()))
                             .as("C-03 turn-3 streamed state sequence: WORKING → COMPLETED")
                             .containsExactly(
-                                    TaskState.TASK_STATE_SUBMITTED,
                                     TaskState.TASK_STATE_WORKING,
                                     TaskState.TASK_STATE_COMPLETED))
                     .assertTask(task -> {

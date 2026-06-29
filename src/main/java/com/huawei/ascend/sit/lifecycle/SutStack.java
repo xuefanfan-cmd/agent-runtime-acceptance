@@ -92,12 +92,21 @@ public final class SutStack implements AutoCloseable {
     private final ToxiproxyContainer explicitContainer;
     private ToxiproxyContainer ownedContainer;
 
+    /**
+     * Backing services this stack <em>owns</em> (started by the builder, stopped in {@link #close()}),
+     * generalising {@code ownedContainer}. {@code null} when no backing services are referenced, or when
+     * the test provided its own via {@code Builder.backingServices(...)} (test-owned, never stopped here —
+     * mirrors {@code explicitContainer}).
+     */
+    private final BackingServices ownedServices;
+
     private SutStack(SutLauncher launcher, Map<String, Entry> specs, boolean streaming,
-                     ToxiproxyContainer explicitContainer) {
+                     ToxiproxyContainer explicitContainer, BackingServices ownedServices) {
         this.launcher = launcher;
         this.specs = specs;
         this.streaming = streaming;
         this.explicitContainer = explicitContainer;
+        this.ownedServices = ownedServices;
     }
 
     /** Begin describing a stack against the given configuration. */
@@ -342,6 +351,9 @@ public final class SutStack implements AutoCloseable {
             link.close();
         }
         faultLinks.clear();
+        if (ownedServices != null) {
+            ownedServices.close();
+        }
         if (ownedContainer != null) {
             ownedContainer.stop();
             ownedContainer = null;
@@ -369,6 +381,8 @@ public final class SutStack implements AutoCloseable {
         private SutLauncher launcher;
         private boolean streaming = true;
         private ToxiproxyContainer explicitContainer;
+        private BackingServices explicitBackingServices;
+        private ContainerFactory containerFactory;
         private final Map<String, Entry> specs = new LinkedHashMap<>();
 
         private Builder(TestConfig config) {
@@ -383,6 +397,26 @@ public final class SutStack implements AutoCloseable {
          */
         public Builder toxiproxy(ToxiproxyContainer container) {
             this.explicitContainer = container;
+            return this;
+        }
+
+        /**
+         * Provide a pre-built {@link BackingServices} the stack should use for any {@code service-bindings}
+         * agents (advanced — e.g. sharing one set across stacks). The stack never closes it; its lifecycle
+         * stays the test's (mirrors {@link #toxiproxy(ToxiproxyContainer)}). When omitted, the stack builds
+         * (and closes) its own from {@code sut.services.*} on demand.
+         */
+        public Builder backingServices(BackingServices services) {
+            this.explicitBackingServices = services;
+            return this;
+        }
+
+        /**
+         * Override the default {@link TestContainerFactory} used to start managed backing-service containers.
+         * Intended for tests (inject a fake to exercise resolution without Docker).
+         */
+        public Builder containerFactory(ContainerFactory factory) {
+            this.containerFactory = factory;
             return this;
         }
 
@@ -453,7 +487,61 @@ public final class SutStack implements AutoCloseable {
             if (launcher == null) {
                 launcher = new ProcessLauncher(config);
             }
-            return new SutStack(launcher, specs, streaming, explicitContainer).start();
+            Set<String> referenced = collectReferencedServices();
+            BackingServices owned = null;
+            BackingServices forInjection;
+            if (explicitBackingServices != null) {
+                forInjection = explicitBackingServices;      // test-owned: injected but not closed by stack
+            } else if (referenced.isEmpty()) {
+                forInjection = null;
+            } else {
+                owned = new BackingServices(config, referenced,
+                        containerFactory != null ? containerFactory : new TestContainerFactory());
+                forInjection = owned;
+            }
+            if (forInjection != null) {
+                injectServiceBindings(forInjection);
+            }
+            return new SutStack(launcher, specs, streaming, explicitContainer, owned).start();
+        }
+
+        /** Union of services bound by managed agents (remote agents' bindings are ignored). */
+        private Set<String> collectReferencedServices() {
+            Set<String> refs = new java.util.LinkedHashSet<>();
+            for (Entry entry : specs.values()) {
+                if (!entry.agent().isRemote()) {
+                    refs.addAll(config.getKeys("sut.agents." + entry.agent().name() + ".service-bindings"));
+                }
+            }
+            return refs;
+        }
+
+        /** Inject each managed agent's {@code service-bindings} into its {@link AgentConfig}. */
+        private void injectServiceBindings(BackingServices services) {
+            for (Entry entry : specs.values()) {
+                if (entry.agent().isRemote()) {
+                    continue;
+                }
+                for (ServiceBinding b : readBindings(entry.agent().name())) {
+                    String composed = EnvPlaceholders.resolve(
+                            b.urlTemplate().replace("{{url}}", services.url(b.serviceName())));
+                    entry.config().property(b.urlKey(), composed);
+                }
+            }
+        }
+
+        private List<ServiceBinding> readBindings(String agentName) {
+            List<ServiceBinding> out = new java.util.ArrayList<>();
+            for (String svc : config.getKeys("sut.agents." + agentName + ".service-bindings")) {
+                String base = "sut.agents." + agentName + ".service-bindings." + svc;
+                String urlKey = config.getString(base + ".url-key", "");
+                if (urlKey.isBlank()) {
+                    throw new IllegalStateException("Agent '" + agentName + "' service-binding '"
+                            + svc + "' is missing url-key.");
+                }
+                out.add(new ServiceBinding(svc, urlKey, config.getString(base + ".url-template", "{{url}}")));
+            }
+            return out;
         }
     }
 

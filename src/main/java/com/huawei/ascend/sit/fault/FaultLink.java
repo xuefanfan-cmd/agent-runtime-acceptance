@@ -19,7 +19,7 @@ public interface FaultLink extends AutoCloseable {
      * 容器内视角的 upstream 主机（test JVM / SUT 所在宿主机，Linux Docker 桥接网关 {@code 172.17.0.1}）。
      * 公开常量，供跨包调用方（如 {@code SutStack} 侦听关联时把 fault-link upstream 指向 agent 真实端口）使用。
      */
-    String DEFAULT_UPSTREAM_HOST = "172.17.0.1";
+    String DEFAULT_UPSTREAM_HOST = "127.0.0.1";
 
     /** 客户端/下游应连接的地址（取代真实 upstream）。 */
     String listenUrl();

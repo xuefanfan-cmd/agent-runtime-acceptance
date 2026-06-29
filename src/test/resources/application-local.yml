@@ -24,6 +24,32 @@
   #     remote-agents-prefix: my.service.a2a.remote-agents
   # —— The original travel chain (agent-travel-*-a2a). For the openjiuwen variant use
   #    -Dtest.env=openjiuwen (see application-openjiuwen.yml). ——
+  # —— Backing services（后端服务）：testcontainer 拉起 + 动态地址注入到 agent ——
+  # services.<name>: 结构字段 image/port 驱动 managed 容器（getMappedPort 取映射端口）；
+  #   非空 url 则 remote（不拉容器）；env → 容器 withEnv（值支持 ${ENV[:default]}）。
+  # services:
+  #   redis:
+  #     image: redis:7-alpine
+  #     port: 6379
+  #   postgres:
+  #     image: postgres:16
+  #     port: 5432
+  #     env:
+  #       POSTGRES_USER: ${PG_USER:travel}
+  #       POSTGRES_PASSWORD: ${PG_PASS:travel}
+  #       POSTGRES_DB: travel
+  # agents.<name>.service-bindings.<svc>: 仅承载动态地址注入（url-key + 可选 url-template）。
+  #   静态凭证/参数走 spring.properties（${...} 由 agent Spring 原生解析）。
+  # agents:
+  #   mainplan:
+  #     spring:
+  #       properties:
+  #         agent.pg.username: ${PG_USER:travel}
+  #     service-bindings:
+  #       redis: { url-key: main-plan-agent.redis-url, url-template: "redis://{{url}}" }
+  #       postgres:
+  #         url-key: agent.pg.url
+  #         url-template: "jdbc:postgresql://{{url}}/${PG_DATABASE:travel}"
 
 sut:
   timeout:

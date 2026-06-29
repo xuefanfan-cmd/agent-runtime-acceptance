@@ -6,7 +6,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Test framework configuration manager.
@@ -129,6 +131,24 @@ public class TestConfig {
             result.put(e.getKey(), e.getValue() == null ? "" : String.valueOf(e.getValue()));
         }
         return result;
+    }
+
+    /**
+     * Immediate child keys of the map node at {@code dottedKey} (insertion-ordered); empty if the node
+     * is absent or not a map. Used to enumerate {@code sut.agents.<name>.service-bindings.*} (whose
+     * values are themselves maps, so {@link #getStringMap} would stringify them uselessly).
+     */
+    @SuppressWarnings("unchecked")
+    public Set<String> getKeys(String dottedKey) {
+        Object node = nestedNode(dottedKey);
+        if (!(node instanceof Map)) {
+            return Set.of();
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        for (Object k : ((Map<String, Object>) node).keySet()) {
+            keys.add(String.valueOf(k));
+        }
+        return keys;
     }
 
     // --- Convenience accessors for common SUT config ---

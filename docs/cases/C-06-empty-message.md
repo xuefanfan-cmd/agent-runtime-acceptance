@@ -11,7 +11,7 @@ stack: mainplan（单 agent，无需 trip/hotel）
 tags: [component]
 depends_on:
   - mainplan fat jar 可构建并安装至本地 Maven 仓库
-  - LLM 凭据已配置（见 §6；含后置健康探测）
+  - mainplan 启动时已配置 LLM（见 §6；由测试人员准备，用例代码不门禁；含后置健康探测）
 smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 ---
 
@@ -51,9 +51,11 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 |---|------|----------------|
 | 1 | `agent-travel-mainplan-a2a` fat jar 已构建并可在 `~/.m2` 解析 | **FAIL** |
 | 2 | 测试框架拉起 **仅 mainplan**（per-class） | 就绪失败 → **FAIL** |
-| 3 | `SIT_LLM_API_KEY` 已设置且非空 | **FAIL**（含后置探测；不 skip） |
+| 3 | mainplan 已具备可用 LLM 配置（`LLM_*`、`sut.java.system-properties` 等，见 §6） | 由测试人员准备；缺失时后置「你好」探测可能 **FAIL** |
 | 4 | **不**要求 trip / hotel / Redis | — |
 | 5 | 流式 / 同步子场景各 **独立测试类**（`streaming` 栈级互斥） | — |
+
+> LLM 为**运行前置**，但**不在测试类内**做环境变量门禁或 `@EnabledIf` 跳过；凭据与 profile 由执行测试的人员在拉起 agent 前配置。
 
 ---
 
@@ -63,8 +65,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 动作 | 预期 |
 |---|------|------|
-| 0 | LLM 门禁 | 缺失 → **FAIL** |
-| 1 | 起栈 `streaming(false)`，仅 mainplan | 就绪 |
+| 1 | 起栈 `streaming(false)`，仅 mainplan；LLM 由启动环境注入（见 §6） | 就绪 |
 | 2 | `sendMessage("")` + collector，等待终态 | C-06.Y.A～D |
 | 3 | 同客户端 `sendMessage("你好")` + collector | C-06.Y.E 健康探测 |
 
@@ -72,7 +73,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 动作 | 预期 |
 |---|------|------|
-| 0～1 | 同 C-06-Y，但 `streaming(true)` | — |
+| 1～2 | 同 C-06-Y，但 `streaming(true)` | — |
 | 2 | 流式 `sendMessage("")` + collector | C-06.S.A～D |
 | 3 | 流式发送 `healthProbeText` | C-06.S.E |
 
@@ -81,12 +82,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 ## 4. 可观测子断言
 
 > 黑盒：仅经 A2A SDK / JSON-RPC / SSE 观测。  
-> 前缀 **C-06.Y.** = 同步；**C-06.S.** = 流式；**C-06.0** = 公共。
-
-### C-06.0 — LLM 凭据门禁
-
-- **When**：读取 `SIT_LLM_API_KEY`。
-- **Then**：非空。**FAIL**：缺失或空白。
+> 前缀 **C-06.Y.** = 同步；**C-06.S.** = 流式。
 
 ### C-06.*.0b — 传输门禁
 
@@ -157,13 +153,17 @@ Message empty = A2A.toUserMessage("");  // text 长度为 0
 
 ---
 
-## 6. LLM 前置
+## 6. LLM 配置（测试人员准备，用例不门禁）
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `SIT_LLM_API_KEY` | 是 | 空消息路径理论上不调用 LLM，但 **后置「你好」探测需要**；统一门禁 FAIL |
+C-06 **不在测试代码中**读取 `SIT_LLM_API_KEY`、不使用 `@EnabledIf` 按 profile 跳过。执行前由测试人员保证 mainplan 能调用 LLM（后置「你好」探测需要），方式与 A-04 / A-05 对齐：
 
-mainplan 注入：`AgentConfig.property("main-plan-agent.api-key", …)` 或 env 传递（与 A-04 一致）。
+| 方式 | 说明 |
+|------|------|
+| `LLM_*` 环境变量 | `ProcessLauncher` 传给 managed agent |
+| `application-<env>.yml` → `sut.java.system-properties` | JVM `-D` 注入 |
+| remote 模式 | LLM 在预部署 SUT（如 13003） |
+
+未配置时不在测试侧提前 FAIL；空消息路径仍可能 PASS，后置健康探测可能 **FAIL**。
 
 ---
 
@@ -191,7 +191,7 @@ mainplan 注入：`AgentConfig.property("main-plan-agent.api-key", …)` 或 env
 | `healthProbeText` | 后置正常消息 |
 | `expectedErrorDetailFragments` | C-06.*.C 子串匹配（全部命中） |
 
-读取：`C06ScenarioData` + `TestDataLoader`。
+读取：`EmptyMessageScenarioData` + `TestDataLoader`。
 
 ---
 
@@ -203,7 +203,7 @@ mainplan 注入：`AgentConfig.property("main-plan-agent.api-key", …)` 或 env
 | 路径 | `src/test/java/.../component/boundary/` | 同左 |
 | 标签 | `@Tag("component")` **无** `@Tag("smoke")` | 同左 |
 | 基类 | `BaseManagedStackTest` | 同左 |
-| 栈 | `.streaming(false).agent("mainplan", LLM)` | `.streaming(true)...` |
+| 栈 | `.streaming(false).agent("mainplan")` | `.streaming(true).agent("mainplan")` |
 | 收集 | `A2aEventCollector` + `sendMessage` | 同左 |
 
 **单测方法建议**（每类一个主场景）：
@@ -217,7 +217,7 @@ emptyMessage_failsWithInvalidInput_thenHealthProbeCompletes()
 **实现检查清单**：
 
 - [ ] 两测试类，`streaming` 显式 false / true
-- [ ] `SIT_LLM_API_KEY` 硬门禁
+- [ ] 不在测试类内门禁 `SIT_LLM_API_KEY` 或按 `test.env` 跳过
 - [ ] 空字符串非 null/省略
 - [ ] C-06.*.C：`INVALID_INPUT` + `no text`
 - [ ] 后置探测同路径、`COMPLETED`、文本非空
@@ -228,15 +228,16 @@ emptyMessage_failsWithInvalidInput_thenHealthProbeCompletes()
 ## 9. 运行方式
 
 ```bash
-export SIT_LLM_API_KEY=<your-key>
+# managed LOCAL（LLM 见 application-local.yml 的 LLM_*）
+./mvnw -Dtest=EmptyMessageSyncTest test
+./mvnw -Dtest=EmptyMessageStreamTest test
+./mvnw -Dtest=EmptyMessageSyncTest,EmptyMessageStreamTest test
 
-./mvnw -Dtest.env=LOCAL -Dtest=EmptyMessageSyncTest test
-./mvnw -Dtest.env=LOCAL -Dtest=EmptyMessageStreamTest test
-
-./mvnw -Dtest.env=LOCAL -Dtest=EmptyMessageSyncTest,EmptyMessageStreamTest test
+# remote SIT
+./mvnw -Dtest.env=SIT -Dtest=EmptyMessageSyncTest,EmptyMessageStreamTest test
 ```
 
-> P2 边界用例：日常 `mvn test` **可**包含本类（需 LLM）；**不**加入 smoke 套件。
+> P2 边界用例：日常 `mvn test` **可**包含本类；**不**加入 smoke 套件。缺 LLM 时后置探测可能 **FAIL**（不再 Skip）。
 
 ---
 
@@ -254,7 +255,7 @@ export SIT_LLM_API_KEY=<your-key>
 ## 11. 风险与备注
 
 - **与 SIT 计划字面偏差**：计划写「返回提示或忽略，不崩溃」；当前 SUT 为 **`FAILED` + INVALID_INPUT**（`A2aAgentExecutor` L174–179）。本用例 **以代码行为为准**；若产品改为友好 `COMPLETED` 提示，需修订 C-06 与 SIT 表。
-- **空消息不调 LLM**：失败发生在 executor 入参校验；仍要求 LLM 是为 **统一门禁** 与 **后置探测**。
+- **空消息不调 LLM**：失败发生在 executor 入参校验；后置「你好」仍需运行时可用的 LLM。
 - **两测试类**：同 A-06 / B-04，因 `BaseManagedStackTest` 栈级 `streaming` 不可混用。
 - **空白字符**：仅测 `""`；`"   "` 是否同样 `isBlank()` 拒绝留待扩展用例。
 - **与 C-07 边界**：C-07 测超长输入；C-06 不测 OOM / 截断。

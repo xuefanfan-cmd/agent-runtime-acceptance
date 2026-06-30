@@ -12,7 +12,7 @@ import java.util.List;
  * <p>See {@code docs/cases/B-03-redis-checkpointer-multi-turn.md} §7.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record B03ScenarioData(
+public record RedisMultiTurnScenarioData(
         String turn1Text,
         String turn2Text,
         long turn1TimeoutMs,
@@ -26,8 +26,8 @@ public record B03ScenarioData(
 
     public static final String DEFAULT_TESTDATA_PATH = "integration/checkpointer/b03-redis-multi-turn.json";
 
-    public static B03ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, B03ScenarioData.class);
+    public static RedisMultiTurnScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, RedisMultiTurnScenarioData.class);
     }
 
     public List<TaskState> resolvedTurn1AllowedStates() {

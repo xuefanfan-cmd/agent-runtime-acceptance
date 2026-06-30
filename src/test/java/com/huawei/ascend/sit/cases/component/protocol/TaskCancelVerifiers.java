@@ -10,9 +10,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Shared cancel + get assertions for A-06.
  */
-final class A06CancelVerifiers {
+final class TaskCancelVerifiers {
 
-    private A06CancelVerifiers() {
+    private TaskCancelVerifiers() {
     }
 
     static void assertCancelAndGet(

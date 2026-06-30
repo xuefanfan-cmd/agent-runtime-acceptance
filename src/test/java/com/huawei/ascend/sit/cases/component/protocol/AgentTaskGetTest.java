@@ -5,9 +5,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
-import com.huawei.ascend.sit.config.TestEnvironment;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.A05ScenarioData;
+import com.huawei.ascend.sit.model.protocol.TaskGetCompletedScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
@@ -17,7 +16,6 @@ import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,43 +31,27 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>Sync {@code message/send} ({@code streaming(false)}) to {@code COMPLETED}, then
  * {@code getTask(taskId)} and assert id/state/text match the send-side terminal snapshot.</p>
  *
- * <p>See {@code docs/cases/A-05-task-get-completed.md}.</p>
+ * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
+ * before launch so the managed mainplan process can reach the model. See
+ * {@code docs/cases/A-05-task-get-completed.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
-@EnabledIf("com.huawei.ascend.sit.cases.component.protocol.AgentTaskGetTest#isExecutable")
 class AgentTaskGetTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentTaskGetTest.class.getName());
-    static final String LLM_KEY_ENV = "SIT_LLM_API_KEY";
-
-    /** LOCAL 默认不跑，避免无 LLM 时污染 {@code mvn test}。 */
-    static boolean isExecutable() {
-        TestEnvironment env = TestEnvironment.current();
-        return env == TestEnvironment.SIT || env == TestEnvironment.UAT;
-    }
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
         return SutStack.builder(config)
                 .streaming(false)
-                .agent("mainplan", a -> {
-                    String apiKey = System.getenv(LLM_KEY_ENV);
-                    if (apiKey != null && !apiKey.isBlank()) {
-                        a.property("main-plan-agent.api-key", apiKey);
-                    }
-                });
+                .agent("mainplan");
     }
 
     @Test
     @DisplayName("A-05: tasks/get 查询已完成任务 — send 快照与 get 一致")
     void a05_getTask_matchesSendSnapshotAfterCompleted() {
-        String apiKey = System.getenv(LLM_KEY_ENV);
-        if (apiKey == null || apiKey.isBlank()) {
-            fail("SIT_LLM_API_KEY must be set for A-05");
-        }
-
-        A05ScenarioData scenario = A05ScenarioData.loadDefault();
+        TaskGetCompletedScenarioData scenario = TaskGetCompletedScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
 
         A2aEventCollector collector = new A2aEventCollector();

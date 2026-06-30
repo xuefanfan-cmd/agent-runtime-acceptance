@@ -2,7 +2,7 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.C09ScenarioData;
+import com.huawei.ascend.sit.model.component.boundary.LlmUnavailableScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -21,17 +21,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * C-09.*.A～D LLM-unavailable assertions (F3 loose verdict).
  */
-final class C09LlmUnavailableAssertions {
+final class LlmUnavailableAssertions {
 
-    private static final Logger LOG = Logger.getLogger(C09LlmUnavailableAssertions.class.getName());
+    private static final Logger LOG = Logger.getLogger(LlmUnavailableAssertions.class.getName());
     private static final int FAILURE_LOG_MAX_CHARS = 200;
 
-    private C09LlmUnavailableAssertions() {
+    private LlmUnavailableAssertions() {
     }
 
     static void assertLlmUnavailableNonSuccessTerminal(
-            A2aEventCollector collector, C09ScenarioData scenario, String label) {
-        TaskState terminal = collector.awaitTerminalState(scenario.llmFailureTimeoutMs());
+            A2aEventCollector collector, LlmUnavailableScenarioData scenario, String label) {
+        assertLlmUnavailableNonSuccessTerminal(collector, scenario, label, scenario.llmFailureTimeoutMs());
+    }
+
+    static void assertLlmUnavailableNonSuccessTerminal(
+            A2aEventCollector collector, LlmUnavailableScenarioData scenario, String label, long awaitMs) {
+        TaskState terminal = collector.awaitTerminalState(awaitMs);
 
         assertThat(collector.eventCount())
                 .as(label + " C-09.A events")
@@ -47,7 +52,7 @@ final class C09LlmUnavailableAssertions {
 
         String taskId = collector.findFirstTaskId();
         String errorSurface = taskFromCollector(collector)
-                .map(C09LlmUnavailableAssertions::aggregateErrorText)
+                .map(LlmUnavailableAssertions::aggregateErrorText)
                 .orElse("");
 
         boolean hasTaskId = taskId != null && !taskId.isBlank();
@@ -108,7 +113,7 @@ final class C09LlmUnavailableAssertions {
     }
 
     private static java.util.Optional<Task> taskFromCollector(A2aEventCollector collector) {
-        return collector.findTerminalEvent().flatMap(C09LlmUnavailableAssertions::taskFrom);
+        return collector.findTerminalEvent().flatMap(LlmUnavailableAssertions::taskFrom);
     }
 
     private static java.util.Optional<Task> taskFrom(ClientEvent event) {

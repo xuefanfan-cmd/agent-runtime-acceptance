@@ -10,7 +10,7 @@ import org.a2aproject.sdk.spec.TaskState;
  * <p>See {@code docs/cases/C-07-long-message.md} §7.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record C07ScenarioData(
+public record LongTravelMessageScenarioData(
         int minInputChars,
         String travelTemplatePrefix,
         String paddingSentence,
@@ -22,8 +22,8 @@ public record C07ScenarioData(
 
     public static final String DEFAULT_TESTDATA_PATH = "component/boundary/c07-long-travel-message.json";
 
-    public static C07ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, C07ScenarioData.class);
+    public static LongTravelMessageScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, LongTravelMessageScenarioData.class);
     }
 
     public TaskState resolvedHealthProbeTerminalState() {

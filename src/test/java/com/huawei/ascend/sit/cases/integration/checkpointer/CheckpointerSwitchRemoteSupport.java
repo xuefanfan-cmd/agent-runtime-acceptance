@@ -1,32 +1,19 @@
 package com.huawei.ascend.sit.cases.integration.checkpointer;
 
 import com.huawei.ascend.sit.config.TestConfig;
-import com.huawei.ascend.sit.config.TestEnvironment;
-import org.testcontainers.DockerClientFactory;
 
 /**
- * Environment gate for B-04 (managed two-stack vs remote dual-endpoint).
+ * Remote-endpoint helpers for B-04 dual-phase (in-memory vs redis pre-deployed mainplan).
  */
-final class B04Gate {
+final class CheckpointerSwitchRemoteSupport {
 
     static final String URL_INMEMORY_KEY = "sut.agents.mainplan.url-inmemory";
 
-    private B04Gate() {
-    }
-
-    static boolean isExecutable() {
-        TestEnvironment env = TestEnvironment.current();
-        if (env != TestEnvironment.SIT && env != TestEnvironment.UAT) {
-            return false;
-        }
-        if (isRemoteMode()) {
-            return hasRemotePhase1Url() && hasRemotePhase2Url();
-        }
-        return B03Gate.hasLlmKey() && isDockerAvailable();
+    private CheckpointerSwitchRemoteSupport() {
     }
 
     static boolean isRemoteMode() {
-        return B03Gate.isRemoteMode();
+        return CheckpointerRemoteMode.isRemoteMode();
     }
 
     static boolean hasRemotePhase1Url() {
@@ -56,13 +43,5 @@ final class B04Gate {
                     "B-04 remote Phase2 requires sut.agents.mainplan.url (redis mainplan endpoint)");
         }
         return url;
-    }
-
-    private static boolean isDockerAvailable() {
-        try {
-            return DockerClientFactory.instance().isDockerAvailable();
-        } catch (RuntimeException e) {
-            return false;
-        }
     }
 }

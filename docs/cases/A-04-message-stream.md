@@ -12,8 +12,8 @@ tags: [component, smoke]
 depends_on:
   - mainplan fat jar 可构建并安装至本地 Maven 仓库
   - A-01 已通过（Agent Card 发现链路可用）
-  - LLM 凭据已配置（见 §5、§6）
-smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 SmokeTestSuite
+  - mainplan 启动时已配置 LLM（见 §6；由测试人员准备，用例代码不门禁）
+smoke_scope: 纳入 SmokeTestSuite（@Tag("smoke")）；执行前由测试人员保证 LLM 与 mainplan 就绪
 ---
 
 # A-04 — message/stream 流式调用
@@ -51,11 +51,10 @@ smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 Smo
 |---|------|----------------|
 | 1 | `agent-travel-mainplan-a2a` fat jar 已构建并可在 `~/.m2` 解析 | 托管栈启动失败 → **FAIL** |
 | 2 | 测试框架按 per-class 粒度拉起 **仅 mainplan**（随机端口） | 就绪探针失败 → **FAIL** |
-| 3 | 环境变量 `SIT_LLM_API_KEY` 已设置且非空 | **FAIL**（不发起流式调用） |
-| 4 | `test.env` 为 `SIT` 或 `UAT` 时，方可纳入 smoke 执行（见 §8） | `LOCAL` 下可单类调试，但不作为 smoke 门禁 |
-| 5 | **无需** trip / hotel / 远程 agent 链路 | — |
+| 3 | mainplan 进程已具备可用 LLM 配置（`LLM_*` 环境变量、`sut.java.system-properties` 等，见 §6） | 由测试人员启动前准备；缺失时流式调用可能 **FAIL**（超时、终态 `FAILED`、空文本等） |
+| 4 | **无需** trip / hotel / 远程 agent 链路 | — |
 
-> LLM 为**硬性前置**：未配置凭据即 FAIL，不使用 `Assumptions` 跳过。
+> LLM 为**运行前置**，但**不在测试类内**做环境变量门禁或 `@EnabledIf` 跳过；凭据与 profile 由执行测试的人员在拉起 agent 前配置。
 
 ---
 
@@ -63,12 +62,11 @@ smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 Smo
 
 | # | 动作 | 协议 / 方法 | 预期 |
 |---|------|------------|------|
-| 0 | 检查 `SIT_LLM_API_KEY` 非空 | 测试侧前置 | 缺失 → **FAIL** |
-| 1 | 拉起 mainplan（per-class），注入 LLM 凭据环境变量 | `SutStack` + `AgentConfig.env(...)` | 就绪探针通过 |
+| 1 | 拉起 mainplan（per-class，`streaming=true`） | `SutStack` | 就绪探针通过；LLM 由启动环境注入（见 §6） |
 | 2 | SDK `client("mainplan").getAgentCard()` | A2A 发现 | 非空 Card；`capabilities.streaming == true` |
 | 3 | 从 testdata 读取 `inputText`（默认「你好」） | — | 非空字符串 |
 | 4 | 发起 `SendStreamingMessage`，注册事件收集器，直至流结束或超时 | A2A JSON-RPC + SSE | 收到 ≥1 个流式事件；无未处理 transport 错误 |
-| 5 | 从事件流提取 `taskId`、状态序列、终态文本 | 见 §6 | 满足 A-04.A～D |
+| 5 | 从事件流提取 `taskId`、状态序列、终态文本 | 见 §5 | 满足 A-04.A～D |
 | 6 | 记录是否观测到 `WORKING` | 见 §4.A-04.E | 不影响主 verdict |
 
 ---
@@ -78,14 +76,7 @@ smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 Smo
 > 黑盒边界：仅经 A2A SDK / SSE 事件流观测，不读 SUT 进程内配置、类、日志文件。
 > 三态语义同 [PHILOSOPHY.md](../../PHILOSOPHY.md)。
 
-### A-04.0 — LLM 凭据门禁（测试侧）
-
-- **Given**：准备执行 A-04。
-- **When**：读取环境变量 `SIT_LLM_API_KEY`。
-- **Then**：值非空。
-- **PASS**：凭据存在。**FAIL**：缺失或空白。**INCONCLUSIVE**：不适用。
-
-### A-04.0b — 流式能力硬门禁（Card）
+### A-04.0 — 流式能力硬门禁（Card）
 
 - **Given**：mainplan 已就绪。
 - **When**：`getAgentCard()`，读取 `capabilities.streaming`。
@@ -94,7 +85,7 @@ smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 Smo
 
 ### A-04.A — 流式通道可达
 
-- **Given**：A-04.0、A-04.0b 已通过。
+- **Given**：A-04.0 已通过；mainplan 已按 §6 配置 LLM。
 - **When**：对 testdata 中的 `inputText` 发起 `SendStreamingMessage`。
 - **Then**：在 `streamTimeoutMs` 内收到 ≥1 个流式事件；调用过程无未捕获的 transport / JSON-RPC 致命错误。
 - **PASS**：满足上述条件。**FAIL**：超时零事件、连接错误、JSON-RPC error。**INCONCLUSIVE**：SUT 未暴露任何流式事件面且无法区分于协议层故障时（记录后按 FAIL 处理，因 Card 已声明 streaming）。
@@ -179,27 +170,28 @@ smoke_scope: 仅 test.env=SIT 或 test.env=UAT 且 LLM 凭据齐全时纳入 Smo
 
 ---
 
-## 6. LLM 前置检查
+## 6. LLM 配置（测试人员准备，用例不门禁）
 
-采用 **环境变量门禁 + 运行时探针** 双重检查（均失败则 **FAIL**）。
+A-04 **不在测试代码中**读取 `SIT_LLM_API_KEY`、不使用 `@EnabledIf` 按 profile 跳过。执行前由测试人员保证 mainplan 能调用 LLM，方式与 `StreamingTravelPlanningTest` 对齐：
 
-### 6.1 环境变量门禁（步骤 0）
+| 方式 | 说明 |
+|------|------|
+| 测试 JVM 环境变量 `LLM_*` | agent bundled yaml 使用 `${LLM_*}`；`ProcessLauncher` 将测试进程环境传给子进程 |
+| `application-<env>.yml` 中 `sut.java.system-properties` | 以 JVM `-D` 注入每个 launched agent（含 `LLM_API_KEY` 等） |
+| 其他 Spring Boot 启动参数 / agent 自带配置 | 由 SUT 解析；**本用例不断言映射实现** |
 
-| 变量名 | 必填 | 说明 |
-|--------|------|------|
-| `SIT_LLM_API_KEY` | 是 | LLM 服务 API Key；测试启动前检查，缺失即 FAIL |
+常用变量（按实际 SUT 与网关要求配置，至少需能完成问候类单轮对话）：
 
-可选扩展（实现阶段若 SUT 启动需要可加入 testdata，首轮可仅用 API Key）：
+| 变量名 | 典型必填 | 说明 |
+|--------|----------|------|
+| `LLM_API_KEY` | 是 | LLM 服务 API Key |
+| `LLM_API_BASE` | 视环境 | API 基址 |
+| `LLM_MODEL` | 视环境 | 模型名 |
+| `LLM_PROVIDER` | 视环境 | 提供方标识 |
 
-| 变量名 | 必填 | 说明 |
-|--------|------|------|
-| `SIT_LLM_API_BASE` | 否 | API 基址；未设则用 SUT 默认 |
-| `SIT_LLM_MODEL` | 否 | 模型名；未设则用 SUT 默认 |
+未配置或配置错误时，不在测试侧提前 FAIL；表现为 A-04.A（超时零事件）、A-04.B（终态 `FAILED`）或 A-04.D（空文本）等断言失败。
 
-托管栈注入：在 `buildStack` 中通过 `AgentConfig.env("SIT_LLM_API_KEY", value)` 等传入 mainplan 进程环境。
-SUT 如何将环境变量映射为运行时凭据由 SUT 自身完成，**本用例不断言映射实现**。
-
-### 6.2 运行时探针（步骤 4～5）
+### 6.1 运行时探针（步骤 4～5）
 
 流式调用完成后：
 
@@ -242,44 +234,42 @@ SUT 如何将环境变量映射为运行时凭据由 SUT 自身完成，**本用
 | 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/protocol/AgentStreamMessageTest.java` |
 | 标签 | `@Tag("component")` `@Tag("smoke")` |
 | 基类 | `BaseManagedStackTest` |
-| 栈描述 | `SutStack.builder(config).agent("mainplan", a -> a.env("SIT_LLM_API_KEY", ...))` — 仅 mainplan |
+| 栈描述 | `SutStack.builder(config).streaming(true).agent("mainplan")` — 仅 mainplan |
 | 客户端 | `client("mainplan")`；须使用 **`SendStreamingMessage` 流式路径**（非 `SendMessage` 阻塞路径） |
 | 事件收集 | 新建或复用流式事件收集器（收集 `StreamingEventKind`，提供 `extractStates()` / `extractTaskId()` / `extractFinalText()`） |
 | 断言 | AssertJ；状态序列、taskId、终态文本；A-04.E 的 `working_observed` 写入测试日志或 `@AfterEach` 报告字段 |
 | 数据 | `testdata/component/protocol/a04-stream-hello.json` |
-| smoke 范围 | `@Tag("smoke")` 保留，但 **仅当** `TestEnvironment` 为 `SIT`/`UAT` 且 `SIT_LLM_API_KEY` 已设置时执行；`LOCAL` profile 下单类调试不阻断他人 smoke |
+| smoke 范围 | `@Tag("smoke")`；无 `@EnabledIf`；执行前由测试人员配置 LLM（§6） |
 
 **实现检查清单**（写测试类时逐项落实）：
 
-- [ ] `@BeforeAll` / 测试方法开头检查 `SIT_LLM_API_KEY`
 - [ ] `getAgentCard()` 断言 `streaming == true`，否则 FAIL
 - [ ] 调用链明确为 `SendStreamingMessage`（SSE）
 - [ ] 从 testdata 读取 `inputText` 与 `streamTimeoutMs`
 - [ ] 实现 §5 提取规则（建议独立 helper，供 A-09 复用）
 - [ ] A-04.E：`WORKING` 缺失时测试仍 PASS，日志标记 `working_observed=false`
+- [ ] 不在测试类内门禁 `SIT_LLM_API_KEY` 或按 `test.env` 跳过
 
 ---
 
 ## 9. 运行方式
 
 ```bash
-# 前置：构建 mainplan jar + 配置 LLM
-export SIT_LLM_API_KEY=<your-key>
+# 前置：构建 mainplan jar + 配置 LLM（示例：统一 LLM_* 环境变量）
+export LLM_API_KEY=<your-key>
+# 按需：export LLM_API_BASE=... LLM_MODEL=... LLM_PROVIDER=...
 
-# SIT 环境单类（推荐联调路径）
+# 单类
+./mvnw -Dtest=AgentStreamMessageTest test
+
+# 指定 profile（可选，影响 application-<env>.yml）
 ./mvnw -Dtest.env=SIT -Dtest=AgentStreamMessageTest test
 
-# UAT 环境
-./mvnw -Dtest.env=UAT -Dtest=AgentStreamMessageTest test
-
-# LOCAL 单类调试（不进 smoke 门禁，但可本地验证）
-./mvnw -Dtest.env=LOCAL -Dtest=AgentStreamMessageTest test
-
-# smoke（仅 SIT/UAT + LLM 已配置的流水线应启用）
-./mvnw -Dtest.env=SIT -Dtest=SmokeTestSuite test
+# smoke
+./mvnw -Dtest=SmokeTestSuite test
 ```
 
-> 默认 `test.env=LOCAL` 的 `mvn test` **不应**因缺少 `SIT_LLM_API_KEY` 而失败：通过 smoke 分轨（§8）将 A-04 约束在 SIT/UAT。
+> 缺 LLM 时测试仍会执行并在流式断言处失败；执行前请按 §6 自行配置凭据与代理。
 
 ---
 
@@ -289,7 +279,7 @@ export SIT_LLM_API_KEY=<your-key>
 |------|--------|------|
 | 特性 3-2 S2C 流式 | A-04.A / B / E | ✅ |
 | 特性 4-3 message/stream | A-04.A / B / C / D | ✅ |
-| 特性 4-1 Agent Card（streaming 声明） | A-04.0b | ✅（门禁） |
+| 特性 4-1 Agent Card（streaming 声明） | A-04.0 | ✅（门禁） |
 
 ---
 

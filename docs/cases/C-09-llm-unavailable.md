@@ -7,21 +7,22 @@ priority: P2
 feature: 特性3-1
 status: designed
 sut: main-plan-agent
-stack: mainplan（单 agent，远端专用坏 LLM 实例，无需 trip/hotel）
+stack: mainplan（单 agent，G3 坏 LLM 注入，无需 trip/hotel）
 tags: [component]
 depends_on:
-  - 远端已部署 mainplan 坏 LLM 实例（§6.2，端口 13005）
-  - application-sit.yml 配置 sut.agents.mainplan.url-llm-down
+  - mainplan fat jar 可构建并安装至本地 Maven 仓库
+  - managed：启动时 G3 坏 LLM 属性（§6.1）；remote 可选 url-llm-down（§6.2）
 smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 ---
 
 # C-09 — LLM 服务不可用
 
-> **一句话**：在 **远端专用** mainplan（`13005`，故意配错 LLM）上，经 **同步** 与 **流式** 两条路径各发送一次
-> testdata 用户消息（默认「你好」），验证任务在超时内到达 **非成功的合法终态**、**SUT 进程不崩溃**，
+> **一句话**：在 **故意配错 LLM** 的 mainplan 上，经 **同步** 与 **流式** 两条路径各发送一次
+> testdata 用户消息（默认「你好」），验证任务在超时内到达 **非成功的合法终态**、**SUT 不崩溃**，
 > 且错误面可观测（可读错误信息 **或** 非空 `taskId`）。
 >
-> **正常 LLM 实例**（`13003`）**不参与**本用例；C-06/C-07 继续连 `13003` 不受影响。
+> **LOCAL 默认**：托管拉起 mainplan jar，启动参数注入 G3（无效 key + 不可达 base），**无需** 13005。
+> **SIT 可选**：配 `url-llm-down` 连预部署坏 LLM 实例（13005），与 C-06/C-07 的 `mainplan.url` 互斥。
 >
 > 本用例为 **P2 异常边界**；主判据为 **韧性**（优雅失败、服务仍存活），**不要求**固定错误码
 >（与 C-06 严格 `INVALID_INPUT` 区分）；与 SIT 计划「返回 FAILED，含清晰错误信息」对齐为 **宽松版 F3**（§4）。
@@ -32,7 +33,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 验证上游 LLM 不可用时 runtime 北向面的 **可预期失败** 与 **进程韧性**：
 
-1. 测试侧连接 **仅** `url-llm-down`（默认 `http://7.209.189.82:13005`），**不**连接 `sut.agents.mainplan.url`（`13003`）；
+1. 测试侧拉起 **仅 mainplan**，LLM 为 **G3 故意不可用**（managed 启动参数或 remote `url-llm-down`）；
 2. 发送 testdata `inputText`（默认「你好」），在 `llmFailureTimeoutMs` 内收到 ≥1 个任务相关事件；
 3. 终态 `TaskState.isFinal() == true`，且 **不得** 为 `TASK_STATE_COMPLETED`（业务未成功完成）；
 4. 错误面：聚合文本 **非空** **或** 可提取非空 `taskId`（§5）；
@@ -41,8 +42,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 **本用例不覆盖**：
 
-- 测试 JVM 本地 managed 起栈注入坏 LLM（→ 本用例采用远端 `13005` 专实例）
-- 在 `13003` 上临时关停 LLM（→ 运维成本高；用 `13005` 隔离）
+- 在 `mainplan.url`（13003）正常实例上临时关停 LLM
 - 空消息 / 超长消息（→ C-06 / C-07）
 - 连续快速发送（→ C-08）
 - 流式客户端断连恢复（→ C-10）
@@ -55,13 +55,13 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 条件 | 不满足时的处理 |
 |---|------|----------------|
-| 1 | `test.env` ∈ **{SIT, UAT}** | **SKIP** 或 **不纳入** `@EnabledIf`（与 C-06/C-07 一致） |
-| 2 | `sut.agents.mainplan.url-llm-down` 已配置且非空 | **FAIL**（**不 skip**，K2） |
-| 3 | `13005` mainplan 进程已启动且 Agent Card 可访问 | 就绪失败 / 连接失败 → **FAIL** |
-| 4 | `13005` 上 LLM 为 **故意不可用**（§6.2 G3：无效 key + 不可达 base） | 若请求 `COMPLETED` → 说明部署错误，C-09.*.B **FAIL** |
-| 5 | **不**要求 trip / hotel / Redis（单轮「你好」不触发远程链） | — |
-| 6 | 测试 JVM **无需** 设置 `SIT_LLM_API_KEY`（LLM 配置在服务端 `13005`） | — |
-| 7 | 流式 / 同步子场景各 **独立测试类**（`streaming` 栈级互斥） | — |
+| 1 | `agent-travel-mainplan-a2a` fat jar 已构建（managed）或 `url-llm-down` 可达（remote） | 启动 / 连接失败 → **FAIL** |
+| 2 | mainplan 上 LLM 为 **G3 故意不可用**（§6.1 / §6.2） | 若终态 `COMPLETED` → 配置错误，C-09.*.B **FAIL** |
+| 3 | **不**要求 trip / hotel / Redis | — |
+| 4 | 测试 JVM **无需** 正常 LLM 凭据（坏 LLM 在 SUT 侧） | — |
+| 5 | 流式 / 同步子场景各 **独立测试类** | — |
+
+> 本用例**不在测试类内**使用 `@EnabledIf` 跳过。LOCAL 缺 jar → **FAIL**；remote 配了 `url-llm-down` 但实例不可达 → **FAIL**。
 
 ---
 
@@ -71,8 +71,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 动作 | 预期 |
 |---|------|------|
-| 0 | 检查 `url-llm-down` + `13005` 可达 | 缺失 / 不可达 → **FAIL** |
-| 1 | `remoteAgent("mainplan", url-llm-down)`，`streaming(false)` | 就绪 |
+| 1 | 起栈 `streaming(false)`，仅 mainplan（G3 坏 LLM） | 就绪 |
 | 2 | `sendMessage(inputText)` + collector，等待终态 | C-09.Y.A～D |
 | — | **无**步骤 3 后置探测 | — |
 
@@ -91,11 +90,13 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 > 黑盒：仅经 A2A SDK / JSON-RPC / SSE 观测。  
 > 前缀 **C-09.Y.** = 同步；**C-09.S.** = 流式；**C-09.0** = 公共。
 
-### C-09.0 — 远端坏 LLM 端点门禁
+### C-09.0 — 坏 LLM 栈门禁
 
-- **When**：读取 `sut.agents.mainplan.url-llm-down`。
-- **Then**：非空且 URL 指向 **坏 LLM 专实例**（约定 `13005`）。
-- **FAIL**：未配置、空白、或连接非预期端口且该实例 LLM 仍正常（易与 C-06 混淆）。
+- **When**：解析栈模式（`LlmUnavailableSupport.isRemoteMode()`）。
+- **Then**：
+  - **managed**（无 `url-llm-down`）：`LlmUnavailableStackSupport` 注入 G3 Spring 属性；
+  - **remote**（有 `url-llm-down`）：连预部署坏 LLM 实例，**禁止**回退到 `mainplan.url`。
+- **FAIL**：managed jar 缺失；remote URL 不可达；坏 LLM 误配导致 `COMPLETED`。
 
 ### C-09.*.0b — 传输门禁
 
@@ -152,22 +153,37 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 ## 6. 环境与部署
 
-### 6.1 测试侧配置（`application-sit.yml`）
+### 6.1 Managed 模式（LOCAL 默认，与 C-06/C-07 对齐）
+
+`LlmUnavailableStackSupport` 托管拉起 mainplan，经 Spring 命令行参数注入 G3（覆盖 `application-local.yml` 中的正常 `LLM_*`）：
+
+| 属性 | 值 |
+|------|-----|
+| `main-plan-agent.api-key` | `sit-invalid-key-for-c09` |
+| `main-plan-agent.api-base` | `http://127.0.0.1:9/v1` |
+
+**无需** `url-llm-down`、**无需** 13005、**无需** 测试侧 LLM key。
+
+### 6.2 Remote 模式（SIT 可选）
+
+当 `sut.agents.mainplan.url-llm-down` 非空时，与 C-06 remote 类似，连预部署实例而非本地起 jar。
+
+**SIT**（`application-sit.yml`）：
 
 ```yaml
 sut:
   agents:
     mainplan:
-      url: http://7.209.189.82:13003          # C-06/C-07 正常实例，C-09 不使用
-      url-llm-down: http://7.209.189.82:13005  # C-09 专用，缺失 → 硬 FAIL
+      url: http://7.209.189.82:13003          # C-06/C-07；C-09 不使用
+      url-llm-down: http://7.209.189.82:13005  # C-09 remote 可选
 ```
 
 | 键 | 必填 | 说明 |
 |----|------|------|
-| `sut.agents.mainplan.url-llm-down` | **是** | C-09 唯一 SUT 入口；**硬 FAIL**，不 skip |
-| `sut.agents.mainplan.url` | 否（对本用例） | 保留给 C-06/C-07/B-03 |
+| `sut.agents.mainplan.url-llm-down` | remote 时 **是** | 设则走 remote；不设则 managed G3 |
+| `sut.agents.mainplan.url` | 否（对本用例） | C-06/C-07/B-03 |
 
-### 6.2 服务端部署 — `13005` 坏 LLM 专实例（G3 + L1）
+### 6.3 服务端部署 — `13005` 专实例（remote / SIT 运维参考）
 
 与 `13003` **同一 fat jar**，仅 **端口** 与 **LLM 环境变量** 不同。采用 **双保险**：
 
@@ -214,7 +230,7 @@ curl -s "http://7.209.189.82:13005/.well-known/agent.json" | head -c 200
 
 > `13005` 的 checkpointer / Redis 配置可与 `13003` 相同或简化；本用例单轮「你好」不依赖多轮状态。
 
-### 6.3 测试 JVM 凭据
+### 6.4 测试 JVM 凭据
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
@@ -228,7 +244,7 @@ curl -s "http://7.209.189.82:13005/.well-known/agent.json" | head -c 200
 
 ```json
 {
-  "_doc": "C-09 LLM unavailable — remote bad-LLM mainplan on url-llm-down",
+  "_doc": "C-09 LLM unavailable — managed G3 or remote url-llm-down",
   "inputText": "你好",
   "llmFailureTimeoutMs": 120000,
   "disallowedTerminalStates": ["TASK_STATE_COMPLETED"]
@@ -241,7 +257,7 @@ curl -s "http://7.209.189.82:13005/.well-known/agent.json" | head -c 200
 | `llmFailureTimeoutMs` | 等待终态上限（含连接超时 + executor 失败路径） |
 | `disallowedTerminalStates` | C-09.*.B：出现即 **FAIL**（默认禁止 `COMPLETED`） |
 
-读取：`C09ScenarioData` + `TestDataLoader`。
+读取：`LlmUnavailableScenarioData` + `TestDataLoader`。
 
 ---
 
@@ -253,9 +269,9 @@ curl -s "http://7.209.189.82:13005/.well-known/agent.json" | head -c 200
 | 路径 | `src/test/java/.../component/boundary/` | 同左 |
 | 标签 | `@Tag("component")` **无** `@Tag("smoke")` | 同左 |
 | 基类 | `BaseManagedStackTest` | 同左 |
-| 栈 | `.streaming(false).remoteAgent("mainplan", url-llm-down)` | `.streaming(true)...` |
+| 栈 | managed G3 或 `remoteAgent(url-llm-down)` + `streaming(false)` | 同左 + `streaming(true)` |
 | 收集 | `A2aEventCollector` + `sendMessage` | 同左 |
-| 门禁 | `C09Gate`：`SIT`/`UAT` + `url-llm-down` 非空；缺则 **FAIL** 或不启用类 | 同左 |
+| 模式 | `LlmUnavailableSupport.isRemoteMode()`：`url-llm-down` ⇒ remote，否则 managed | 同左 |
 
 **单测方法建议**：
 
@@ -268,8 +284,9 @@ llmUnavailable_reachesNonSuccessTerminalState()
 **实现检查清单**：
 
 - [ ] 两测试类，`streaming` 显式 false / true
-- [ ] 读 `url-llm-down`，**禁止**回退到 `mainplan.url`（13003）
-- [ ] `url-llm-down` 缺失 → **硬 FAIL**（K2），非 skip
+- [ ] 不在测试类内使用 `@EnabledIf` 按 profile 跳过
+- [ ] managed：`LlmUnavailableStackSupport.applyBadLlm` 注入 G3 属性
+- [ ] remote：读 `url-llm-down`，**禁止**回退到 `mainplan.url`
 - [ ] C-09.*.B：`isFinal()` 且非 `disallowedTerminalStates`
 - [ ] C-09.*.C：错误文本非空 **或** `taskId` 非空
 - [ ] **无**后置「你好」探测（E1）
@@ -280,23 +297,16 @@ llmUnavailable_reachesNonSuccessTerminalState()
 
 ## 9. 运行方式
 
-**前置**：按 §6.2 在服务器启动 `13005`，并确认 `application-sit.yml` 已配置 `url-llm-down`。
-
 ```bash
-# PowerShell（Windows）
-$env:TEST_ENV = "SIT"
-./mvnw.cmd "-Dtest.env=SIT" "-Dtest=LlmUnavailableSyncTest" test
-./mvnw.cmd "-Dtest.env=SIT" "-Dtest=LlmUnavailableStreamTest" test
-./mvnw.cmd "-Dtest.env=SIT" "-Dtest=LlmUnavailableSyncTest,LlmUnavailableStreamTest" test
-```
+# managed LOCAL（默认，G3 注入，无需 13005）
+./mvnw -Dtest=LlmUnavailableSyncTest,LlmUnavailableStreamTest test
 
-```bash
-# Linux / WSL
+# remote SIT（url-llm-down 已配置且 13005 已启动）
 export TEST_ENV=SIT
 ./mvnw -Dtest.env=SIT -Dtest=LlmUnavailableSyncTest,LlmUnavailableStreamTest test
 ```
 
-> P2 边界用例：**不**加入 smoke 套件。`13005` 未启动时整类 **FAIL**，提醒先完成 §6.2 部署。
+> P2 边界用例：**不**加入 smoke 套件。
 
 ---
 
@@ -313,7 +323,8 @@ export TEST_ENV=SIT
 
 ## 11. 风险与备注
 
-- **与 C-06/C-07 对称差异**：C-06/C-07 连 `13003` + 后置「你好」`COMPLETED`；C-09 连 `13005` + **无**后置 message 探测（E1）。
+- **与 C-06/C-07 对称**：同为 `BaseManagedStackTest` + 单 mainplan；C-09 注入坏 LLM 而非正常 LLM，且无后置「你好」探测。
+- **managed 优先**：LOCAL 不必运维 13005；SIT 可保留 `url-llm-down` 捷径。
 - **F3 宽松判据**：不强制 `UPSTREAM_UNAVAILABLE`；若产品统一错误码后可收紧为 F1/F2 并修订 testdata。
 - **G3 双保险**：无效 key + 本机不可达 base；避免 CI 依赖外网 LLM 网关仍返回 200 的偶发情况。
 - **13005 误配真实 LLM**：若终态 `COMPLETED`，说明部署错误，非测试 flaky。
@@ -327,8 +338,8 @@ export TEST_ENV=SIT
 
 | 维度 | C-06 空消息 | C-07 超长 | C-09 LLM 不可用 |
 |------|-------------|-----------|-----------------|
-| SUT | `13003` 正常 | `13003` 正常 | **`13005` 坏 LLM** |
-| 配置键 | `mainplan.url` | `mainplan.url` | **`mainplan.url-llm-down`** |
+| SUT | mainplan + 正常 LLM | mainplan + 正常 LLM | mainplan + **G3 坏 LLM** |
+| 配置 | `mainplan.url` 或 managed LLM | 同左 | managed G3 或 **`url-llm-down`** |
 | 输入 | `""` | ≥5000 字 | testdata（默认「你好」） |
 | 主终态 | 必须 `FAILED` | 任意 final | final 且 **非** `COMPLETED` |
 | 错误断言 | 严格 `INVALID_INPUT` | 宽松 | **F3 最宽松** |
@@ -341,11 +352,11 @@ export TEST_ENV=SIT
 
 | 决策项 | 选定 | 说明 |
 |--------|------|------|
-| 故障注入 | 远端专实例 **J2** | `13005`，非 managed 本地起栈 |
+| 故障注入 | managed G3 + remote 13005 可选 | LOCAL managed；SIT 可 `url-llm-down` |
 | 传输 | **同步 + 流式** | C-09-Y / C-09-S |
 | 后置探测 | **E1 无** | 坏 LLM 栈不做 message 复测 |
 | 错误严格度 | **F3 宽松** | 非 `COMPLETED` final + 错误或 taskId |
 | 服务端 LLM | **G3** | 无效 key + `127.0.0.1:9` base |
 | 用户输入 | **H3** | testdata `inputText`，默认「你好」 |
-| 门禁 | **K2 硬 FAIL** | 缺 `url-llm-down` 或 `13005` 未启 |
-| 部署文档 | **L1 完整** | §6.2 `java -jar` 示例 |
+| 门禁 | 无 `@EnabledIf` | jar / remote 就绪即可 |
+| 部署文档 | **L1 完整** | §6.3 remote `java -jar` 示例（可选） |

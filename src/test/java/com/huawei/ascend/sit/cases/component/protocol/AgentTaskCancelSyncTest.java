@@ -7,12 +7,11 @@ import com.huawei.ascend.sit.client.A2aStreamErrors;
 import com.huawei.ascend.sit.client.CancelWindow;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.A06ScenarioData;
+import com.huawei.ascend.sit.model.protocol.TaskCancelScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,11 +25,12 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>Blocking send runs on a background thread; the main thread issues cancel during the
  * in-flight window.</p>
  *
- * <p>See {@code docs/cases/A-06-task-cancel.md}.</p>
+ * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
+ * before launch so the managed mainplan process can reach the model. See
+ * {@code docs/cases/A-06-task-cancel.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
-@EnabledIf("com.huawei.ascend.sit.cases.component.protocol.A06LlmGate#isExecutable")
 class AgentTaskCancelSyncTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentTaskCancelSyncTest.class.getName());
@@ -43,9 +43,7 @@ class AgentTaskCancelSyncTest extends BaseManagedStackTest {
     @Test
     @DisplayName("A-06-Y: 同步 message/send 过程中 cancel → CANCELED")
     void a06_syncCancel_reachesCanceledState() throws InterruptedException {
-        requireLlmKey();
-
-        A06ScenarioData scenario = A06ScenarioData.loadDefault();
+        TaskCancelScenarioData scenario = TaskCancelScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
 
         A2aEventCollector collector = new A2aEventCollector();
@@ -66,20 +64,13 @@ class AgentTaskCancelSyncTest extends BaseManagedStackTest {
                 collector, scenario.taskIdWaitMs(), scenario.cancelWaitMs());
         LOG.info("A-06.E cancel_at_state=" + window.cancelAtState());
 
-        A06CancelVerifiers.assertCancelAndGet(
+        TaskCancelVerifiers.assertCancelAndGet(
                 a2a, window.taskId(), scenario.cancelPollMs(), scenario.expectedCanceledState());
 
         sendThread.join(scenario.streamTimeoutMs());
         Throwable sendFailure = sendError.get();
         if (sendFailure != null && !A2aStreamErrors.isBenignShutdown(sendFailure)) {
             fail("message/send failed after cancel", sendFailure);
-        }
-    }
-
-    private static void requireLlmKey() {
-        String apiKey = System.getenv(A06LlmGate.LLM_KEY_ENV);
-        if (apiKey == null || apiKey.isBlank()) {
-            fail("SIT_LLM_API_KEY must be set for A-06");
         }
     }
 }

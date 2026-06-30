@@ -12,7 +12,7 @@ import java.util.List;
  * <p>See {@code docs/cases/C-06-empty-message.md} §7.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record C06ScenarioData(
+public record EmptyMessageScenarioData(
         String inputText,
         String healthProbeText,
         long emptyMessageTimeoutMs,
@@ -25,8 +25,8 @@ public record C06ScenarioData(
 
     public static final String DEFAULT_TESTDATA_PATH = "component/boundary/c06-empty-message.json";
 
-    public static C06ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, C06ScenarioData.class);
+    public static EmptyMessageScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, EmptyMessageScenarioData.class);
     }
 
     public TaskState resolvedExpectedTerminalState() {

@@ -4,7 +4,7 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.A2aStreamErrors;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.integration.checkpointer.B03ScenarioData;
+import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.Task;
@@ -20,11 +20,11 @@ import static org.assertj.core.api.Assertions.fail;
 /**
  * Shared two-turn streaming dialogue for B-03 / B-04 (Turn1 → Turn2 with same {@code contextId}).
  */
-final class B03TwoTurnDialogueRunner {
+final class TwoTurnDialogueRunner {
 
-    private static final Logger LOG = Logger.getLogger(B03TwoTurnDialogueRunner.class.getName());
+    private static final Logger LOG = Logger.getLogger(TwoTurnDialogueRunner.class.getName());
 
-    private B03TwoTurnDialogueRunner() {
+    private TwoTurnDialogueRunner() {
     }
 
     record Result(
@@ -35,7 +35,7 @@ final class B03TwoTurnDialogueRunner {
     ) {
     }
 
-    static Result run(A2aServiceClient a2a, B03ScenarioData scenario, String logPrefix)
+    static Result run(A2aServiceClient a2a, RedisMultiTurnScenarioData scenario, String logPrefix)
             throws InterruptedException {
         A2aEventCollector turn1Collector = new A2aEventCollector();
         AtomicReference<Throwable> turn1Error = new AtomicReference<>();
@@ -45,7 +45,7 @@ final class B03TwoTurnDialogueRunner {
                         List.of(turn1Collector.createConsumer()),
                         error -> turn1Error.set(error)));
 
-        TaskState turn1State = B03TurnAwait.awaitTurn1Outcome(turn1Collector, scenario);
+        TaskState turn1State = TwoTurnDialogueAwait.awaitTurn1Outcome(turn1Collector, scenario);
         turn1Thread.join(scenario.turn1TimeoutMs());
         assertStreamHealthy(turn1Error, logPrefix + " Turn1");
         assertThat(turn1Collector.eventCount())
@@ -81,7 +81,7 @@ final class B03TwoTurnDialogueRunner {
         LOG.info(logPrefix + " Turn2 reply (truncated): "
                 + (turn2Text.length() > 200 ? turn2Text.substring(0, 200) + "..." : turn2Text));
 
-        B03ContextAssertions.assertTurn2Understanding(turn2Text, scenario);
+        TwoTurnDialogueAssertions.assertTurn2Understanding(turn2Text, scenario);
         return new Result(turn1State, contextId, turn2State, turn2Text);
     }
 

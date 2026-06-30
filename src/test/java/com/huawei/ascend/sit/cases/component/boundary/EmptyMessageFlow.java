@@ -3,7 +3,7 @@ package com.huawei.ascend.sit.cases.component.boundary;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.A2aStreamErrors;
-import com.huawei.ascend.sit.model.component.boundary.C06ScenarioData;
+import com.huawei.ascend.sit.model.component.boundary.EmptyMessageScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.Task;
 
@@ -15,12 +15,12 @@ import static org.assertj.core.api.Assertions.fail;
 /**
  * C-06 empty message + health probe flow (shared by sync and stream tests).
  */
-final class C06EmptyMessageFlow {
+final class EmptyMessageFlow {
 
-    private C06EmptyMessageFlow() {
+    private EmptyMessageFlow() {
     }
 
-    static void run(A2aServiceClient a2a, C06ScenarioData scenario, String label, boolean streamSendOnBackground)
+    static void run(A2aServiceClient a2a, EmptyMessageScenarioData scenario, String label, boolean streamSendOnBackground)
             throws InterruptedException {
         // ---- empty message ----
         A2aEventCollector emptyCollector = new A2aEventCollector();
@@ -33,11 +33,11 @@ final class C06EmptyMessageFlow {
 
         if (streamSendOnBackground) {
             Thread sendThread = Thread.ofVirtual().name(label + "-empty").start(emptySend);
-            C06EmptyMessageAssertions.assertEmptyMessageFailed(emptyCollector, scenario, label);
+            EmptyMessageAssertions.assertEmptyMessageFailed(emptyCollector, scenario, label);
             sendThread.join(scenario.emptyMessageTimeoutMs());
         } else {
             emptySend.run();
-            C06EmptyMessageAssertions.assertEmptyMessageFailed(emptyCollector, scenario, label);
+            EmptyMessageAssertions.assertEmptyMessageFailed(emptyCollector, scenario, label);
         }
         assertStreamHealthy(emptyError, label + " empty send");
 
@@ -62,7 +62,7 @@ final class C06EmptyMessageFlow {
 
         String probeTaskId = probeCollector.findFirstTaskId();
         Task probeTask = a2a.getTask(probeTaskId);
-        C06EmptyMessageAssertions.assertHealthProbeCompleted(probeTask, scenario, label);
+        EmptyMessageAssertions.assertHealthProbeCompleted(probeTask, scenario, label);
     }
 
     private static void assertStreamHealthy(AtomicReference<Throwable> streamError, String label) {

@@ -11,7 +11,7 @@ stack: mainplan（单 agent，无需 trip/hotel）
 tags: [component]
 depends_on:
   - mainplan fat jar 可构建并安装至本地 Maven 仓库
-  - LLM 凭据已配置（见 §6）
+  - mainplan 启动时已配置 LLM（见 §6；由测试人员准备，用例代码不门禁）
 smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 ---
 
@@ -51,9 +51,11 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 |---|------|----------------|
 | 1 | `agent-travel-mainplan-a2a` fat jar 已构建并可在 `~/.m2` 解析 | **FAIL** |
 | 2 | 测试框架拉起 **仅 mainplan**（per-class） | 就绪失败 → **FAIL** |
-| 3 | `SIT_LLM_API_KEY` 已设置且非空 | **FAIL** |
+| 3 | mainplan 已具备可用 LLM 配置（`LLM_*`、`sut.java.system-properties` 等，见 §6） | 由测试人员准备；缺失时后置「你好」探测可能 **FAIL** |
 | 4 | 流式 / 同步子场景各 **独立测试类** | — |
 | 5 | **无需** trip / hotel / Redis | — |
+
+> LLM 为**运行前置**，但**不在测试类内**做环境变量门禁或 `@EnabledIf` 跳过；凭据与 profile 由执行测试的人员在拉起 agent 前配置。
 
 ---
 
@@ -63,8 +65,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 动作 | 预期 |
 |---|------|------|
-| 0 | LLM 门禁 | 缺失 → **FAIL** |
-| 1 | 起栈 `streaming(false)`，仅 mainplan | 就绪 |
+| 1 | 起栈 `streaming(false)`，仅 mainplan；LLM 由启动环境注入（见 §6） | 就绪 |
 | 2 | 按 §7 构造长文本，`sendMessage` + collector | C-07.Y.A～D |
 | 3 | 同路径发送 `healthProbeText` | C-07.Y.E |
 
@@ -72,7 +73,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 | # | 动作 | 预期 |
 |---|------|------|
-| 0～1 | 同 C-07-Y，但 `streaming(true)` | — |
+| 1～2 | 同 C-07-Y，但 `streaming(true)` | — |
 | 2 | 流式发送长文本 + collector | C-07.S.A～D |
 | 3 | 流式健康探测 | C-07.S.E |
 
@@ -80,12 +81,7 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 ## 4. 可观测子断言
 
-> 前缀 **C-07.Y.** = 同步；**C-07.S.** = 流式；**C-07.0** = 公共。
-
-### C-07.0 — LLM 凭据门禁
-
-- **When**：读取 `SIT_LLM_API_KEY`。
-- **Then**：非空。**FAIL**：缺失或空白。
+> 前缀 **C-07.Y.** = 同步；**C-07.S.** = 流式。
 
 ### C-07.*.0b — 传输门禁
 
@@ -144,13 +140,17 @@ smoke_scope: 不纳入 SmokeTestSuite（P2 边界用例）
 
 ---
 
-## 6. LLM 前置
+## 6. LLM 配置（测试人员准备，用例不门禁）
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `SIT_LLM_API_KEY` | 是 | 长输入可能触发 LLM；健康探测必需 |
+C-07 **不在测试代码中**读取 `SIT_LLM_API_KEY`、不使用 `@EnabledIf` 按 profile 跳过。执行前由测试人员保证 mainplan 能调用 LLM（长输入与健康探测均需要），方式与 C-06 / A-04 对齐：
 
-mainplan 注入方式与 C-06 / A-04 一致。
+| 方式 | 说明 |
+|------|------|
+| `LLM_*` 环境变量 | `ProcessLauncher` 传给 managed agent |
+| `application-<env>.yml` → `sut.java.system-properties` | JVM `-D` 注入 |
+| remote 模式 | LLM 在预部署 SUT（如 13003） |
+
+未配置时不在测试侧提前 FAIL；长输入路径仍可能 PASS（终态 `FAILED` 允许），后置健康探测可能 **FAIL**。
 
 ---
 
@@ -189,7 +189,7 @@ assert sb.length() >= minInputChars
 return sb.toString()
 ```
 
-读取：`C07ScenarioData` + `TestDataLoader`；**禁止**在测试方法内硬编码 5000 字文本。
+读取：`LongTravelMessageScenarioData` + `TestDataLoader`；**禁止**在测试方法内硬编码 5000 字文本。
 
 ---
 
@@ -201,7 +201,7 @@ return sb.toString()
 | 路径 | `src/test/java/.../component/boundary/` | 同左 |
 | 标签 | `@Tag("component")`，**无** `@Tag("smoke")` | 同左 |
 | 基类 | `BaseManagedStackTest` | 同左 |
-| 栈 | `.streaming(false).agent("mainplan", LLM)` | `.streaming(true)...` |
+| 栈 | `.streaming(false).agent("mainplan")` | `.streaming(true).agent("mainplan")` |
 | 收集 | `A2aEventCollector` + `sendMessage` | 同左 |
 
 **单测方法建议**：
@@ -213,6 +213,7 @@ longTravelMessage_reachesTerminalState_thenHealthProbeCompletes()
 **实现检查清单**：
 
 - [ ] 两测试类，`streaming` 显式 false / true
+- [ ] 不在测试类内门禁 `SIT_LLM_API_KEY` 或按 `test.env` 跳过
 - [ ] `LongMessageInputBuilder`：模板 + 填充，`length >= minInputChars`
 - [ ] C-07.*.B：`isFinal()`，**不**强制 `COMPLETED`
 - [ ] C-07.*.E：后置「你好」硬断言
@@ -224,15 +225,16 @@ longTravelMessage_reachesTerminalState_thenHealthProbeCompletes()
 ## 9. 运行方式
 
 ```bash
-export SIT_LLM_API_KEY=<your-key>
+# managed LOCAL（LLM 见 application-local.yml 的 LLM_*）
+./mvnw -Dtest=LongMessageSyncTest test
+./mvnw -Dtest=LongMessageStreamTest test
+./mvnw -Dtest=LongMessageSyncTest,LongMessageStreamTest test
 
-./mvnw -Dtest.env=LOCAL -Dtest=LongMessageSyncTest test
-./mvnw -Dtest.env=LOCAL -Dtest=LongMessageStreamTest test
-
-./mvnw -Dtest.env=LOCAL -Dtest=LongMessageSyncTest,LongMessageStreamTest test
+# remote SIT
+./mvnw -Dtest.env=SIT -Dtest=LongMessageSyncTest,LongMessageStreamTest test
 ```
 
-> 长输入 + LLM 可能较慢；`longMessageTimeoutMs` 可在 testdata 调大，不改断言逻辑。
+> 长输入 + LLM 可能较慢；`longMessageTimeoutMs` 可在 testdata 调大，不改断言逻辑。缺 LLM 时后置探测可能 **FAIL**（不再 Skip）。
 
 ---
 

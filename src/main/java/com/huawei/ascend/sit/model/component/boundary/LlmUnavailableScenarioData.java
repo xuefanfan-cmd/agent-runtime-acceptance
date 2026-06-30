@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  * <p>See {@code docs/cases/C-09-llm-unavailable.md} §7.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record C09ScenarioData(
+public record LlmUnavailableScenarioData(
         String inputText,
         long llmFailureTimeoutMs,
         List<String> disallowedTerminalStates
@@ -22,8 +22,8 @@ public record C09ScenarioData(
 
     public static final String DEFAULT_TESTDATA_PATH = "component/boundary/c09-llm-unavailable.json";
 
-    public static C09ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, C09ScenarioData.class);
+    public static LlmUnavailableScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, LlmUnavailableScenarioData.class);
     }
 
     public Set<TaskState> resolvedDisallowedTerminalStates() {

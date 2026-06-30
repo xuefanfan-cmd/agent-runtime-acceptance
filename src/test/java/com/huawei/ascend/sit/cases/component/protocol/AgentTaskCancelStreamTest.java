@@ -7,13 +7,12 @@ import com.huawei.ascend.sit.client.A2aStreamErrors;
 import com.huawei.ascend.sit.client.CancelWindow;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.A06ScenarioData;
+import com.huawei.ascend.sit.model.protocol.TaskCancelScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,11 +24,12 @@ import static org.assertj.core.api.Assertions.fail;
 /**
  * A-06-S — tasks/cancel on streaming {@code message/stream} (特性 4-5).
  *
- * <p>See {@code docs/cases/A-06-task-cancel.md}.</p>
+ * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
+ * before launch so the managed mainplan process can reach the model. See
+ * {@code docs/cases/A-06-task-cancel.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
-@EnabledIf("com.huawei.ascend.sit.cases.component.protocol.A06LlmGate#isExecutable")
 class AgentTaskCancelStreamTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentTaskCancelStreamTest.class.getName());
@@ -42,9 +42,7 @@ class AgentTaskCancelStreamTest extends BaseManagedStackTest {
     @Test
     @DisplayName("A-06-S: 流式 message/stream 过程中 cancel → CANCELED")
     void a06_streamCancel_reachesCanceledState() throws InterruptedException {
-        requireLlmKey();
-
-        A06ScenarioData scenario = A06ScenarioData.loadDefault();
+        TaskCancelScenarioData scenario = TaskCancelScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
 
         A2aEventCollector collector = new A2aEventCollector();
@@ -60,7 +58,7 @@ class AgentTaskCancelStreamTest extends BaseManagedStackTest {
                 collector, scenario.taskIdWaitMs(), scenario.cancelWaitMs());
         LOG.info("A-06.E cancel_at_state=" + window.cancelAtState());
 
-        A06CancelVerifiers.assertCancelAndGet(
+        TaskCancelVerifiers.assertCancelAndGet(
                 a2a, window.taskId(), scenario.cancelPollMs(), scenario.expectedCanceledState());
 
         TaskState streamTerminal = collector.awaitTerminalState(scenario.streamTimeoutMs());
@@ -81,18 +79,6 @@ class AgentTaskCancelStreamTest extends BaseManagedStackTest {
     static SutStack.Builder mainplanStack(TestConfig config, boolean streaming) {
         return SutStack.builder(config)
                 .streaming(streaming)
-                .agent("mainplan", a -> {
-                    String apiKey = System.getenv(A06LlmGate.LLM_KEY_ENV);
-                    if (apiKey != null && !apiKey.isBlank()) {
-                        a.property("main-plan-agent.api-key", apiKey);
-                    }
-                });
-    }
-
-    private static void requireLlmKey() {
-        String apiKey = System.getenv(A06LlmGate.LLM_KEY_ENV);
-        if (apiKey == null || apiKey.isBlank()) {
-            fail("SIT_LLM_API_KEY must be set for A-06");
-        }
+                .agent("mainplan");
     }
 }

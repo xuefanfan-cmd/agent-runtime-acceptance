@@ -1,18 +1,18 @@
 package com.huawei.ascend.sit.cases.integration.checkpointer;
 
-import com.huawei.ascend.sit.model.integration.checkpointer.B03ScenarioData;
+import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * B-03.D / B-03.E semantic heuristics for Turn2 reply text.
  */
-final class B03ContextAssertions {
+final class TwoTurnDialogueAssertions {
 
-    private B03ContextAssertions() {
+    private TwoTurnDialogueAssertions() {
     }
 
-    static void assertTurn2Understanding(String turn2Text, B03ScenarioData scenario) {
+    static void assertTurn2Understanding(String turn2Text, RedisMultiTurnScenarioData scenario) {
         assertThat(turn2Text).as("B-03.C turn2 text").isNotBlank();
 
         boolean matchedPositive = scenario.turn2MustMatchAny().stream()

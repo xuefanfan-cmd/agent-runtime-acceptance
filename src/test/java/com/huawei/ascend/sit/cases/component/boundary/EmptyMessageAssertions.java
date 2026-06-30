@@ -2,7 +2,7 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.C06ScenarioData;
+import com.huawei.ascend.sit.model.component.boundary.EmptyMessageScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -20,12 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * C-06.*.B～D error surface and health-probe assertions.
  */
-final class C06EmptyMessageAssertions {
+final class EmptyMessageAssertions {
 
-    private C06EmptyMessageAssertions() {
+    private EmptyMessageAssertions() {
     }
 
-    static void assertEmptyMessageFailed(A2aEventCollector collector, C06ScenarioData scenario, String label) {
+    static void assertEmptyMessageFailed(A2aEventCollector collector, EmptyMessageScenarioData scenario, String label) {
         TaskState terminal = collector.awaitTerminalState(scenario.emptyMessageTimeoutMs());
 
         assertThat(collector.eventCount())
@@ -43,7 +43,7 @@ final class C06EmptyMessageAssertions {
         assertInvalidInputError(task, scenario, label);
     }
 
-    static void assertHealthProbeCompleted(Task task, C06ScenarioData scenario, String label) {
+    static void assertHealthProbeCompleted(Task task, EmptyMessageScenarioData scenario, String label) {
         assertThat(task.status().state())
                 .as(label + " C-06.E health probe state")
                 .isEqualTo(scenario.resolvedHealthProbeTerminalState());
@@ -51,7 +51,7 @@ final class C06EmptyMessageAssertions {
         assertThat(text).as(label + " C-06.E health probe text").isNotBlank();
     }
 
-    private static void assertInvalidInputError(Task task, C06ScenarioData scenario, String label) {
+    private static void assertInvalidInputError(Task task, EmptyMessageScenarioData scenario, String label) {
         String errorSurface = aggregateErrorText(task);
         assertThat(errorSurface)
                 .as(label + " C-06.C error surface")
@@ -99,7 +99,7 @@ final class C06EmptyMessageAssertions {
     }
 
     private static java.util.Optional<Task> taskFromCollector(A2aEventCollector collector) {
-        return collector.findTerminalEvent().flatMap(C06EmptyMessageAssertions::taskFrom);
+        return collector.findTerminalEvent().flatMap(EmptyMessageAssertions::taskFrom);
     }
 
     private static java.util.Optional<Task> taskFrom(ClientEvent event) {

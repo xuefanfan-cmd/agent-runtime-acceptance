@@ -20,7 +20,7 @@ import java.util.List;
  * @param optionalObservationStates states recorded for coverage only; absence does not fail A-04
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record A04ScenarioData(
+public record MessageStreamScenarioData(
         String inputText,
         long streamTimeoutMs,
         String expectedTerminalState,
@@ -32,7 +32,7 @@ public record A04ScenarioData(
     public static final String DEFAULT_TESTDATA_PATH = "component/protocol/a04-stream-hello.json";
 
     /** Load the default A-04 scenario from test resources. */
-    public static A04ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, A04ScenarioData.class);
+    public static MessageStreamScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, MessageStreamScenarioData.class);
     }
 }

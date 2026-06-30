@@ -2,7 +2,7 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.C07ScenarioData;
+import com.huawei.ascend.sit.model.component.boundary.LongTravelMessageScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -16,16 +16,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * C-07.*.A～E long-message and health-probe assertions.
  */
-final class C07LongMessageAssertions {
+final class LongTravelMessageAssertions {
 
-    private static final Logger LOG = Logger.getLogger(C07LongMessageAssertions.class.getName());
+    private static final Logger LOG = Logger.getLogger(LongTravelMessageAssertions.class.getName());
     private static final int FAILURE_LOG_MAX_CHARS = 200;
 
-    private C07LongMessageAssertions() {
+    private LongTravelMessageAssertions() {
     }
 
-    static void assertLongMessageReachedTerminal(A2aEventCollector collector, C07ScenarioData scenario, String label) {
-        TaskState terminal = collector.awaitTerminalState(scenario.longMessageTimeoutMs());
+    static void assertLongMessageReachedTerminal(A2aEventCollector collector, LongTravelMessageScenarioData scenario, String label) {
+        assertLongMessageReachedTerminal(collector, scenario, label, scenario.longMessageTimeoutMs());
+    }
+
+    static void assertLongMessageReachedTerminal(
+            A2aEventCollector collector, LongTravelMessageScenarioData scenario, String label, long awaitMs) {
+        TaskState terminal = collector.awaitTerminalState(awaitMs);
 
         assertThat(collector.eventCount())
                 .as(label + " C-07.A events")
@@ -50,7 +55,7 @@ final class C07LongMessageAssertions {
         }
     }
 
-    static void assertHealthProbeCompleted(Task task, C07ScenarioData scenario, String label) {
+    static void assertHealthProbeCompleted(Task task, LongTravelMessageScenarioData scenario, String label) {
         assertThat(task.status().state())
                 .as(label + " C-07.E health probe state")
                 .isEqualTo(scenario.resolvedHealthProbeTerminalState());
@@ -59,7 +64,7 @@ final class C07LongMessageAssertions {
     }
 
     private static java.util.Optional<Task> taskFromCollector(A2aEventCollector collector) {
-        return collector.findTerminalEvent().flatMap(C07LongMessageAssertions::taskFrom);
+        return collector.findTerminalEvent().flatMap(LongTravelMessageAssertions::taskFrom);
     }
 
     private static java.util.Optional<Task> taskFrom(ClientEvent event) {

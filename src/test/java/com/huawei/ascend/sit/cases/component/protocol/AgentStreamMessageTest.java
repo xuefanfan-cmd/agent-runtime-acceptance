@@ -4,9 +4,8 @@ import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
-import com.huawei.ascend.sit.config.TestEnvironment;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.A04ScenarioData;
+import com.huawei.ascend.sit.model.protocol.MessageStreamScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
@@ -20,7 +19,6 @@ import org.a2aproject.sdk.spec.TextPart;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,43 +38,27 @@ import static org.assertj.core.api.Assertions.fail;
  * + {@link A2aEventCollector} — the framework's standard streaming client path
  * ({@code message/stream} when {@code streaming=true}).</p>
  *
- * <p>See {@code docs/cases/A-04-message-stream.md}.</p>
+ * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
+ * before launch so the managed mainplan process can reach the model. See
+ * {@code docs/cases/A-04-message-stream.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
-@EnabledIf("com.huawei.ascend.sit.cases.component.protocol.AgentStreamMessageTest#isExecutable")
 class AgentStreamMessageTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentStreamMessageTest.class.getName());
-    static final String LLM_KEY_ENV = "SIT_LLM_API_KEY";
-
-    /** LOCAL 默认不跑，避免无 LLM 时污染 {@code mvn test}。 */
-    static boolean isExecutable() {
-        TestEnvironment env = TestEnvironment.current();
-        return env == TestEnvironment.SIT || env == TestEnvironment.UAT;
-    }
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
         return SutStack.builder(config)
                 .streaming(true)
-                .agent("mainplan", a -> {
-                    String apiKey = System.getenv(LLM_KEY_ENV);
-                    if (apiKey != null && !apiKey.isBlank()) {
-                        a.property("main-plan-agent.api-key", apiKey);
-                    }
-                });
+                .agent("mainplan");
     }
 
     @Test
     @DisplayName("A-04: message/stream 流式调用 — SUBMITTED→COMPLETED 最小闭环")
     void a04_streamMessage_primaryScenario() {
-        String apiKey = System.getenv(LLM_KEY_ENV);
-        if (apiKey == null || apiKey.isBlank()) {
-            fail("SIT_LLM_API_KEY must be set for A-04");
-        }
-
-        A04ScenarioData scenario = A04ScenarioData.loadDefault();
+        MessageStreamScenarioData scenario = MessageStreamScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
 
         AgentCard card = a2a.getAgentCard();

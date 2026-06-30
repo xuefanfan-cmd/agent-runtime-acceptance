@@ -1,7 +1,7 @@
 package com.huawei.ascend.sit.cases.integration.checkpointer;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
-import com.huawei.ascend.sit.model.integration.checkpointer.B03ScenarioData;
+import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit;
 /**
  * Waits for Turn1 to reach an allowed outcome ({@code COMPLETED} or {@code INPUT_REQUIRED}).
  */
-final class B03TurnAwait {
+final class TwoTurnDialogueAwait {
 
-    private B03TurnAwait() {
+    private TwoTurnDialogueAwait() {
     }
 
-    static TaskState awaitTurn1Outcome(A2aEventCollector collector, B03ScenarioData scenario) {
+    static TaskState awaitTurn1Outcome(A2aEventCollector collector, RedisMultiTurnScenarioData scenario) {
         List<TaskState> allowed = scenario.resolvedTurn1AllowedStates();
         return Awaitility.await("turn1 outcome")
                 .atMost(scenario.turn1TimeoutMs(), TimeUnit.MILLISECONDS)
@@ -35,7 +35,7 @@ final class B03TurnAwait {
             return allowed.contains(state) ? state : null;
         }
         TaskState terminal = collector.findTerminalEvent()
-                .flatMap(B03TurnAwait::extractState)
+                .flatMap(TwoTurnDialogueAwait::extractState)
                 .orElse(null);
         if (terminal == null) {
             return null;

@@ -16,7 +16,7 @@ import com.huawei.ascend.sit.utils.TestDataLoader;
  * @param expectedTerminalState required final task state name (e.g. {@code TASK_STATE_COMPLETED})
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record A05ScenarioData(
+public record TaskGetCompletedScenarioData(
         String inputText,
         long sendTimeoutMs,
         String expectedTerminalState
@@ -26,7 +26,7 @@ public record A05ScenarioData(
     public static final String DEFAULT_TESTDATA_PATH = "component/protocol/a05-get-completed-hello.json";
 
     /** Load the default A-05 scenario from test resources. */
-    public static A05ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, A05ScenarioData.class);
+    public static TaskGetCompletedScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, TaskGetCompletedScenarioData.class);
     }
 }

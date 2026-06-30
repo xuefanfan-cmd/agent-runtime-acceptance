@@ -3,7 +3,7 @@ package com.huawei.ascend.sit.cases.component.boundary;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.A2aStreamErrors;
-import com.huawei.ascend.sit.model.component.boundary.C07ScenarioData;
+import com.huawei.ascend.sit.model.component.boundary.LongTravelMessageScenarioData;
 import com.huawei.ascend.sit.model.component.boundary.LongMessageInputBuilder;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.Task;
@@ -18,14 +18,14 @@ import static org.assertj.core.api.Assertions.fail;
 /**
  * C-07 long message + health probe flow (shared by sync and stream tests).
  */
-final class C07LongMessageFlow {
+final class LongTravelMessageFlow {
 
-    private static final Logger LOG = Logger.getLogger(C07LongMessageFlow.class.getName());
+    private static final Logger LOG = Logger.getLogger(LongTravelMessageFlow.class.getName());
 
-    private C07LongMessageFlow() {
+    private LongTravelMessageFlow() {
     }
 
-    static void run(A2aServiceClient a2a, C07ScenarioData scenario, String label, boolean streamSendOnBackground)
+    static void run(A2aServiceClient a2a, LongTravelMessageScenarioData scenario, String label, boolean streaming)
             throws InterruptedException {
         String longInput = LongMessageInputBuilder.build(scenario);
         assertThat(longInput.length())
@@ -42,11 +42,19 @@ final class C07LongMessageFlow {
                 List.of(longCollector.createConsumer()),
                 error -> longError.set(error));
 
-        // Long sync message/send can block for minutes; run on a background thread so the
-        // collector can observe terminal events while the HTTP call is in flight.
-        Thread sendThread = Thread.ofVirtual().name(label + "-long").start(longSend);
-        C07LongMessageAssertions.assertLongMessageReachedTerminal(longCollector, scenario, label);
-        sendThread.join(scenario.longMessageTimeoutMs());
+        if (streaming) {
+            // Stream: events arrive incrementally — await terminal while send runs on a worker thread.
+            Thread sendThread = Thread.ofVirtual().name(label + "-long").start(longSend);
+            LongTravelMessageAssertions.assertLongMessageReachedTerminal(longCollector, scenario, label);
+            sendThread.join(scenario.longMessageTimeoutMs());
+        } else {
+            // Sync message/send blocks until the server returns the terminal task; the collector
+            // is populated only when the HTTP call completes. Wait for send first, then assert.
+            Thread sendThread = Thread.ofVirtual().name(label + "-long").start(longSend);
+            sendThread.join(scenario.longMessageTimeoutMs());
+            LongTravelMessageAssertions.assertLongMessageReachedTerminal(
+                    longCollector, scenario, label, 5_000);
+        }
         assertStreamHealthy(longError, label + " long send");
 
         // ---- health probe ----
@@ -58,7 +66,7 @@ final class C07LongMessageFlow {
                 List.of(probeCollector.createConsumer()),
                 error -> probeError.set(error));
 
-        if (streamSendOnBackground) {
+        if (streaming) {
             Thread probeThread = Thread.ofVirtual().name(label + "-probe").start(probeSend);
             probeCollector.awaitTerminalState(scenario.healthProbeTimeoutMs());
             probeThread.join(scenario.healthProbeTimeoutMs());
@@ -70,7 +78,7 @@ final class C07LongMessageFlow {
 
         String probeTaskId = probeCollector.findFirstTaskId();
         Task probeTask = a2a.getTask(probeTaskId);
-        C07LongMessageAssertions.assertHealthProbeCompleted(probeTask, scenario, label);
+        LongTravelMessageAssertions.assertHealthProbeCompleted(probeTask, scenario, label);
     }
 
     private static void assertStreamHealthy(AtomicReference<Throwable> streamError, String label) {

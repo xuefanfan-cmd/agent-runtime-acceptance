@@ -9,7 +9,7 @@ public final class LongMessageInputBuilder {
     }
 
     /** Returns text with length {@code >= scenario.minInputChars()}. */
-    public static String build(C07ScenarioData scenario) {
+    public static String build(LongTravelMessageScenarioData scenario) {
         StringBuilder sb = new StringBuilder(scenario.travelTemplatePrefix());
         while (sb.length() < scenario.minInputChars()) {
             sb.append(scenario.paddingSentence());

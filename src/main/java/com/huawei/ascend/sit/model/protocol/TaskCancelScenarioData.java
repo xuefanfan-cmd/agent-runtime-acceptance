@@ -13,7 +13,7 @@ import org.a2aproject.sdk.spec.TaskState;
  * <p>See {@code docs/cases/A-06-task-cancel.md} §7.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record A06ScenarioData(
+public record TaskCancelScenarioData(
         String inputText,
         long taskIdWaitMs,
         long cancelWaitMs,
@@ -24,8 +24,8 @@ public record A06ScenarioData(
 
     public static final String DEFAULT_TESTDATA_PATH = "component/protocol/a06-cancel-long-prompt.json";
 
-    public static A06ScenarioData loadDefault() {
-        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, A06ScenarioData.class);
+    public static TaskCancelScenarioData loadDefault() {
+        return TestDataLoader.load(DEFAULT_TESTDATA_PATH, TaskCancelScenarioData.class);
     }
 
     public TaskState expectedCanceledState() {

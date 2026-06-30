@@ -38,9 +38,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * B-09 — trip-agent 停止时 mainplan 优雅答复（异常分支首个用例）.
  *
- * <p>前置：trip-agent 必须被停止（运维侧 systemctl stop / kill）。本类先做一次
- * agent-card 探活，若 trip 仍可达 → {@code Assumptions.assumeFalse(...)} SKIPPED
- * 并提示请先停 trip，避免环境未就绪误报 FAIL。
+ * <p>前置：trip-agent 必须不可达。两种获得方式：
+ * <ul>
+ *   <li><b>LOCAL（managed trip）</b>：本类 {@code ensureTripDown()} 调框架 fault-injection
+ *       {@code stack.stop(TRIP)} 自停 trip 进程，无须人工 —— 跑完整个类 {@code @AfterAll}
+ *       走 {@code stack.close()} 顺带清理，trip 不会复活去污染下一类。</li>
+ *   <li><b>SIT（remote trip）</b>：{@code stack.stop()} 抛 IllegalStateException，被静默吃掉；
+ *       需运维侧 {@code systemctl stop / kill} 把 trip 停掉，再跑本类。</li>
+ * </ul>
+ * 之后探活兜底（{@code abortIfTripStillReachable}）：trip 仍可达 → {@code Assumptions.assumeFalse}
+ * SKIPPED，避免环境未就绪误报 FAIL。
  *
  * <p>判定四档：A 终态可达不挂死 / B 终态为失败信号 OR COMPLETED+致歉文本 /
  * C artifact 不漏堆栈 / D 流层无非预期异常。详见 docs/cases/B-09-*.md。
@@ -49,8 +56,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 默认套件把本类拖进绿色 CI（trip 停掉时正常用例会全红）。运行靠显式
  * {@code -Dtest=GracefulTripDownFailureTest}。
  *
- * <p>栈走 BaseManagedStackTest 默认形态；当前 application-local.yml 把三 agent 都
- * 标成 remote-url，SutStack.start() 仅注册地址不启动进程，本类天然走远端栈。
+ * <p>栈走 BaseManagedStackTest 默认形态；远端栈在 application-sit.yml 把三 agent 都
+ * 标成 remote-url（{@code -Dtest.env=SIT}），SutStack.start() 仅注册地址不启动进程，本类天然走远端栈。
  */
 @Tag("degraded")
 class GracefulTripDownFailureTest extends BaseManagedStackTest {
@@ -97,6 +104,7 @@ class GracefulTripDownFailureTest extends BaseManagedStackTest {
     @DisplayName("B-09: trip agent 停止时 mainplan 优雅答复用户（不挂死/不漏栈/不幻觉）")
     void mainplanRepliesGracefullyWhenTripIsDown() throws Exception {
         String tripBaseUrl = stack.baseUrl(TRIP);
+        ensureTripDown();
         abortIfTripStillReachable(tripBaseUrl);
 
         SingleCase c = loadCase();
@@ -136,6 +144,21 @@ class GracefulTripDownFailureTest extends BaseManagedStackTest {
     }
 
     // ---- pre-flight ----
+
+    /**
+     * LOCAL（managed trip）：用框架 fault-injection API 自停 trip 进程，无须人工。
+     * SIT（remote trip）：stop() 抛 IllegalStateException —— 静默吃掉，回落到下面的探活兜底，
+     * 由人工 systemctl stop / kill 后再跑（同原 doc §3 远端口径）。
+     */
+    private void ensureTripDown() {
+        try {
+            if (stack.isRunning(TRIP)) {
+                stack.stop(TRIP);
+            }
+        } catch (IllegalStateException remoteCannotStop) {
+            // remote 模式下框架不拥有 trip，无能为力 — 留给 abortIfTripStillReachable 兜底。
+        }
+    }
 
     /**
      * 探活 trip-agent：可达 → SKIP（环境未就绪不当 FAIL）。

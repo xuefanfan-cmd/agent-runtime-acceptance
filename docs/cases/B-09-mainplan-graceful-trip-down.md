@@ -10,7 +10,7 @@ sut: main-plan-agent
 stack: mainplan + trip + hotel（三 agent 全链；**前置要求 trip 必须停止**）
 tags: [degraded]
 depends_on:
-  - application-local.yml 已配 sut.agents.{mainplan,trip,hotel}.remote-url（远端栈预部署）
+  - application-sit.yml 已配 sut.agents.{mainplan,trip,hotel}.remote-url（远端栈预部署）
   - trip-agent 在运行测试前**必须**被停止（人工 / 运维侧操作）
   - mainplan / hotel 仍在线
   - mainplan 已注入可用 LLM 凭据（统一 LLM_* env vars）
@@ -41,7 +41,7 @@ depends_on:
 
 ## 2. 前置条件
 
-- mainplan / hotel 在 application-local.yml 配置的远端地址（默认 `7.209.189.82`）正常运行；
+- mainplan / hotel 在 application-sit.yml 配置的远端地址（默认 `7.209.189.82`）正常运行；
 - **trip-agent 必须被停止**（如 `systemctl stop` 或 `kill <pid>`），即 `http://<host>:13001/.well-known/agent.json` 应返回连接拒绝 / 超时；
 - 测试代码会做一次 agent-card 探活——若发现 trip 仍可达，整个用例 SKIPPED（视为 INCONCLUSIVE，不当 FAIL），避免环境未就绪的误报；
 - 客户端能访问 `http://<mainplan-host>:13003`。
@@ -107,7 +107,7 @@ depends_on:
 |----|----|
 | 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/travel_assistant/GracefulTripDownFailureTest.java` |
 | 标签 | `@Tag("degraded")`——**不挂** `integration`，避免 `-P integration` 把本类拖进默认绿色套件（trip 停掉时正常用例会全红）。运行靠显式 `-Dtest=...` |
-| 基类 | `BaseManagedStackTest`（per-class 栈），栈 = hotel + trip + mainplan 三 agent 全声明；当前 application-local.yml 把它们都标成 remote-url，`SutStack.start()` 仅注册地址不启动进程 |
+| 基类 | `BaseManagedStackTest`（per-class 栈），栈 = hotel + trip + mainplan 三 agent 全声明；当前 application-sit.yml 把它们都标成 remote-url，`SutStack.start()` 仅注册地址不启动进程 |
 | 前置探活 | 内嵌 `java.net.http.HttpClient` GET `<trip>/.well-known/agent.json`，3s timeout；可达 → `Assumptions.assumeFalse(...)` SKIPPED；不可达 → 继续 |
 | runSuffix | UUID 后缀拼到 userId / contextId，避免与其他用例 / 跨次跑共用同一 sessionId 引起残留（同 [B-06](B-06-cross-session-user-memory.md)） |
 | 客户端调用 | `client(MAINPLAN).sendMessage(message, metadata, consumers, errorHandler)`；本用例不走 `InteractionFlow`（同 B-06 / A-11-1，DSL 为多轮设计） |

@@ -104,7 +104,7 @@ A-11-2 不依赖 SUT 对该字符串的业务回答。若日后默认 SUT 切换
 | 客户端调用 | `a2aClient.sendMessage(Message, metadata=null, consumers, errorHandler)` —— **不**走 `InteractionFlow`（DSL 自动续 contextId 屏蔽了"不带 contextId" 的协议面） |
 | 事件收集 | 每轮独立 `A2aEventCollector` + `awaitTerminalState(timeoutMs)`；用 `findFirstContextId()` / `findFirstTaskId()` 取观测值 |
 | 断言 | AssertJ：`isNotBlank` / `isEqualTo` / `isNotEqualTo` |
-| 配置 | 沿用 `sut.base.url`（默认 7.209.189.82:13003 指向预部署 mainplan，见 `application-local.yml`） |
+| 配置 | 沿用 `sut.base.url`（默认 7.209.189.82:13003 指向预部署 mainplan，见 `application-sit.yml`） |
 
 ## 7. 运行方式
 
@@ -116,7 +116,7 @@ A-11-2 不依赖 SUT 对该字符串的业务回答。若日后默认 SUT 切换
 ./mvnw -Dtest=SmokeTestSuite test
 ```
 
-> 前置：`sut.base.url` 指向的端点可达（默认 `application-local.yml` 已配为
+> 前置：`sut.base.url` 指向的端点可达（默认 `application-sit.yml` 已配为
 > `http://7.209.189.82:13003`）。无需本地启动任何进程；测试直接对远端 mainplan 发起 `message/send`。
 
 ## 8. 覆盖特性追溯

@@ -4,7 +4,6 @@ import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -13,6 +12,10 @@ import java.util.logging.Logger;
 
 /**
  * B-03 — Redis Checkpointer multi-turn continuity (特性 2-2).
+ *
+ * <p>Managed mode: {@code mainplan-redis} agent (see {@code application-local.yml}) binds
+ * {@code sut.services.redis} via backing service; {@code main-plan-agent.redis-url} is injected
+ * by {@link SutStack}, not by test code.</p>
  *
  * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
  * before launch so managed agents can reach the model; remote mode uses LLM on the pre-deployed
@@ -24,7 +27,8 @@ class RedisCheckpointerMultiTurnTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(RedisCheckpointerMultiTurnTest.class.getName());
 
-    private static final RedisCheckpointerSupport.ManagedRedis MANAGED_REDIS = RedisCheckpointerSupport.managed();
+    /** Managed agent with {@code service-bindings.redis} in {@code application-local.yml}. */
+    static final String MAINPLAN_REDIS = "mainplan-redis";
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
@@ -35,28 +39,22 @@ class RedisCheckpointerMultiTurnTest extends BaseManagedStackTest {
                     .streaming(true)
                     .remoteAgent("mainplan", mainplanUrl);
         }
-        String redisUrl = MANAGED_REDIS.redisUrl(config);
-        LOG.info("B-03 managed stack redis-url=" + redisUrl);
+        LOG.info("B-03 managed stack: mainplan-redis + backing service redis (application-local.yml)");
         return SutStack.builder(config)
                 .streaming(true)
                 .agent("hotel")
                 .agent("trip", a -> a.downstream("hotel"))
-                .agent("mainplan", a -> {
+                .agent(MAINPLAN_REDIS, a -> {
                     a.downstream("trip");
                     a.property("main-plan-agent.checkpointer", "redis");
-                    a.property("main-plan-agent.redis-url", redisUrl);
                 });
-    }
-
-    @AfterAll
-    void stopManagedRedis() {
-        MANAGED_REDIS.stopIfStarted();
     }
 
     @Test
     @DisplayName("B-03: Redis checkpointer 多轮对话 — Turn2 理解 Turn1 上下文")
     void b03_redisMultiTurn_preservesContextAcrossTurns() throws InterruptedException {
+        String clientAgent = CheckpointerRemoteMode.isRemoteMode(getConfig()) ? "mainplan" : MAINPLAN_REDIS;
         RedisMultiTurnScenarioData scenario = RedisMultiTurnScenarioData.loadDefault();
-        TwoTurnDialogueRunner.run(client("mainplan"), scenario, "B-03");
+        TwoTurnDialogueRunner.run(client(clientAgent), scenario, "B-03");
     }
 }

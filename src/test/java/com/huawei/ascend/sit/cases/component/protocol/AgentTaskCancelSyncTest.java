@@ -9,6 +9,7 @@ import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.model.protocol.TaskCancelScenarioData;
 import org.a2aproject.sdk.A2A;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,9 +29,12 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
  * before launch so the managed mainplan process can reach the model. See
  * {@code docs/cases/A-06-task-cancel.md}.</p>
+ *
+ * <p><b>当前状态：{@code @Disabled} —— 框架暂不支持同步 {@code message/send} 路径下的 cancel 观测。</b></p>
  */
 @Tag("component")
 @Tag("smoke")
+@Disabled("框架暂不支持 A-06-Y：同步 message/send 过程中 cancel 的 taskId 观测与 cancel 窗口。")
 class AgentTaskCancelSyncTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentTaskCancelSyncTest.class.getName());

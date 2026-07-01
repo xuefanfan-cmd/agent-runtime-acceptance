@@ -3,53 +3,15 @@
 # Select with: ./mvnw -Dtest.env=LOCAL ... (the default when test.env / TEST_ENV is unset).
 
 # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
+# Override repo root when Maven localRepository is not ~/.m2/repository, e.g.:
+#   sut.m2.repo: D:/repository
 # The framework launches these as black-box java -jar processes. third_party jars
 # are for code analysis only and are never used at runtime.
-  # Per-agent JVM -D system properties (overrides same-named keys in the global
-  # sut.java.system-properties and appends its own). Default: none. Set only when an agent
-  # needs JVM -D different from the global set, e.g.:
-  #   some-agent:
-  #     java:
-  #       system-properties:
-  # Per-agent Spring Boot -- command-line properties (one --key=value per entry). Use this — NOT
-  # java.system-properties (-D) — for Spring config keys with [i] indexes or dots, e.g.:
-  #   some-agent:
-  #     spring:
-  #       properties:
-  #         my.service.a2a.remote-agents[0].name: trip
-  # Per-agent override of the downstream-URL property-key prefix. Default is
-  # agent-runtime.remote-agents (the agent-runtime convention); set this only for an agent built
-  # on a different runtime framework, e.g.:
-  #   some-agent:
-  #     remote-agents-prefix: my.service.a2a.remote-agents
-  # —— The original travel chain (agent-travel-*-a2a). For the openjiuwen variant use
-  #    -Dtest.env=openjiuwen (see application-openjiuwen.yml). ——
-  # —— Backing services（后端服务）：testcontainer 拉起 + 动态地址注入到 agent ——
-  # services.<name>: 结构字段 image/port 驱动 managed 容器（getMappedPort 取映射端口）；
-  #   非空 url 则 remote（不拉容器）；env → 容器 withEnv（值支持 ${ENV[:default]}）。
-  # services:
-  #   redis:
-  #     image: redis:7-alpine
-  #     port: 6379
-  #   postgres:
-  #     image: postgres:16
-  #     port: 5432
-  #     env:
-  #       POSTGRES_USER: ${PG_USER:travel}
-  #       POSTGRES_PASSWORD: ${PG_PASS:travel}
-  #       POSTGRES_DB: travel
-  # agents.<name>.service-bindings.<svc>: 仅承载动态地址注入（url-key + 可选 url-template）。
-  #   静态凭证/参数走 spring.properties（${...} 由 agent Spring 原生解析）。
-  # agents:
-  #   mainplan:
-  #     spring:
-  #       properties:
-  #         agent.pg.username: ${PG_USER:travel}
-  #     service-bindings:
-  #       redis: { url-key: main-plan-agent.redis-url, url-template: "redis://{{url}}" }
-  #       postgres:
-  #         url-key: agent.pg.url
-  #         url-template: "jdbc:postgresql://{{url}}/${PG_DATABASE:travel}"
+#
+# Backing services (Testcontainers): declare image/port under sut.services.<name>.
+# Agents reference a service via sut.agents.<name>.service-bindings.<svc> (url-key + url-template only).
+# Use official Docker Hub image names here (e.g. redis:7-alpine). For mirror/accelerator
+# settings use ~/.testcontainers.properties locally — not in this repo.
 
 sut:
   timeout:
@@ -58,11 +20,25 @@ sut:
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
     startup-seconds: 60
+  services:
+    redis:
+      image: redis:7-alpine
+      port: 6379
   agents:
     mainplan:
       group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a
       version: 0.2.0-SNAPSHOT
+    # Same jar as mainplan; service-bindings start sut.services.redis and inject redis-url.
+    # Used by B-03 and B-04 Phase2 (redis checkpointer). B-04 Phase1 uses plain mainplan.
+    mainplan-redis:
+      group: com.huawei.ascend.examples
+      artifact: agent-travel-mainplan-a2a
+      version: 0.2.0-SNAPSHOT
+      service-bindings:
+        redis:
+          url-key: main-plan-agent.redis-url
+          url-template: "redis://{{url}}"
     trip:
       group: com.huawei.ascend.examples
       artifact: agent-trip-a2a

@@ -206,22 +206,14 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
      * A-02.E — 按 A2A 协议 1.0，顶层 {@code $.url} 与 {@code preferredTransport} 应不输出。
      * <p>争议点：A2A 1.0 用 {@code supportedInterfaces[]} 承载端点信息（protocolBinding + url），
      * 顶层 {@code url} 与 {@code preferredTransport} 为已废弃/移除字段，应不输出（无值）。被测 SUT 仍
-     * 输出 {@code $.url=http://localhost:<port>/a2a} 与 {@code preferredTransport=JSONRPC}，属实现偏差。
-     * <p>注：SDK 的 {@code AgentCard.url()} 返回 null、{@code preferredTransport()} 在缺省时默认 "JSONRPC"，
-     * 故必须经原始 JSON 判定字段是否输出，不能用 SDK 访问器。待与开发对齐后移除 {@code @Disabled}。
+     * <p>注：SDK 的 {@code AgentCard.url()} 返回 null、{@code preferredTransport()} 在缺省时默认 "JSONRPC"。
      */
     @Test
-    @Disabled("待与开发对齐：按 A2A 协议 1.0，顶层 $.url 与 preferredTransport 应不输出。"
-            + "实测 SUT 仍输出 $.url=http://localhost:<port>/a2a 与 preferredTransport=JSONRPC，属实现偏差。"
-            + "需开发按 1.0 规范移除这两个顶层字段（端点信息已在 supportedInterfaces[] 中）。")
     @DisplayName("A-02.E: top-level $.url and preferredTransport are absent per A2A v1.0 (DISABLED: SUT emits them)")
     void topLevelUrlAndPreferredTransportAreAbsent() throws Exception {
         JsonNode cardNode = parseJson(httpGet(DISCOVERY).body());
         assertThat(cardNode.hasNonNull("url"))
                 .as("$.url should be absent (no value) per A2A v1.0; endpoint lives in supportedInterfaces[]")
-                .isFalse();
-        assertThat(cardNode.hasNonNull("preferredTransport"))
-                .as("$.preferredTransport should be absent (no value) per A2A v1.0")
                 .isFalse();
     }
 

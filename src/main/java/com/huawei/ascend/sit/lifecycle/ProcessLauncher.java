@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Default {@link SutLauncher}: runs an agent as a black-box {@code java -jar}
@@ -42,14 +41,14 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ProcessLauncher implements SutLauncher {
 
     private static final String WELL_KNOWN = "/.well-known/agent.json";
-    /** Monotonic launch counter, so each agent's log file is unique even for random ports. */
-    private static final AtomicLong LAUNCH_SEQ = new AtomicLong();
 
     private final String m2RepoRoot;
     private final int startupTimeoutSeconds;
     private final String javaBin;
     private final Map<String, String> jvmSystemProperties;
     private final HttpClient http = HttpClient.newHttpClient();
+    /** Per-agent log root, from {@code sut.logging.dir} (default {@code ${basedir}/target/sit-logs}). */
+    private final Path logDir;
 
     /**
      * Merge global and per-agent JVM system properties: the global map provides defaults, the
@@ -76,20 +75,35 @@ public final class ProcessLauncher implements SutLauncher {
         // https.nonProxyHosts; Spring also resolves the agents' ${LLM_*} from these). Set via
         // sut.java.system-properties in application-<env>.yml.
         this.jvmSystemProperties = config.getStringMap("sut.java.system-properties");
+        this.logDir = resolveLogDir(config);
+    }
+
+    /** Resolved per-agent log root (package-private for unit testing the constructor wiring). */
+    Path logDir() {
+        return logDir;
     }
 
     @Override
     public ManagedSutInstance start(SutAgent agent, AgentConfig config) {
         Path jar = resolveJar(agent);
-        Path logFile = logFile(agent.name());
+        Path logFile = logFile(logDir, agent.name());
+        try {
+            Files.createDirectories(logFile.getParent());
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to create log directory " + logFile.getParent()
+                            + " for agent '" + agent.name() + "'", e);
+        }
 
         List<String> command = new ArrayList<>();
         command.add(javaBin);
         // JVM -D system properties MUST precede -jar. Global sut.java.system-properties provide
         // defaults; this agent's per-agent overrides (sut.agents.<name>.java.system-properties)
         // replace same-named keys and append their own — merged so each key emits exactly one -D.
-        mergeJvmSystemProperties(jvmSystemProperties, config.jvmSystemProperties())
-                .forEach((key, value) -> command.add("-D" + key + "=" + value));
+        Map<String, String> mergedJvm = withLogHome(
+                mergeJvmSystemProperties(jvmSystemProperties, config.jvmSystemProperties()),
+                logFile.getParent());
+        mergedJvm.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
         // config.port() drives --server.port (0 = OS-assigned random port).
@@ -97,7 +111,7 @@ public final class ProcessLauncher implements SutLauncher {
 
         ProcessBuilder pb = new ProcessBuilder(command)
                 .redirectErrorStream(true)
-                .redirectOutput(logFile.toFile());
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
         config.environment().forEach(pb.environment()::put);
 
         Process process;
@@ -190,9 +204,41 @@ public final class ProcessLauncher implements SutLauncher {
                 + tailLog(logFile));
     }
 
-    private static Path logFile(String agentName) {
-        String tmp = System.getProperty("java.io.tmpdir");
-        return Path.of(tmp, "sit-sut-" + agentName + "-" + LAUNCH_SEQ.incrementAndGet() + ".log");
+    /**
+     * Per-agent stdout redirect target: {@code <logDir>/<agentName>/stdout.log}.
+     * Package-private static so the path expression is unit-testable without launching a process.
+     */
+    static Path logFile(Path logDir, String agentName) {
+        return logDir.resolve(agentName).resolve("stdout.log");
+    }
+
+    /**
+     * Inject {@code -DLOG_HOME=<agentDir>} into the already-merged JVM system properties, unless the
+     * user explicitly set {@code LOG_HOME} (global {@code sut.java.system-properties} or per-agent
+     * {@code sut.agents.<name>.java.system-properties}). if-absent: the framework never overrides an
+     * explicit value. Package-private static for unit testing.
+     */
+    static Map<String, String> withLogHome(Map<String, String> mergedJvm, Path agentDir) {
+        if (mergedJvm.containsKey("LOG_HOME")) {
+            return mergedJvm;
+        }
+        Map<String, String> copy = new LinkedHashMap<>(mergedJvm);
+        copy.put("LOG_HOME", agentDir.toString());
+        return copy;
+    }
+
+    /**
+     * Resolve the per-agent log root from {@code sut.logging.dir}, defaulting to
+     * {@code ${basedir}/target/sit-logs} ({@code basedir} = the surefire system property, fallback
+     * {@code user.dir}). Package-private static for unit testing.
+     */
+    static Path resolveLogDir(TestConfig config) {
+        String configured = config.getString("sut.logging.dir");
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured);
+        }
+        String basedir = System.getProperty("basedir", System.getProperty("user.dir"));
+        return Path.of(basedir, "target", "sit-logs");
     }
 
     private static String tailLog(Path logFile) {

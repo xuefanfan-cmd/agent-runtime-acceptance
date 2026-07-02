@@ -1,0 +1,11 @@
+[Unit]
+Description=agent-runtime-acceptance: provision SUT into ~/.m2
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/home/liubin/agent_java/agent-runtime-acceptance
+Environment=SUT_SOURCE_DIR=/var/home/liubin/agent_java/spring-ai-ascend
+# Override ENV per deployment; default shown for openjiuwen.
+Environment=PROVISION_ENV=openjiuwen
+ExecStart=/var/home/liubin/agent_java/agent-runtime-acceptance/scripts/run-pipeline.sh --env ${PROVISION_ENV} --only-provision

@@ -1,0 +1,23 @@
+# SUT provisioning config — WHERE source lives + HOW to build it, per env.
+# application-<env>.yml (in src/test/resources/) remains the source of truth for
+# WHICH artifacts the tests need; provision-sut.sh cross-checks the two.
+#
+# ${VAR:default} expanded from environment. third_party/... is only the fallback
+# default — set SUT_SOURCE_DIR (and JAVA_HOME_21 / JAVA_HOME_17) per machine.
+# Fill `repo:` with a reachable git URL to enable lazy clone when the dir is absent.
+#
+# m2-root is NOT set here: derived from application-<env>.yml's sut.m2.repo
+# (default ~/.m2/repository) — see spec §5.
+
+env.local.source.repo:    https://github.com/chaosxingxc-orion/spring-ai-ascend.git
+env.local.source.ref:     release/v0.2.0-rc1
+env.local.source.dir:     ${SUT_SOURCE_DIR:third_party/spring-ai-ascend}
+env.local.java-home:      ${JAVA_HOME_21:}
+env.local.build.1:        examples/travel
+env.local.build.2:        examples/workflow-calls
+
+env.openjiuwen.source.repo:    https://github.com/chaosxingxc-orion/spring-ai-ascend.git
+env.openjiuwen.source.ref:     release/v0.2.0-rc1
+env.openjiuwen.source.dir:     ${SUT_SOURCE_DIR:third_party/spring-ai-ascend}
+env.openjiuwen.java-home:      ${JAVA_HOME_21:}
+env.openjiuwen.build.1:        examples/travel-openjiuwen

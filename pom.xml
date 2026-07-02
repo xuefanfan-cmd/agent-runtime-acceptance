@@ -24,7 +24,20 @@
         <a2a-sdk.version>1.0.0.Final</a2a-sdk.version>
         <awaitility.version>4.2.2</awaitility.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <allure.version>2.35.3</allure.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- ================================================================ -->
@@ -62,6 +75,16 @@
         <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-suite</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Allure JUnit 5 integration — auto-registers a JUnit Platform listener
+             that writes test results to target/allure-results/ on every test run.
+             Populates the data that allure:report / allure generate assemble.
+             NOTE: the original allure-junit5 artifact was relocated to allure-jupiter. -->
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -129,4 +152,24 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- Profile-activated: `./mvnw allure:report -Pallure-report` (or `allure:serve`).
+         Kept inside a profile so the plugin's auto-download of Node.js + the Allure 3
+         binary is NEVER triggered during normal builds (mvn test / verify / install).
+         run-pipeline.sh Stage 4 uses `allure generate` from the locally-installed CLI
+         instead — see the nvm-loading guard there. -->
+    <profiles>
+        <profile>
+            <id>allure-report</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.qameta.allure</groupId>
+                        <artifactId>allure-maven</artifactId>
+                        <version>3.0.2</version>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

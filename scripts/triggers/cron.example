@@ -1,0 +1,12 @@
+# Example crontab entries — adjust path, env, and cadence.
+# SUT source update + rebuild + run tests every 30min (weekdays), env=openjiuwen.
+# `cron` has a minimal PATH; set it explicitly.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/30 9-21 * * 1-5  cd /var/home/liubin/agent_java/agent-runtime-acceptance && \
+                   SUT_SOURCE_DIR=/var/home/liubin/agent_java/spring-ai-ascend \
+                   ./scripts/run-pipeline.sh --env openjiuwen >> logs/pipeline-openjiuwen.log 2>&1
+
+# Refresh only .m2 (no test run) hourly for env=local, so dev test runs start fast.
+0 * * * *        cd /var/home/liubin/agent_java/agent-runtime-acceptance && \
+                   SUT_SOURCE_DIR=/var/home/liubin/agent_java/spring-ai-ascend \
+                   ./scripts/run-pipeline.sh --env local --only-provision >> logs/provision-local.log 2>&1

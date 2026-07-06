@@ -12,8 +12,10 @@ import org.a2aproject.sdk.spec.AgentCard;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -28,7 +30,9 @@ import java.util.function.Consumer;
  * base URL into {@code <remoteAgentsPrefix>[i].url} — by default {@code agent-runtime.remote-agents[i].url}
  * (the agent-runtime convention), overridable per agent via {@code sut.agents.<name>.remote-agents-prefix}
  * for agents built on a different runtime framework (one slot per downstream, in declaration order).
- * An agent with several downstreams gets several slots.
+ * An agent with several downstreams gets several slots. {@link AgentBuilder#downstream(String, String)}
+ * overrides this: it sends a downstream's resolved URL to an agent-specific property key (with no
+ * positional slot) when the address must land somewhere other than {@code remote-agents[i].url}.
  *
  * <p><b>Managed vs remote is resolved from YAML — there is no code override.</b> For an agent
  * declared with {@code .agent(name)}, the framework reads {@code sut.agents.<name>}: a
@@ -143,8 +147,19 @@ public final class SutStack implements AutoCloseable {
                 if (entry.agent.isRemote()) {
                     instances.put(name, new RemoteSutInstance(name, entry.agent.remoteUrl()));
                 } else {
-                    for (int i = 0; i < downstreams.size(); i++) {
-                        entry.config.downstreamUrl(i, instances.get(downstreams.get(i)).baseUrl());
+                    // Inject each downstream's resolved base URL. A custom-key downstream
+                    // (downstream(name, propertyKey)) goes to its agent-specific property and skips a
+                    // positional slot; the rest fill <remoteAgentsPrefix>[i].url contiguously.
+                    int slot = 0;
+                    for (String dsName : downstreams) {
+                        String url = instances.get(dsName).baseUrl();
+                        String customKey = entry.config.downstreamPropertyKey(dsName);
+                        if (customKey != null) {
+                            entry.config.property(customKey, url);
+                        } else {
+                            entry.config.downstreamUrl(slot, url);
+                            slot++;
+                        }
                     }
                     instances.put(name, startManaged(name, entry));
                 }
@@ -223,6 +238,31 @@ public final class SutStack implements AutoCloseable {
     /** Base URL of an agent, e.g. {@code http://localhost:38211} (managed) or a remote address. */
     public String baseUrl(String name) {
         return requireInstance(name).baseUrl();
+    }
+
+    /**
+     * Absolute HTTP base URL of a backing service this stack owns (e.g. the {@code envmock} mid-platform),
+     * e.g. {@code http://localhost:33128}. Managed backing services are exposed by {@link BackingServices}
+     * as a bare {@code host:port} (the binding {@code url-template} adds the scheme when injected into
+     * agents); this accessor normalizes that to an absolute {@code http://} URL so HTTP clients can use it
+     * directly — mirroring {@link #baseUrl(String)}, which agents already advertise with a scheme. A remote
+     * backing service (declared with a {@code url}) is returned verbatim.
+     *
+     * @throws IllegalStateException if the stack owns no backing services, or the named service was not
+     *     referenced by any managed agent's {@code service-bindings}.
+     */
+    public String serviceUrl(String serviceName) {
+        if (ownedServices == null) {
+            throw new IllegalStateException("Backing service '" + serviceName
+                    + "' is not resolvable: this stack owns no backing services. Declare sut.services."
+                    + serviceName + " and reference it from a managed agent's service-bindings "
+                    + "(sut.agents.<name>.service-bindings." + serviceName + ").");
+        }
+        String url = ownedServices.url(serviceName);
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return "http://" + url;
+        }
+        return url;
     }
 
     /**
@@ -496,7 +536,8 @@ public final class SutStack implements AutoCloseable {
                 forInjection = null;
             } else {
                 owned = new BackingServices(config, referenced,
-                        containerFactory != null ? containerFactory : new TestContainerFactory());
+                        containerFactory != null ? containerFactory
+                                : new TestContainerFactory(ProcessLauncher.resolveLogDir(config)));
                 forInjection = owned;
             }
             if (forInjection != null) {
@@ -582,6 +623,24 @@ public final class SutStack implements AutoCloseable {
         }
 
         /**
+         * Wire a single downstream and inject its resolved base URL into a custom Spring property key
+         * (instead of the default positional {@code <remoteAgentsPrefix>[i].url} slot). Use when the
+         * downstream's address must land in an agent-specific property — e.g. a gateway that reads its
+         * plan-agent's base URL from {@code some.prefix.plan-agent-base-url} (the agent itself appends
+         * any endpoint path). The downstream name is still registered for readiness (its base URL is
+         * known before this agent launches), and a custom-key downstream consumes no positional index.
+         *
+         * <pre>{@code
+         * .agent("gateway", a -> a.downstream("plan-agent", "app.gateway.plan-agent-base-url"))
+         * }</pre>
+         */
+        public AgentBuilder downstream(String downstream, String propertyKey) {
+            this.downstreams.add(downstream);                                  // readiness: name → SutAgent.downstreams
+            this.configOverrides.downstreamPropertyKey(downstream, propertyKey); // custom-key injection at start()
+            return this;
+        }
+
+        /**
          * Wire one or more downstream agents. Each becomes its own indexed slot
          * ({@code agent-runtime.remote-agents[i].url}, in the given order), so a fan-out agent
          * dispatches to several downstreams.
@@ -596,6 +655,17 @@ public final class SutStack implements AutoCloseable {
         /** Spring profile to activate for this agent (default from config). */
         public AgentBuilder profile(String profile) {
             this.configOverrides.profile(profile);
+            return this;
+        }
+
+        /**
+         * How readiness is determined for this agent (default {@link AgentConfig.ReadyMode#AGENT_CARD}).
+         * Use {@link AgentConfig.ReadyMode#TCP} for non-A2A services that do not serve
+         * {@code /.well-known/agent.json} (e.g. a REST gateway) — the agent is ready once it owns a
+         * TCP LISTEN port. Also settable per agent via {@code sut.agents.<name>.ready-mode}.
+         */
+        public AgentBuilder readyMode(AgentConfig.ReadyMode readyMode) {
+            this.configOverrides.readyMode(readyMode);
             return this;
         }
 
@@ -657,6 +727,17 @@ public final class SutStack implements AutoCloseable {
             String yamlPrefix = config.getString("sut.agents." + name + ".remote-agents-prefix", "");
             if (!yamlPrefix.isBlank()) {
                 configOverrides.remoteAgentsPrefix(yamlPrefix);
+            }
+            String yamlReadyMode = config.getString("sut.agents." + name + ".ready-mode", "");
+            if (!yamlReadyMode.isBlank()) {
+                try {
+                    configOverrides.readyMode(AgentConfig.ReadyMode
+                            .valueOf(yamlReadyMode.trim().toUpperCase(Locale.ROOT)));
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalStateException("Agent '" + name + "' has unknown ready-mode '"
+                            + yamlReadyMode + "'; expected one of "
+                            + Arrays.toString(AgentConfig.ReadyMode.values()));
+                }
             }
             config.getStringMap("sut.agents." + name + ".java.system-properties")
                     .forEach(configOverrides::jvmSystemProperty);

@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.integration.expense_review;
+package com.huawei.ascend.sit.cases.integration.workflow_call;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;

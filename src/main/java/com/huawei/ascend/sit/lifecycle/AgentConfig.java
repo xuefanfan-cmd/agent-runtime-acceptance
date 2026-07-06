@@ -27,10 +27,33 @@ public final class AgentConfig {
      */
     public static final String REMOTE_AGENTS_URL_PREFIX = "agent-runtime.remote-agents";
 
+    /**
+     * How {@code ProcessLauncher} decides a managed agent is ready (and, for a random port, which
+     * listening port is the server). {@link #AGENT_CARD} (default) probes
+     * {@code GET /.well-known/agent.json} for a 200 — the A2A convention, which also disambiguates
+     * the server port when the process opens several listeners. {@link #TCP} treats the process as
+     * ready the moment it owns a TCP LISTEN port (recovered from the PID via {@link ListeningPorts})
+     * — for non-A2A services (e.g. a hand-written REST gateway) that do not serve an agent card.
+     */
+    public enum ReadyMode {
+        /** Ready when {@code GET /.well-known/agent.json} returns 200. */
+        AGENT_CARD,
+        /** Ready when the process owns at least one TCP LISTEN port. */
+        TCP
+    }
+
     private String profile = "";
     private int port = 0; // 0 => the OS assigns a random port (--server.port=0)
     private final Map<String, String> properties = new LinkedHashMap<>();
     private final Map<String, String> environment = new LinkedHashMap<>();
+
+    /**
+     * Per-downstream custom Spring property key that replaces the default positional
+     * {@code <remoteAgentsPrefix>[i].url} slot, keyed by downstream name. An absent entry means that
+     * downstream falls back to a positional slot. Seeded by
+     * {@code SutStack.AgentBuilder.downstream(name, propertyKey)}.
+     */
+    private final Map<String, String> downstreamPropertyKeys = new LinkedHashMap<>();
 
     /**
      * Property-key prefix used to inject a downstream agent's base URL: the i-th downstream goes to
@@ -57,6 +80,9 @@ public final class AgentConfig {
      */
     private String cardEndpointRedirectKey;
     private String cardEndpointRedirectPath = "/a2a";
+
+    /** How readiness is determined for this agent (default {@link ReadyMode#AGENT_CARD}). */
+    private ReadyMode readyMode = ReadyMode.AGENT_CARD;
 
     public AgentConfig profile(String profile) {
         this.profile = profile;
@@ -151,6 +177,25 @@ public final class AgentConfig {
     }
 
     /**
+     * Register a custom property key for a named downstream: at launch the framework writes the
+     * downstream's resolved base URL into this key (via {@link #property}) instead of the default
+     * positional {@code <remoteAgentsPrefix>[i].url} slot. Package-private — seeded only by
+     * {@code SutStack.AgentBuilder.downstream(name, propertyKey)}.
+     */
+    AgentConfig downstreamPropertyKey(String downstream, String propertyKey) {
+        downstreamPropertyKeys.put(downstream, propertyKey);
+        return this;
+    }
+
+    /**
+     * The custom property key registered for a named downstream, or {@code null} when the downstream
+     * should fall back to the default positional slot. Read by {@code SutStack.start()}.
+     */
+    public String downstreamPropertyKey(String downstream) {
+        return downstreamPropertyKeys.get(downstream);
+    }
+
+    /**
      * Redirect this agent's advertised agent-card endpoint through a toxiproxy fault link, using the
      * default path {@code /a2a}. The framework injects {@code --<propertyKey>=<listenUrl>/a2a} at
      * launch. Equivalent to {@link #cardEndpointRedirect(String, String)} with {@code "/a2a"}.
@@ -179,6 +224,17 @@ public final class AgentConfig {
     /** The path appended to the proxy listen URL in the injected property value (default {@code /a2a}). */
     public String cardEndpointRedirectPath() {
         return cardEndpointRedirectPath;
+    }
+
+    /** How readiness is determined for this agent (default {@link ReadyMode#AGENT_CARD}). */
+    public AgentConfig readyMode(ReadyMode readyMode) {
+        this.readyMode = readyMode == null ? ReadyMode.AGENT_CARD : readyMode;
+        return this;
+    }
+
+    /** How readiness is determined for this agent (default {@link ReadyMode#AGENT_CARD}). */
+    public ReadyMode readyMode() {
+        return readyMode;
     }
 
     /**

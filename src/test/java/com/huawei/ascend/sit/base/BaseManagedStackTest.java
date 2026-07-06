@@ -10,11 +10,10 @@ import org.junit.jupiter.api.TestInstance;
 /**
  * Base class for tests that bring up their own managed SUT stack.
  *
- * <p>This complements {@link BaseIntegrationTest} (which assumes a pre-deployed
- * SUT reachable at {@code sut.base.url}). Here the test <em>owns</em> the SUT
- * lifecycle at {@code @BeforeAll}/{@code @AfterAll} granularity: a subclass
- * declares which agents it needs via {@link #buildStack(TestConfig)}, the base
- * launches them once per class and tears them down afterwards.
+ * <p>Here the test <em>owns</em> the SUT lifecycle at
+ * {@code @BeforeAll}/{@code @AfterAll} granularity: a subclass declares which
+ * agents it needs via {@link #buildStack(TestConfig)}, the base launches them
+ * once per class and tears them down afterwards.
  *
  * <p>Uses {@link TestInstance.Lifecycle#PER_CLASS} so the lifecycle methods can
  * dispatch to the subclass-provided {@link #buildStack} — a single instance is

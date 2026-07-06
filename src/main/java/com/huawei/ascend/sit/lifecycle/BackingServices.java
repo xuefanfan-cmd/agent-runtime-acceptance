@@ -61,7 +61,7 @@ public final class BackingServices implements AutoCloseable {
         }
         Map<String, String> env = new LinkedHashMap<>();
         decl.env().forEach((k, v) -> env.put(k, EnvPlaceholders.resolve(v, envLookup)));
-        ManagedContainer container = factory.start(decl.image(), decl.port(), env);
+        ManagedContainer container = factory.start(decl.name(), decl.image(), decl.port(), env);
         owned.add(container);
         return new Resolved(container.host() + ":" + container.mappedPort(), false, container);
     }

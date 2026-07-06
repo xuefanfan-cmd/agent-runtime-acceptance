@@ -10,11 +10,15 @@ sut:
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
     startup-seconds: 60
-  # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
-  # The framework launches these as black-box java -jar processes. third_party jars
-  # are for code analysis only and are never used at runtime.
-  # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
+  services:
+    redis:
+      image: redis:7-alpine
+      port: 6379
+    envexplorer:
+      image: agent-env/env-explorer:20260705
+      port: 3001
   agents:
+    # Travel scenario
     mainplan:
       group: com.huawei.ascend.examples
       artifact: agent-openjiuwen-travel-mainplan
@@ -23,6 +27,18 @@ sut:
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+    mainplan-redis:
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-mainplan
+      version: 0.1.0
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+      service-bindings:
+        redis:
+          url-key: main-plan-agent.redis-url
+          url-template: "redis://{{url}}"
     trip:
       group: com.huawei.ascend.examples
       artifact: agent-openjiuwen-travel-trip
@@ -36,8 +52,51 @@ sut:
       artifact: agent-openjiuwen-travel-hotel
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
-  # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
-  # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
-  # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.
-  # Secrets (e.g. LLM_API_KEY) prefer the LLM_* env path (agents read ${LLM_*} natively).
-
+    # —— Expense Review（单 jar 双 profile；main profile 经 remote-agents[0] 调 workflow）——
+    expense-review-workflow:
+      group: com.huawei.ascend.examples
+      artifact: workflow-openjiuwen-expense-review
+      version: 0.2.0-SNAPSHOT
+    expense-review-main:
+      group: com.huawei.ascend.examples
+      artifact: workflow-openjiuwen-expense-review-main
+      version: 0.2.0-SNAPSHOT
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "expense-review"
+    edpa-gateway:
+      group: com.huawei.ascend.examples
+      artifact: workflow-openjiuwen-gateway
+      version: 0.2.0-SNAPSHOT
+      # 非 A2A 服务：不提供 /.well-known/agent.json，按 TCP LISTEN 端口判就绪（而非探 agent card）。
+      ready-mode: tcp
+    edpa-plan-agent:
+      group: com.huawei.ascend.examples
+      artifact: workflow-openjiuwen-plan-agent
+      version: 0.2.0-SNAPSHOT
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "versatile-call"
+    edpa-versatile-call:
+      group: com.huawei.ascend.examples
+      artifact: workflow-openjiuwen-versatile-call
+      version: 0.2.0-SNAPSHOT
+      service-bindings:
+        envexplorer:
+          url-key: openjiuwen.service.versatile.url-template
+          url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+#  java:
+#    system-properties:
+#      # —— HTTP proxy + no-proxy (standard JVM proxy properties) ——
+#      http.proxyHost:
+#      http.proxyPort:
+#      https.proxyHost:
+#      https.proxyPort:
+#      http.nonProxyHosts:
+#      # —— LLM (optional; overrides/aligns the agents' ${LLM_*}) ——
+#      LLM_API_BASE:
+#      LLM_MODEL:
+#      LLM_API_KEY:
+#      LLM_SSL_VERIFY:

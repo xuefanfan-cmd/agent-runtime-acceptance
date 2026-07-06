@@ -30,9 +30,11 @@ import java.util.concurrent.TimeUnit;
  *       OS pick a random port atomically (no pick-then-bind race);</li>
  *   <li>capture the {@link Process#pid() PID};</li>
  *   <li>when the port is random, resolve the actual listening port from the PID via
- *       {@link ListeningPorts} and confirm readiness by probing {@code /.well-known/agent.json}
- *       (also disambiguates the server port if the process opens more than one listener);</li>
- *   <li>for a fixed port, probe {@code /.well-known/agent.json} directly.</li>
+ *       {@link ListeningPorts} and confirm readiness — by default probing
+ *       {@code /.well-known/agent.json} (also disambiguates the server port if the process opens
+ *       more than one listener), or, for an agent whose {@link AgentConfig.ReadyMode} is
+ *       {@link AgentConfig.ReadyMode#TCP TCP}, by accepting its (highest) listening port;</li>
+ *   <li>for a fixed port, probe readiness the same way (agent card, or TCP-listen for TCP mode).</li>
  * </ol>
  *
  * <p>No SUT classes are required on the test classpath — the agent is observed
@@ -124,8 +126,8 @@ public final class ProcessLauncher implements SutLauncher {
         long pid = process.pid();
 
         int port = config.port() > 0
-                ? awaitFixedPort(agent, config.port(), process, logFile)
-                : resolveRandomPort(agent, pid, process, logFile);
+                ? awaitFixedPort(agent, config.port(), process, logFile, config)
+                : resolveRandomPort(agent, pid, process, logFile, config);
 
         String baseUrl = "http://localhost:" + port;
         return new ManagedSutInstance(agent.name(), pid, port, baseUrl, process, logFile);
@@ -143,13 +145,15 @@ public final class ProcessLauncher implements SutLauncher {
     }
 
     /**
-     * Fixed-port path: the port is known a priori, so just wait until it serves the agent card.
+     * Fixed-port path: the port is known a priori, so just wait until it is ready. For
+     * {@link AgentConfig.ReadyMode#AGENT_CARD} that means the agent card responds 200; for
+     * {@link AgentConfig.ReadyMode#TCP} it means the process is listening on exactly that port.
      */
-    private int awaitFixedPort(SutAgent agent, int port, Process process, Path logFile) {
+    private int awaitFixedPort(SutAgent agent, int port, Process process, Path logFile, AgentConfig config) {
         long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(startupTimeoutSeconds);
         while (System.nanoTime() < deadlineNanos) {
             failFastIfExited(agent, process, logFile);
-            if (probeReady(port)) {
+            if (isReady(port, process.pid(), config)) {
                 return port;
             }
             sleep500ms();
@@ -159,22 +163,61 @@ public final class ProcessLauncher implements SutLauncher {
 
     /**
      * Random-port path: poll the PID's listening ports (via {@link ListeningPorts}) and return the
-     * first that serves the agent card. This both recovers the OS-assigned port and confirms
-     * readiness, disambiguating the server port if the process opens extra listeners.
+     * one that is ready. For {@link AgentConfig.ReadyMode#AGENT_CARD} that is the port serving the
+     * agent card (also disambiguates the server port if the process opens extra listeners); for
+     * {@link AgentConfig.ReadyMode#TCP} it is the (highest) listening port — for non-A2A services.
      */
-    private int resolveRandomPort(SutAgent agent, long pid, Process process, Path logFile) {
+    private int resolveRandomPort(SutAgent agent, long pid, Process process, Path logFile, AgentConfig config) {
         long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(startupTimeoutSeconds);
         while (System.nanoTime() < deadlineNanos) {
             failFastIfExited(agent, process, logFile);
             Set<Integer> candidates = ListeningPorts.of(pid);
-            for (int port : candidates) {
-                if (probeReady(port)) {
+            if (config.readyMode() == AgentConfig.ReadyMode.TCP) {
+                int port = selectTcpPort(candidates);
+                if (port > 0) {
                     return port;
+                }
+            } else {
+                for (int port : candidates) {
+                    if (probeReady(port)) {
+                        return port;
+                    }
                 }
             }
             sleep500ms();
         }
         throw notReady(agent, "PID " + pid + " (random port, not yet resolved)", logFile);
+    }
+
+    /**
+     * Fixed-port readiness: {@link AgentConfig.ReadyMode#AGENT_CARD} probes the agent card;
+     * {@link AgentConfig.ReadyMode#TCP} checks the process is listening on the port.
+     */
+    private boolean isReady(int port, long pid, AgentConfig config) {
+        if (config.readyMode() == AgentConfig.ReadyMode.TCP) {
+            return ListeningPorts.of(pid).contains(port);
+        }
+        return probeReady(port);
+    }
+
+    /**
+     * Pick the readiness port from a PID's listeners for {@link AgentConfig.ReadyMode#TCP}: the
+     * highest-numbered listening port. A single listener is returned as-is; when several are open
+     * the highest wins (Spring Boot random {@code --server.port=0} lands on a high ephemeral port,
+     * while fixed management ports are typically lower). Returns {@code 0} when none. Package-private
+     * and static so the selection rule is unit-testable without launching a process.
+     */
+    static int selectTcpPort(Set<Integer> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return 0;
+        }
+        int best = 0;
+        for (int p : candidates) {
+            if (p > best) {
+                best = p;
+            }
+        }
+        return best;
     }
 
     /** {@code true} iff the agent card endpoint responds 200 on {@code localhost:port}. */

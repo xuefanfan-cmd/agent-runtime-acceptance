@@ -1,0 +1,8 @@
+{
+  "_doc": "OJ-08 — hotel MCP demo_echo streaming. See docs/cases/OJ-08-openjiuwen-mcp-tool-call.md",
+  "inputText": "请调用 demo_echo 工具，输入 text=hello",
+  "expectedTerminalState": "TASK_STATE_COMPLETED",
+  "expectedResponseSubstrings": ["demo_echo:hello"],
+  "preferredMcpPort": 18080,
+  "timeoutMs": 120000
+}

@@ -186,6 +186,15 @@ public final class AgentConfig {
         downstreamPropertyKeys.put(downstream, propertyKey);
         return this;
     }
+    /**
+     * Wire both registry {@code name} and {@code url} for runtimes (e.g. openjiuwen) whose
+     * remote-agent list binds both fields — injecting url alone leaves name null and crashes discovery.
+     */
+    public AgentConfig downstreamRemoteAgent(int index, String name, String url) {
+        property(remoteAgentsPrefix + "[" + index + "].name", name);
+        property(remoteAgentsPrefix + "[" + index + "].url", url);
+        return this;
+    }
 
     /**
      * The custom property key registered for a named downstream, or {@code null} when the downstream

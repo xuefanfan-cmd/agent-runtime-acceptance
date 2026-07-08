@@ -1,0 +1,8 @@
+{
+  "_doc": "OJ-09 — hotel sandbox python print('ok') streaming. See docs/cases/OJ-09-openjiuwen-sandbox-code-execution.md",
+  "inputText": "在沙箱用 python 执行 print('ok') 并返回输出",
+  "expectedTerminalState": "TASK_STATE_COMPLETED",
+  "expectedResponseSubstrings": ["ok"],
+  "sandboxHealthUrl": "http://127.0.0.1:8321/health",
+  "timeoutMs": 180000
+}

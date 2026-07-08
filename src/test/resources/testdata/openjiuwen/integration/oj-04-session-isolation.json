@@ -1,0 +1,20 @@
+{
+  "_doc": "OJ-04 — session isolation. See docs/cases/OJ-04-openjiuwen-session-isolation.md",
+  "turn2Text": "住宿标准每晚 800 以内",
+  "timeoutMs": 120000,
+  "turn2MustMatchAny": ["住宿", "800", "出差"],
+  "sessions": [
+    {
+      "contextId": "oj-04-session-a",
+      "turn1": "我计划去上海出差 3 天",
+      "expectedCity": "上海",
+      "forbiddenDominantCity": "北京"
+    },
+    {
+      "contextId": "oj-04-session-b",
+      "turn1": "我计划去北京出差 3 天",
+      "expectedCity": "北京",
+      "forbiddenDominantCity": "上海"
+    }
+  ]
+}

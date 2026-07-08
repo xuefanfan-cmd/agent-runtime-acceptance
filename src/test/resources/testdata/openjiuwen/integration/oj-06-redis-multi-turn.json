@@ -1,0 +1,17 @@
+{
+  "_doc": "OJ-06 — Redis checkpointer two-turn (openjiuwen streaming). See docs/cases/OJ-06-openjiuwen-redis-checkpointer-multi-turn.md",
+  "turn1Text": "我要出差",
+  "turn2Text": "去北京",
+  "turn1TimeoutMs": 90000,
+  "turn2TimeoutMs": 120000,
+  "turn1AllowedTerminalStates": ["TASK_STATE_COMPLETED", "TASK_STATE_INPUT_REQUIRED"],
+  "turn2AllowedTerminalStates": ["TASK_STATE_COMPLETED", "TASK_STATE_INPUT_REQUIRED"],
+  "turn2ExpectedTerminalState": "TASK_STATE_COMPLETED",
+  "turn2MustMatchAny": ["北京", "出差"],
+  "turn2MustNotMatchAny": [
+    "是否要出差",
+    "你想出差吗",
+    "您要去哪里出差",
+    "请告诉我您的目的地"
+  ]
+}

@@ -4,6 +4,7 @@ build/
 out/
 *.class
 *.jar
+allure-results/
 
 # IDE
 .idea/

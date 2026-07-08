@@ -1,0 +1,17 @@
+{
+  "_doc": "OJ-11 — hotel skill profile hotel_ranking streaming. See docs/cases/OJ-11-openjiuwen-skill-hub-dynamic-trigger.md",
+  "inputText": "请使用 hotel_ranking skill，为以下需求排序并推荐酒店：城市：北京；入住 2026-07-10，离店 2026-07-13；每晚价格上限 800 元；最低 4 星；偏好国贸附近。",
+  "expectedTerminalState": "TASK_STATE_COMPLETED",
+  "mustMatchAny": [
+    "[符合差标]",
+    "[不符合差标]",
+    "推荐：",
+    "★",
+    "¥"
+  ],
+  "mustMatchMinCount": 2,
+  "mustMentionCity": "北京",
+  "businessContextKeywords": ["800", "4星", "四星", "¥"],
+  "mustNotBeOnlyCapabilityBlurb": true,
+  "timeoutMs": 180000
+}

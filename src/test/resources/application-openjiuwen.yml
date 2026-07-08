@@ -17,6 +17,10 @@ sut:
     envexplorer:
       image: agent-env/env-explorer:20260705
       port: 3001
+  # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
+  # The framework launches these as black-box java -jar processes. third_party jars
+  # are for code analysis only and are never used at runtime.
+  # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
     # Travel scenario
     mainplan:

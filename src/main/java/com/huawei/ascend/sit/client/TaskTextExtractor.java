@@ -38,6 +38,39 @@ public final class TaskTextExtractor {
         return sb.toString().trim();
     }
 
+    /** Concatenate history, artifacts, and status message — full task snapshot text. */
+    public static String fullSnapshotTextOf(Task task) {
+        if (task == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (task.history() != null) {
+            for (var message : task.history()) {
+                appendText(sb, message.parts());
+            }
+        }
+        if (task.artifacts() != null) {
+            for (Artifact artifact : task.artifacts()) {
+                appendText(sb, artifact.parts());
+            }
+        }
+        if (task.status() != null && task.status().message() != null) {
+            appendText(sb, task.status().message().parts());
+        }
+        return sb.toString().trim();
+    }
+
+    /** Agent dialogue corpus across one or more task snapshots (Turn1 + Turn2). */
+    public static String agentDialogueOf(Task... tasks) {
+        StringBuilder sb = new StringBuilder();
+        if (tasks != null) {
+            for (Task task : tasks) {
+                sb.append(fullSnapshotTextOf(task));
+            }
+        }
+        return sb.toString().trim();
+    }
+
     private static void appendText(StringBuilder sb, List<Part<?>> parts) {
         if (parts == null) {
             return;

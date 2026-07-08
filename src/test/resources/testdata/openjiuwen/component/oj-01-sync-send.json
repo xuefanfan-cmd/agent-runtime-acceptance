@@ -1,0 +1,7 @@
+{
+  "_doc": "OJ-01 — sync SendMessage minimal loop. See docs/cases/OJ-01-openjiuwen-sync-send-minimal.md",
+  "inputText": "你好",
+  "sendTimeoutMs": 120000,
+  "expectedTerminalState": "TASK_STATE_COMPLETED",
+  "minResponseLength": 1
+}

@@ -107,6 +107,14 @@
             <artifactId>testcontainers-toxiproxy</artifactId>
             <version>${testcontainers.version}</version>
         </dependency>
+
+        <!-- OJ-08 Mock MCP server main class (classpath assembly for subprocess launch) -->
+        <dependency>
+            <groupId>com.huawei.ascend.examples</groupId>
+            <artifactId>travel-openjiuwen-test-support</artifactId>
+            <version>0.1.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

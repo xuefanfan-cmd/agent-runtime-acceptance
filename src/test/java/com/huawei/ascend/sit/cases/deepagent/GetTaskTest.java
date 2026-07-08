@@ -9,10 +9,10 @@ import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
+import org.a2aproject.sdk.spec.A2AClientException;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.Task;
-import org.a2aproject.sdk.spec.TaskNotFoundError;
 import org.a2aproject.sdk.spec.TaskState;
 import org.a2aproject.sdk.spec.TextPart;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +27,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
@@ -41,8 +41,8 @@ import static org.assertj.core.api.Assertions.fail;
  * <p><b>Bug 断言</b>：与 DA-02/DA-03 相同，artifact 中含 bug 标志串即 FAIL。
  *
  * <p><b>负路径</b>：{@link #getTaskWithNonExistentIdShouldReturnProtocolError()} —— §4 手工脚本
- * 记录了另一 bug：查询不存在的 taskId 时，SUT 抛 HTTP 500 + `TaskNotFoundError` 堆栈到客户端，
- * 而不是走 JSON-RPC 协议错误路径。期望 SDK 抛 {@link TaskNotFoundError}（即服务端返回了
+ * 记录了另一 bug：查询不存在的 taskId 时，SUT 抛 HTTP 500 + `A2AClientException` 堆栈到客户端，
+ * 而不是走 JSON-RPC 协议错误路径。期望 SDK 抛 {@link A2AClientException}（即服务端返回了
  * 结构化协议错误 -32001）；若抛的是 HTTP 层通用异常，说明 SUT 复现该 bug。
  */
 @Tag("integration")
@@ -128,18 +128,29 @@ class GetTaskTest extends BaseManagedStackTest {
     }
 
     @Test
-    @DisplayName("DA-04.F: getTask(<不存在 id>) 应抛 TaskNotFoundError（协议错误），而非 HTTP 500 通用异常")
+    @DisplayName("DA-04.F: getTask(<不存在 id>) 应走 JSON-RPC 协议错误路径（unmarshalResponse 抛 A2AClientException + 'Task not found'），而非 HTTP 500 泄漏")
     void getTaskWithNonExistentIdShouldReturnProtocolError() {
         A2aServiceClient a2a = client(DEEP_RESEARCH);
 
         String fakeTaskId = UUID.randomUUID().toString();
 
-        assertThatThrownBy(() -> a2a.getTask(fakeTaskId))
-                .as("DA-04.F: 查询不存在的 taskId=%s 应触发 SDK 抛出 TaskNotFoundError（-32001）；"
-                        + "若抛的是 A2AClientHTTPError / 通用 A2AException/RuntimeException，"
-                        + "说明 SUT 复现 §4 bug —— 服务端把 TaskNotFoundError 泄漏成 HTTP 500 而非 JSON-RPC 协议错误。",
+        Throwable thrown = catchThrowable(() -> a2a.getTask(fakeTaskId));
+
+        assertThat(thrown)
+                .as("DA-04.F: 查询不存在的 taskId=%s 应抛 A2AClientException（SDK 1.0.0.Final 不按 code 分流具体子类）",
                         fakeTaskId)
-                .isInstanceOf(TaskNotFoundError.class);
+                .isInstanceOf(A2AClientException.class)
+                .hasMessageContaining("Task not found");
+
+        // 抛点识别：unmarshalResponse = 服务端返回了规范 JSON-RPC 错误 body（PASS 路径）；
+        // sendPostRequest = 服务端把异常泄漏成 HTTP 500（§4 bug 复现，FAIL）。
+        String topFrameMethod = thrown.getStackTrace().length == 0
+                ? ""
+                : thrown.getStackTrace()[0].getMethodName();
+        assertThat(topFrameMethod)
+                .as("DA-04.F: 异常应从 JSONRPCTransport.unmarshalResponse 抛出（服务端返回规范 JSON-RPC 错误 body）；"
+                        + "若抛点是 sendPostRequest，说明 SUT 复现 §4 bug —— 未捕获异常导致 HTTP 500 泄漏。")
+                .isEqualTo("unmarshalResponse");
     }
 
     private static Optional<Task> taskFrom(ClientEvent event) {

@@ -88,12 +88,18 @@ depends_on:
 
 ### DA-04.F — 查询不存在 taskId 应走 JSON-RPC 协议错误路径（**负路径看门狗**）
 - **Given**：deep-research 可达；`fakeTaskId = UUID.randomUUID()`（服务端无此 task）。
-- **When**：`client.getTask(fakeTaskId)`。
-- **Then**：SDK 抛 `org.a2aproject.sdk.spec.TaskNotFoundError`（对应 A2A 协议 `-32001 TaskNotFound`）。
-- **PASS**：抛的是 `TaskNotFoundError`。**FAIL**：抛的是 `A2AClientHTTPError`（HTTP 500）或
-  其他通用 `A2AException` / `RuntimeException`——SUT 把 `TaskNotFoundError` 泄漏成 HTTP 500 servlet
-  error（§4 手工脚本记录：SUT 直接把 `TaskNotFoundError` 堆栈抛到 dispatcherServlet 层，
-  客户端拿到的是 Spring 通用错误 JSON，而不是 A2A 协议错误 body）。
+- **When**：`client.getTask(fakeTaskId)`；用 `catchThrowable(...)` 拿到抛出的异常。
+- **Then**：
+  1. 异常类型是 `org.a2aproject.sdk.spec.A2AClientException`（SDK `1.0.0.Final` 的
+     `JSONRPCTransport.unmarshalResponse` 不按 JSON-RPC error code 分流具体子类——例如
+     `-32001` 不会映射为 `TaskNotFoundError`，所有非空 `A2AError` 一律包成通用
+     `A2AClientException`；这是 SDK 层已确认的行为，见 §9 备注）；
+  2. `getMessage()` 含 `"Task not found"`（即服务端返回的 JSON-RPC 错误 body 里带有该 message）；
+  3. 抛出栈顶帧的方法名 = `unmarshalResponse`——代表服务端已按 A2A 规范返回 JSON-RPC 错误
+     body，SDK 是在反序列化层抛出的；若栈顶是 `sendPostRequest`，则代表异常泄漏成 HTTP 500，
+     即 §4 记录的 bug 复现。
+- **PASS**：三条同时满足。**FAIL**：抛点是 `sendPostRequest`（HTTP 500 泄漏，未被 SUT 捕获），
+  或异常类型 / 消息不匹配。
 
 ## 5. 测试数据
 
@@ -112,7 +118,7 @@ depends_on:
 | 客户端 | `client("deep-research").sendMessage(...)` + `client("deep-research").getTask(taskId)` |
 | 事件收集 | `A2aEventCollector` + `awaitTerminalState` + `findTerminalEvent` |
 | 文本抽取 | `TaskTextExtractor.textOf(task)` |
-| 断言 | AssertJ：`isEqualTo(COMPLETED)` / `isEqualTo(taskId)` / `isEqualTo(sendText)` / `doesNotContain(BUG_MARKER)` / `assertThatThrownBy(...).isInstanceOf(TaskNotFoundError.class)` |
+| 断言 | AssertJ：`isEqualTo(COMPLETED)` / `isEqualTo(taskId)` / `isEqualTo(sendText)` / `doesNotContain(BUG_MARKER)` / `catchThrowable(...)` + `isInstanceOf(A2AClientException.class)` + `hasMessageContaining("Task not found")` + `getStackTrace()[0].getMethodName().equals("unmarshalResponse")` |
 
 ## 7. 运行方式
 
@@ -136,3 +142,9 @@ depends_on:
   （比如时间戳字段），需与 SUT 侧对齐是否要放宽为 `contains(核心输出)`。
 - **不测流式 GetTask**：本档 send 走同步；流式 send 的完整事件序列已由 [DA-03](DA-03-streaming-send-message.md) 覆盖。
 - **不测跨进程持久化**：GetTask 只做同进程内查询；跨 JVM 持久化由 [DA-05-2](DA-05-2-redis-checkpointer-recall.md) 覆盖。
+- **DA-04.F 为何不断言 `TaskNotFoundError`**：反编译 `a2a-java-sdk-client-transport-jsonrpc:1.0.0.Final`
+  的 `JSONRPCTransport.unmarshalResponse` 可见——它只判断 `A2AResponse.getError() != null` 就统一抛
+  `A2AClientException`，不 switch JSON-RPC error code，也就永远不会实例化 `TaskNotFoundError`。
+  因此在当前 SDK 版本下断言具体子类恒为 FAIL；本档改用「异常类型 + 消息 + 抛点方法名」组合，
+  用抛点方法（`unmarshalResponse` vs `sendPostRequest`）区分服务端是否走了 JSON-RPC 错误 body。
+  若未来升级 SDK 并支持按 code 分流，可回收紧到 `isInstanceOf(TaskNotFoundError.class)`。

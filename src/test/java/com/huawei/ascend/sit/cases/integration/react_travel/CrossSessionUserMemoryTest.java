@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.integration.travel_assistant;
+package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CrossSessionUserMemoryTest extends BaseManagedStackTest {
 
     private static final String CASES_RESOURCE =
-            "testdata/integration/travel_assistant/b06-memory-cases.json";
+            "testdata/integration/react_travel/b06-memory-cases.json";
     private static final long ROUND_TIMEOUT_MS = 240_000;
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";

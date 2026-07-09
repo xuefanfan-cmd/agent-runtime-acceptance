@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.integration.travel_assistant;
+package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConcurrentSessionIsolationTest extends BaseManagedStackTest {
 
     private static final String CASES_RESOURCE =
-            "testdata/integration/travel_assistant/a11-1-isolation-cases.json";
+            "testdata/integration/react_travel/a11-1-isolation-cases.json";
     private static final long ROUND_TIMEOUT_MS = 120_000;
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";

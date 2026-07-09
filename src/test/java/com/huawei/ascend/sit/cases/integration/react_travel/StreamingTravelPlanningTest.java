@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.integration.travel_assistant;
+package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;

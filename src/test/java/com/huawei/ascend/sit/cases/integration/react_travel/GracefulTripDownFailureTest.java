@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.integration.travel_assistant;
+package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,7 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GracefulTripDownFailureTest extends BaseManagedStackTest {
 
     private static final String CASE_RESOURCE =
-            "testdata/integration/travel_assistant/b09-trip-down-cases.json";
+            "testdata/integration/react_travel/b09-trip-down-cases.json";
     private static final long ROUND_TIMEOUT_MS = 180_000;
     private static final Duration TRIP_PROBE_TIMEOUT = Duration.ofSeconds(3);
     private static final String MAINPLAN = "mainplan";

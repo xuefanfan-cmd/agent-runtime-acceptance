@@ -99,7 +99,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/component/OpenjiuwenSyncContextIdTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/protocol/OpenjiuwenSyncContextIdTest.java` |
 | 标签 | `@Tag("component") @Tag("openjiuwen")` |
 | 基类 | `BaseManagedStackTest` |
 | 栈 | `.streaming(false).agent("mainplan")` |

@@ -5,6 +5,7 @@ out/
 *.class
 *.jar
 allure-results/
+.travel-hotel-skills/
 
 # IDE
 .idea/

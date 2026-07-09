@@ -24,7 +24,7 @@ public record RedisMultiTurnScenarioData(
         long redisStartupMs
 ) {
 
-    public static final String DEFAULT_TESTDATA_PATH = "integration/checkpointer/b03-redis-multi-turn.json";
+    public static final String DEFAULT_TESTDATA_PATH = "integration/react_travel/b03-redis-multi-turn.json";
 
     public static RedisMultiTurnScenarioData loadDefault() {
         return TestDataLoader.load(DEFAULT_TESTDATA_PATH, RedisMultiTurnScenarioData.class);

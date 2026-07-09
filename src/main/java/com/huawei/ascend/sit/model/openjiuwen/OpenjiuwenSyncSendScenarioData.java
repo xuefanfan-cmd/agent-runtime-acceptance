@@ -15,7 +15,7 @@ public record OpenjiuwenSyncSendScenarioData(
         int minResponseLength
 ) {
 
-    public static final String DEFAULT_TESTDATA_PATH = "openjiuwen/component/oj-01-sync-send.json";
+    public static final String DEFAULT_TESTDATA_PATH = "component/protocol/oj-01-sync-send.json";
 
     public static OpenjiuwenSyncSendScenarioData loadDefault() {
         return TestDataLoader.load(DEFAULT_TESTDATA_PATH, OpenjiuwenSyncSendScenarioData.class);

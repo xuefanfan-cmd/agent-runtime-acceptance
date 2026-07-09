@@ -8,7 +8,7 @@ feature: 特性2-4
 status: designed
 sut: main-plan-agent
 stack: mainplan（单 agent）+ Testcontainers Redis（仅 Phase2）
-tags: [integration, smoke]
+tags: [component, smoke]
 depends_on:
   - mainplan fat jar 可构建并安装至本地 Maven 仓库
   - Docker 可用（managed Phase2 Testcontainers Redis）
@@ -133,7 +133,7 @@ Phase2 额外 **硬门禁**：
 **建议抽取共享 helper**（实现 B-03 时一并落地）：
 
 ```text
-com.huawei.ascend.sit.cases.integration.checkpointer.TwoTurnDialogueRunner
+com.huawei.ascend.sit.cases.component.singleagent.TwoTurnDialogueRunner
   run(mainplanClient, RedisMultiTurnScenarioData) → TwoTurnResult
 com.huawei.ascend.sit.support.checkpointer.ContextUnderstandingAssertions
   assertTurn2Semantics(text, RedisMultiTurnScenarioData)
@@ -172,7 +172,7 @@ B-04 测试类只编排 **两阶段栈 + 两次调用 runner**。
 
 **复用** B-03 文件（不新建 B-04 专用 json）：
 
-`src/test/resources/testdata/integration/checkpointer/b03-redis-multi-turn.json`
+`src/test/resources/testdata/integration/react_travel/b03-redis-multi-turn.json`
 
 加载：`RedisMultiTurnScenarioData.loadDefault()`（或等价常量路径）。
 
@@ -182,8 +182,8 @@ B-04 测试类只编排 **两阶段栈 + 两次调用 runner**。
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/checkpointer/CheckpointerConfigSwitchTest.java` |
-| 标签 | `@Tag("integration")` `@Tag("smoke")` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/CheckpointerConfigSwitchTest.java` |
+| 标签 | `@Tag("component")` `@Tag("smoke")` |
 | 生命周期 | **不推荐** 默认 `BaseManagedStackTest` 单栈 `@BeforeAll`；在 **单个 `@Test`** 内对 Phase1/Phase2 各 `try (SutStack stack = builder.start()) { ... }` |
 | Phase1 栈 | `SutStack.builder(config).streaming(true).agent("mainplan", a -> a.property("main-plan-agent.checkpointer", "in-memory"))` |
 | Phase2 栈 | 同上，仅改 `checkpointer=redis` + `redis-url=redisUrl` |

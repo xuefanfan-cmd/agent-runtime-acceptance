@@ -8,7 +8,7 @@ feature: hotel DecoratedSandboxToolRegistrar + jiuwenbox（executeCode）
 status: designed
 sut: agent-openjiuwen-travel-hotel
 stack: hotel（单 agent，managed）+ jiuwenbox 沙箱服务
-tags: [integration, openjiuwen, nightly]
+tags: [component, openjiuwen, nightly]
 depends_on:
   - 第二步 S-03：hotel `sandbox` profile + `application-sandbox.yml`
   - jiuwenbox 兼容沙箱在 `SANDBOX_HOST:SANDBOX_PORT` 可达（默认 127.0.0.1:8321）
@@ -99,7 +99,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-09-sandbox-python-ok.json`
+`src/test/resources/testdata/component/singleagent/oj-09-sandbox-python-ok.json`
 
 ```json
 {
@@ -117,7 +117,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenSandboxCodeExecutionTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenSandboxCodeExecutionTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；建议 `@Tag("nightly")` |
 | 栈 | `.streaming(true).agent("hotel", a -> a.profile("sandbox").env("SANDBOX_PORT", "8321"))` |
 | 客户端 | `A2aEventCollector` + `TaskTextExtractor.textOf`；参考 A-04 |

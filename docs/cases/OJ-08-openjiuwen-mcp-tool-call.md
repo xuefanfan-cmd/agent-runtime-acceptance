@@ -8,7 +8,7 @@ feature: hotel ExternalSvcAdapterRegistrar + Mock MCP（demo_echo）
 status: designed
 sut: agent-openjiuwen-travel-hotel
 stack: hotel（单 agent，managed）+ Mock MCP Server（test-support JAR）
-tags: [integration, openjiuwen, nightly]
+tags: [component, openjiuwen, nightly]
 depends_on:
   - 第二步 S-02：hotel `mcp` profile + `application-mcp.yml`
   - `travel-openjiuwen-test-support-0.1.0.jar` 可构建（Mock MCP，`demo_echo` / `district_hint`）
@@ -100,7 +100,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-08-mcp-demo-echo.json`
+`src/test/resources/testdata/component/singleagent/oj-08-mcp-demo-echo.json`
 
 ```json
 {
@@ -118,7 +118,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenMcpToolCallTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenMcpToolCallTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；建议 `@Tag("nightly")` |
 | 基类 | `BaseManagedStackTest` 或自管 Mock MCP + 单 agent 栈 |
 | 栈 | `SutStack.builder(config).streaming(true).agent("hotel", a -> a.profile("mcp").env("MCP_PORT", port))` |

@@ -19,7 +19,7 @@ public record OpenjiuwenSandboxPythonOkScenarioData(
 ) {
 
     public static OpenjiuwenSandboxPythonOkScenarioData loadDefault() {
-        return TestDataLoader.load("openjiuwen/integration/oj-09-sandbox-python-ok.json",
+        return TestDataLoader.load("component/singleagent/oj-09-sandbox-python-ok.json",
                 OpenjiuwenSandboxPythonOkScenarioData.class);
     }
 

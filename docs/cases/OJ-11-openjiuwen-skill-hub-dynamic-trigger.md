@@ -8,7 +8,7 @@ feature: hotel skill profile + bundled hotel_ranking SKILL.md + sysop readFile/e
 status: designed
 sut: agent-openjiuwen-travel-hotel
 stack: hotel（单 agent，`skill` profile；**不** 与 sandbox 同启）
-tags: [integration, openjiuwen, nightly]
+tags: [component, openjiuwen, nightly]
 depends_on:
   - 第二步 S-04：`HotelSkillSupport` + `skills/hotel_ranking/SKILL.md`
   - LLM 可用（须能按 skill 工作流调用 readFile / hotel_search / executeCode）
@@ -107,7 +107,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-11-skill-hotel-ranking.json`
+`src/test/resources/testdata/component/singleagent/oj-11-skill-hotel-ranking.json`
 
 ```json
 {
@@ -133,7 +133,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenSkillHubTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenSkillHubTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；建议 `@Tag("nightly")` |
 | 栈 | `.streaming(true).agent("hotel", a -> a.profile("skill"))` |
 | 客户端 | `A2aEventCollector`；参考 A-04 / A-07 |

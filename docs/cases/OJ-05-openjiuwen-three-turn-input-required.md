@@ -109,7 +109,7 @@ depends_on:
 
 ## 6. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-05-three-turn-collection.json`
+`src/test/resources/testdata/integration/react_travel/oj-05-three-turn-collection.json`
 
 ```json
 {
@@ -134,7 +134,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenThreeTurnInputRequiredTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/react_travel/OpenjiuwenThreeTurnInputRequiredTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")` |
 | 基类 | `BaseManagedStackTest` |
 | 栈 | `.streaming(false)` 或 `.streaming(true)`（见 §1 传输模式说明）<br>`.agent("hotel").agent("trip", d→hotel).agent("mainplan", d→trip)` |

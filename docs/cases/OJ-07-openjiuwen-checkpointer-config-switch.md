@@ -8,7 +8,7 @@ feature: openjiuwen Checkpointer 通过 Spring profile 切换 in_memory ↔ redi
 status: designed
 sut: agent-openjiuwen-travel-mainplan
 stack: mainplan（单 agent）+ Testcontainers Redis（仅 Phase2）
-tags: [integration, openjiuwen, nightly]
+tags: [component, openjiuwen, nightly]
 depends_on:
   - 第二步 S-01 已合并
   - OJ-06 语义 helper / testdata 可复用
@@ -103,7 +103,7 @@ Phase2 额外硬门禁：`profile=redis` + Redis env 已注入。
 
 **复用** OJ-06 文件：
 
-`src/test/resources/testdata/openjiuwen/integration/oj-06-redis-multi-turn.json`
+`src/test/resources/testdata/integration/react_travel/oj-06-redis-multi-turn.json`
 
 ---
 
@@ -111,7 +111,7 @@ Phase2 额外硬门禁：`profile=redis` + Redis env 已注入。
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenCheckpointerConfigSwitchTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenCheckpointerConfigSwitchTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；建议 `@Tag("nightly")` |
 | 生命周期 | 单 `@Test` 内 Phase1/Phase2 各 `try (SutStack stack = ...)`，**不用** 默认 `@BeforeAll` 单栈 |
 | Phase1 | `SutStack.builder(config).streaming(true).agent("mainplan")` |

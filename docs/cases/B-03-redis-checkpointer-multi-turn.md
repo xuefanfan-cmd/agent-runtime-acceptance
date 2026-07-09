@@ -223,7 +223,7 @@ B-03 **不在测试代码中**读取 `SIT_LLM_API_KEY`、不使用 `@EnabledIf` 
 
 ## 8. 测试数据
 
-文件：`src/test/resources/testdata/integration/checkpointer/b03-redis-multi-turn.json`
+文件：`src/test/resources/testdata/integration/react_travel/b03-redis-multi-turn.json`
 
 ```json
 {
@@ -253,7 +253,7 @@ B-03 **不在测试代码中**读取 `SIT_LLM_API_KEY`、不使用 `@EnabledIf` 
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/checkpointer/RedisCheckpointerMultiTurnTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/react_travel/RedisCheckpointerMultiTurnTest.java` |
 | 标签 | `@Tag("integration")` `@Tag("smoke")` |
 | 基类 | `BaseManagedStackTest`（或 `@Testcontainers` + 自管 `SutStack` 生命周期；Redis 容器需 `@BeforeAll` 先于栈启动） |
 | 栈 | `.streaming(true)`；leaf-first：`hotel` → `trip(MIDDLE→hotel)` → `mainplan(ENTRY→trip, redis props)` |

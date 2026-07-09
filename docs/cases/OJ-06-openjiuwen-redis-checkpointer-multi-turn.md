@@ -113,7 +113,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-06-redis-multi-turn.json`
+`src/test/resources/testdata/integration/react_travel/oj-06-redis-multi-turn.json`
 
 ```json
 {
@@ -138,7 +138,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenRedisCheckpointerMultiTurnTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/integration/react_travel/OpenjiuwenRedisCheckpointerMultiTurnTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；建议 `@Tag("nightly")`（依赖 Docker + LLM + 全链） |
 | 基类 | `BaseManagedStackTest` |
 | 栈 | `SutStack.builder(config).streaming(true)` + 三 agent `.profile("redis")` + Redis env（leaf-first 全链） |

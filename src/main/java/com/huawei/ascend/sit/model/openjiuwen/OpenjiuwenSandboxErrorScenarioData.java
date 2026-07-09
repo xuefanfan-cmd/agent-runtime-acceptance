@@ -20,7 +20,7 @@ public record OpenjiuwenSandboxErrorScenarioData(
 ) {
 
     public static OpenjiuwenSandboxErrorScenarioData loadDefault() {
-        return TestDataLoader.load("openjiuwen/integration/oj-10-sandbox-error.json",
+        return TestDataLoader.load("component/boundary/oj-10-sandbox-error.json",
                 OpenjiuwenSandboxErrorScenarioData.class);
     }
 }

@@ -8,7 +8,7 @@ feature: hotel 沙箱异常路径 — 超时或非法命令时的错误可见性
 status: designed
 sut: agent-openjiuwen-travel-hotel
 stack: hotel（单 agent，managed）+ jiuwenbox
-tags: [integration, openjiuwen]
+tags: [component, openjiuwen]
 depends_on:
   - 第二步 S-03 已合并
   - OJ-09 同类 jiuwenbox 前置
@@ -86,7 +86,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-10-sandbox-error.json`
+`src/test/resources/testdata/component/boundary/oj-10-sandbox-error.json`
 
 ```json
 {
@@ -105,7 +105,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenSandboxErrorTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/boundary/OpenjiuwenSandboxErrorTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；**不** 纳入 smoke |
 | 结构 | `@Test timeoutScenario()` + `@Test illegalCommandScenario()` 或 `@ParameterizedTest` |
 | 栈 | `.streaming(true)`（与 OJ-09 一致） |

@@ -16,7 +16,7 @@ public record OpenjiuwenThreeTurnScenarioData(
         List<TurnSpec> turns
 ) {
 
-    public static final String DEFAULT_TESTDATA_PATH = "openjiuwen/integration/oj-05-three-turn-collection.json";
+    public static final String DEFAULT_TESTDATA_PATH = "integration/react_travel/oj-05-three-turn-collection.json";
 
     public static OpenjiuwenThreeTurnScenarioData loadDefault() {
         return TestDataLoader.load(DEFAULT_TESTDATA_PATH, OpenjiuwenThreeTurnScenarioData.class);

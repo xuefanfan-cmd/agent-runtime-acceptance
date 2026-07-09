@@ -22,7 +22,7 @@ public record OpenjiuwenSkillHubScenarioData(
 ) {
 
     public static OpenjiuwenSkillHubScenarioData loadDefault() {
-        return TestDataLoader.load("openjiuwen/integration/oj-11-skill-hotel-ranking.json",
+        return TestDataLoader.load("component/singleagent/oj-11-skill-hotel-ranking.json",
                 OpenjiuwenSkillHubScenarioData.class);
     }
 

@@ -19,7 +19,7 @@ public record OpenjiuwenSessionIsolationScenarioData(
     private static final List<String> DEFAULT_TURN2_MUST_MATCH_ANY =
             List.of("住宿", "800", "出差");
 
-    public static final String DEFAULT_TESTDATA_PATH = "openjiuwen/integration/oj-04-session-isolation.json";
+    public static final String DEFAULT_TESTDATA_PATH = "component/singleagent/oj-04-session-isolation.json";
 
     public static OpenjiuwenSessionIsolationScenarioData loadDefault() {
         return TestDataLoader.load(DEFAULT_TESTDATA_PATH, OpenjiuwenSessionIsolationScenarioData.class);

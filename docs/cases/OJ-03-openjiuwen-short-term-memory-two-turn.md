@@ -8,7 +8,7 @@ feature: agent-core-java in_memory Checkpointer + mainplan 多轮对话语义
 status: designed
 sut: agent-openjiuwen-travel-mainplan
 stack: mainplan（单 agent，managed；可选扩展为全链）
-tags: [integration, openjiuwen, smoke]
+tags: [component, openjiuwen, smoke]
 depends_on:
   - OJ-01 / OJ-02 同类前置
   - mainplan 默认 checkpointer=in_memory（travel-openjiuwen 现状，无需 Redis）
@@ -92,7 +92,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-03-two-turn-dialogue.json`
+`src/test/resources/testdata/component/singleagent/oj-03-two-turn-dialogue.json`
 
 ```json
 {
@@ -109,7 +109,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenShortTermMemoryTwoTurnTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenShortTermMemoryTwoTurnTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")`；可选 `@Tag("smoke")` |
 | 基类 | `BaseManagedStackTest` |
 | 栈 | `.streaming(false).agent("mainplan")` |

@@ -8,7 +8,7 @@ feature: agent-core-java Checkpointer session 隔离 + A2A contextId 契约
 status: designed
 sut: agent-openjiuwen-travel-mainplan
 stack: mainplan（单 agent，managed；简化版，串行两 session）
-tags: [integration, openjiuwen]
+tags: [component, openjiuwen]
 depends_on:
   - OJ-03 同类前置
   - 参考 A-11-1 隔离思路，本用例为 **串行双 session** 简化（非并发全链）
@@ -87,7 +87,7 @@ depends_on:
 
 ## 5. 测试数据
 
-`src/test/resources/testdata/openjiuwen/integration/oj-04-session-isolation.json`
+`src/test/resources/testdata/component/singleagent/oj-04-session-isolation.json`
 
 ```json
 {
@@ -116,7 +116,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/integration/OpenjiuwenSessionIsolationTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/singleagent/OpenjiuwenSessionIsolationTest.java` |
 | 标签 | `@Tag("integration") @Tag("openjiuwen")` |
 | 基类 | `BaseManagedStackTest` |
 | 栈 | `.streaming(false).agent("mainplan")` |

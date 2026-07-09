@@ -22,7 +22,7 @@ public record OpenjiuwenTwoTurnScenarioData(
         List<String> turn2MustNotMatchAny
 ) {
 
-    public static final String DEFAULT_TESTDATA_PATH = "openjiuwen/integration/oj-03-two-turn-dialogue.json";
+    public static final String DEFAULT_TESTDATA_PATH = "component/singleagent/oj-03-two-turn-dialogue.json";
 
     public static OpenjiuwenTwoTurnScenarioData loadDefault() {
         return TestDataLoader.load(DEFAULT_TESTDATA_PATH, OpenjiuwenTwoTurnScenarioData.class);
@@ -30,7 +30,7 @@ public record OpenjiuwenTwoTurnScenarioData(
 
     /** OJ-06 — Redis checkpointer full-chain streaming two-turn dialogue. */
     public static OpenjiuwenTwoTurnScenarioData loadOj06() {
-        return TestDataLoader.load("openjiuwen/integration/oj-06-redis-multi-turn.json",
+        return TestDataLoader.load("integration/react_travel/oj-06-redis-multi-turn.json",
                 OpenjiuwenTwoTurnScenarioData.class);
     }
 

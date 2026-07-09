@@ -98,7 +98,7 @@ depends_on:
 
 ## 5. 测试数据
 
-外置：`src/test/resources/testdata/openjiuwen/component/oj-01-sync-send.json`
+外置：`src/test/resources/testdata/component/protocol/oj-01-sync-send.json`
 
 ```json
 {
@@ -114,7 +114,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/openjiuwen/component/OpenjiuwenSyncSendTest.java` |
+| 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/protocol/OpenjiuwenSyncSendTest.java` |
 | 标签 | `@Tag("component") @Tag("openjiuwen")`；可选 `@Tag("smoke")` |
 | 基类 | `BaseManagedStackTest`（per-class 管理栈） |
 | 栈描述 | `.streaming(false).agent("mainplan")` |

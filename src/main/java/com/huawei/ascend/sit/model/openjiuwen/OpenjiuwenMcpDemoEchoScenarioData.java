@@ -19,7 +19,7 @@ public record OpenjiuwenMcpDemoEchoScenarioData(
 ) {
 
     public static OpenjiuwenMcpDemoEchoScenarioData loadDefault() {
-        return TestDataLoader.load("openjiuwen/integration/oj-08-mcp-demo-echo.json",
+        return TestDataLoader.load("component/singleagent/oj-08-mcp-demo-echo.json",
                 OpenjiuwenMcpDemoEchoScenarioData.class);
     }
 

@@ -31,7 +31,7 @@ public abstract class OpenjiuwenRedisStackTestBase {
     @BeforeAll
     void startRedisStack() throws IOException {
         config = TestConfig.load();
-        redisBacking = new BackingServices(config, Set.of("redis"), new TestContainerFactory());
+        redisBacking = new BackingServices(config, Set.of("redis"), new TestContainerFactory(null));
         OpenjiuwenStackSupport.RedisEndpoint redis =
                 OpenjiuwenStackSupport.parseRedisEndpoint(redisBacking.url("redis"));
         redisEndpoint = redis;

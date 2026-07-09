@@ -54,7 +54,7 @@ class OpenjiuwenCheckpointerConfigSwitchTest {
         }
 
         LOG.info("OJ-07 Phase2 managed redis profile + Testcontainers Redis (agent=" + MAINPLAN + ")");
-        try (BackingServices redisBacking = new BackingServices(config, Set.of("redis"), new TestContainerFactory())) {
+        try (BackingServices redisBacking = new BackingServices(config, Set.of("redis"), new TestContainerFactory(null))) {
             OpenjiuwenStackSupport.RedisEndpoint redis =
                     OpenjiuwenStackSupport.parseRedisEndpoint(redisBacking.url("redis"));
             try (SutStack phase2 = phase2Config.toStackBuilder(config, redis.host(), redis.port())

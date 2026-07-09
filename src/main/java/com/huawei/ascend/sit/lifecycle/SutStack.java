@@ -263,6 +263,9 @@ public final class SutStack implements AutoCloseable {
             return "http://" + url;
         }
         return url;
+    }
+
+    /**
      * The running instance for a launched agent, or {@code null} if the agent was never started
      * (e.g. remote-only stack). Used by integration gates that read managed agent stdout logs.
      */

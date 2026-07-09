@@ -95,7 +95,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/RedisCheckpointerRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/RedisCheckpointerRecallTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RedisCheckpointerRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RedisCheckpointerRecallTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent") @Tag("manual")` |
 | 基类 | `BaseManagedStackTest` |
 | 方法顺序 | `@TestMethodOrder(MethodOrderer.OrderAnnotation.class)` + `@Order(1)` / `@Order(2)` |

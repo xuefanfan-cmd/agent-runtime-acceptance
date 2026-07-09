@@ -96,7 +96,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/LongTermMemoryRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/LongTermMemoryRecallTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/LongTermMemoryRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/LongTermMemoryRecallTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent") @Tag("manual")` |
 | 基类 | `BaseManagedStackTest` |
 | streaming | 默认 `streaming(true)`——SSE |

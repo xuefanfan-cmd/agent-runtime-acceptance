@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.deepagent;
+package com.huawei.ascend.sit.cases.integration.deepagent_deepresearch;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

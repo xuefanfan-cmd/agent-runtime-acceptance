@@ -84,7 +84,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/StreamingInMemoryCheckpointerRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/StreamingInMemoryCheckpointerRecallTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingInMemoryCheckpointerRecallTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingInMemoryCheckpointerRecallTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent")` |
 | 基类 | `BaseManagedStackTest` |
 | streaming | 默认 `streaming(true)` |

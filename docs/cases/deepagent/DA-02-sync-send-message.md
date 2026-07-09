@@ -94,7 +94,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/SyncSendMessageTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/SyncSendMessageTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SyncSendMessageTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SyncSendMessageTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent")` |
 | 基类 | `BaseManagedStackTest`（per-class 栈；deep-research remote） |
 | streaming | `streaming(false)`——同步 `message/send` |

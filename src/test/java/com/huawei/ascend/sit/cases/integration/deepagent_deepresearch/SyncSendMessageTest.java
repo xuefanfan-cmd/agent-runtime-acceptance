@@ -1,4 +1,4 @@
-package com.huawei.ascend.sit.cases.deepagent;
+package com.huawei.ascend.sit.cases.integration.deepagent_deepresearch;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;

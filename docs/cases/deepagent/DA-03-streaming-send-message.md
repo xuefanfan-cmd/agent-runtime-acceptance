@@ -89,7 +89,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/StreamingSendMessageTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/StreamingSendMessageTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent")` |
 | 基类 | `BaseManagedStackTest`（per-class 栈；deep-research remote） |
 | streaming | 默认 `streaming(true)`——SSE `message/stream` |

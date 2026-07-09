@@ -101,14 +101,14 @@ depends_on:
 
 ## 5. 测试数据
 
-- 无外置数据文件；contract 断言直接写在 [AgentCardDiscoveryTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/AgentCardDiscoveryTest.java) 里。
+- 无外置数据文件；contract 断言直接写在 [AgentCardDiscoveryTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java) 里。
 - 真值来源：[deepagent测试结果.txt §1](../../../../openjiuwen-java/2012/agent-solution/common/example/deepagent测试结果.txt) 中三次 curl 输出（三份 body 完全一致，说明 SUT 按 A2A 1.0 三端点等价）。
 
 ## 6. 框架落点
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/AgentCardDiscoveryTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/AgentCardDiscoveryTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java) |
 | 标签 | `@Tag("component") @Tag("smoke") @Tag("deepagent")` |
 | 基类 | `BaseManagedStackTest`（per-class 栈；两 agent 均 remote 声明） |
 | 客户端 | `stack.client("deep-research").getAgentCard()` + `java.net.http.HttpClient` 手工 GET 三端点 |
@@ -122,7 +122,7 @@ depends_on:
 ./mvnw -Dtest.env=SIT -Dtest=AgentCardDiscoveryTest test
 
 # 或跑整个 deepagent 目录
-./mvnw -Dtest.env=SIT -Dtest='com.huawei.ascend.sit.cases.deepagent.*' test
+./mvnw -Dtest.env=SIT -Dtest='com.huawei.ascend.sit.cases.integration.deepagent_deepresearch.*' test
 ```
 
 ## 8. 覆盖特性追溯

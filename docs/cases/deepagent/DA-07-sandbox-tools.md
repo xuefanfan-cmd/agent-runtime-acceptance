@@ -104,7 +104,7 @@ depends_on:
 
 | 项 | 值 |
 |----|----|
-| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/deepagent/SandboxToolsTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/deepagent/SandboxToolsTest.java) |
+| 测试类 | [src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SandboxToolsTest.java](../../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SandboxToolsTest.java) |
 | 标签 | `@Tag("integration") @Tag("deepagent") @Tag("manual")` |
 | 基类 | `BaseManagedStackTest` |
 | streaming | 默认 `streaming(true)`——SSE |

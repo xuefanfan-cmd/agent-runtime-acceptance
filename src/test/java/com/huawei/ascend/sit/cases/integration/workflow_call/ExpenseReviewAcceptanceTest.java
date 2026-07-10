@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li><b>场景 2</b>经 main ReAct 3 次重试工具失败后回退自身文本 → {@code COMPLETED}，满足弱断言但<b>非真实 Path B</b>（假绿）。</li>
  * </ul>
  *
- * @see com.huawei.ascend.sit.cases.integration.travel_assistant.StreamingTravelPlanningTest
+ * @see com.huawei.ascend.sit.cases.integration.react_travel.StreamingTravelPlanningTest
  */
 @Tag("integration")
 class ExpenseReviewAcceptanceTest extends BaseManagedStackTest {

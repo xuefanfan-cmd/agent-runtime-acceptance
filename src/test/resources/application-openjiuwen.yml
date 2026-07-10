@@ -24,68 +24,68 @@ sut:
   agents:
     # Travel scenario
     mainplan:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-mainplan
+      group: com.openjiuwen.example
+      artifact: travel-demo-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
     mainplan-redis:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-mainplan
+      group: com.openjiuwen.example
+      artifact: travel-demo-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
       service-bindings:
         redis:
           url-key: main-plan-agent.redis-url
           url-template: "redis://{{url}}"
     trip:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-trip
+      group: com.openjiuwen.example
+      artifact: travel-demo-trip
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-hotel"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-hotel"
     hotel:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-hotel
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
     # —— Expense Review（单 jar 双 profile；main profile 经 remote-agents[0] 调 workflow）——
     expense-review-workflow:
-      group: com.huawei.ascend.examples
-      artifact: workflow-openjiuwen-expense-review
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-expense-review
       version: 0.2.0-SNAPSHOT
     expense-review-main:
-      group: com.huawei.ascend.examples
-      artifact: workflow-openjiuwen-expense-review-main
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-expense-review-main
       version: 0.2.0-SNAPSHOT
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "expense-review"
     edpa-gateway:
-      group: com.huawei.ascend.examples
-      artifact: workflow-openjiuwen-gateway
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-gateway
       version: 0.2.0-SNAPSHOT
       # 非 A2A 服务：不提供 /.well-known/agent.json，按 TCP LISTEN 端口判就绪（而非探 agent card）。
       ready-mode: tcp
     edpa-plan-agent:
-      group: com.huawei.ascend.examples
-      artifact: workflow-openjiuwen-plan-agent
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-plan-agent
       version: 0.2.0-SNAPSHOT
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "versatile-call"
-    edpa-versatile-call:
-      group: com.huawei.ascend.examples
-      artifact: workflow-openjiuwen-versatile-call
+          openjiuwen.service.a2a.remote-agents[0].name: "versatile-adapter"
+    edpa-adapter:
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-adapter
       version: 0.2.0-SNAPSHOT
       service-bindings:
         envexplorer:

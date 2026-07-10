@@ -40,7 +40,10 @@ public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script {
         public ScriptBuilder select(String label, Map<String, String> kv) {
             instructions.add(new ScriptInstruction(kv == null ? Map.of() : kv, label)); return this;
         }
+        /** 硬上限:最多推进 {@code total} 步(不超过声明指令数),到 total 即停——不尾随收口。 */
         public Script stopsAfter(int total) { this.stopAfter = Optional.of(total); return new Script(List.copyOf(instructions), stopAfter); }
+        /** 无 cap:先跑完声明的 advance/select,再<b>尾随空 advance</b>直到 next-request 返回 null(工作流自然 END)。
+         *  末腿(如多腿转账的最后一笔)不会因"声明指令用完"而卡在 INPUT_REQUIRED——这是 untilDone 与 {@link #stopsAfter} 的本质差别。 */
         public Script untilDone() { return new Script(List.copyOf(instructions), Optional.empty()); }
     }
 }

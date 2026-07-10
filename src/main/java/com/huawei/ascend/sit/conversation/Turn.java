@@ -75,15 +75,29 @@ public final class Turn {
     private StepUI driveScript(List<Step> steps, DriveMode.Script sc) {
         int idx = 1;
         int cap = sc.stopAfter().orElse(Integer.MAX_VALUE);
+        boolean untilDone = sc.stopAfter().isEmpty();   // untilDone=无 cap;stopsAfter(n)=硬上限
         int advanced = 0;
+        // Phase 1:声明的 advance/select 序列(按 cap 截断)。
         for (DriveMode.ScriptInstruction instr : sc.instructions()) {
-            if (advanced >= cap) break;
+            if (advanced >= cap) return null;            // stopsAfter 上限到达
             NextRequest nr = conv.mid().nextRequest(conv.cidValue(), instr.kv());
-            if (nr.query() == null) return null;     // 工作流自然结束
+            if (nr.query() == null) return null;         // 工作流自然结束
             ConversationRequest body = ConversationRequest.from(conv.identity())
                     .query(nr.query()).intent("LATEST").conversationId(conv.cidValue()).build();
             steps.add(post(idx++, null, instr.label(), instr.kv(), body));
             advanced++;
+        }
+        // Phase 2:untilDone 收口——指令耗尽后继续空 advance,直到 next-request 返回 null(工作流真正 END)。
+        // 这是 untilDone 与 stopsAfter 的本质差别:末腿(如多腿转账的最后一笔)不会因"声明指令用完"而卡在
+        // INPUT_REQUIRED,而是被推到回包。stopsAfter(n) 不收口:它是硬上限,到 n 即停。
+        if (untilDone) {
+            while (true) {
+                NextRequest nr = conv.mid().nextRequest(conv.cidValue(), Map.of());
+                if (nr.query() == null) return null;     // 工作流自然结束
+                ConversationRequest body = ConversationRequest.from(conv.identity())
+                        .query(nr.query()).intent("LATEST").conversationId(conv.cidValue()).build();
+                steps.add(post(idx++, null, null, Map.of(), body));
+            }
         }
         return null;
     }

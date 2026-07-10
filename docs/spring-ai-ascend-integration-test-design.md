@@ -441,7 +441,7 @@ SIT 测试的触发方式**必须复用生产协议**，不能为测试创造私
 | `src/main/java/.../client/` | API 客户端封装（A2A 协议调用） | 仅当协议变更时修改 | `A2aServiceClient.java` |
 | `src/main/java/.../config/` | 环境配置管理（多环境切换） | 新增环境时修改 | `TestConfig.java` |
 | `src/main/java/.../utils/` | 通用工具（JSON、异步等待、数据加载） | 极少修改 | `WaitUtils.java` |
-| `src/test/java/.../base/` | 测试基类（三级继承体系） | 框架升级时修改 | `BaseIntegrationTest.java` |
+| `src/test/java/.../base/` | 测试基类 | 框架升级时修改 | `BaseManagedStackTest.java` |
 | `src/test/java/.../cases/` | 测试用例（按层级和模块组织） | **频繁变更** | `A2aRunPollingTest.java` |
 | `src/test/java/.../suites/` | 测试套件（Tag 驱动动态组合） | 新增执行策略时修改 | `SmokeTestSuite.java` |
 
@@ -493,29 +493,33 @@ src/test/java/.../cases/
 | **依赖方向单向** | `performance` 可以复用 `e2e` 的基础设施，但反之不行 |
 | **预留目录即占位** | `client/`、`engine/`、`bus/` 目录已创建但为空，未来模块发布时直接填充 |
 
-### 10.4 测试基类三级继承体系
+### 10.4 测试基类：统一 `BaseManagedStackTest`（托管栈）
+
+所有层级（component / integration / e2e / performance）的用例**统一继承 `BaseManagedStackTest`**——
+不再按层级拆多个基类。它把 SUT 生命周期收拢到 `@BeforeAll`/`@AfterAll`，子类只声明"我要哪些 agent"：
 
 ```
-BaseIntegrationTest (通用基类)
-├── 初始化 TestConfig（环境感知配置加载）
-├── 初始化 A2aServiceClient（A2A SDK Client 封装）
-├── 初始化 AgentClient（Agent 高层触发客户端）
-│
-├── BaseComponentTest
-│   └── @Tag("component") — 轻量启动，Mock 友好
-│
-└── BaseE2ETest
-    ├── @Tag("e2e") — 全链路启动
-    └── @BeforeAll awaitSutHealthy() — 自动等待 SUT 就绪
+BaseManagedStackTest (唯一基类, @TestInstance(PER_CLASS))
+├── @BeforeAll initManagedStack()
+│   ├── TestConfig.load()                 // 环境感知配置（profile / dotted key）
+│   └── buildStack(config).start()        // 子类描述所需 agent，基类拉起整条栈
+├── abstract buildStack(TestConfig)       // 子类覆写：声明哪些 agent、哪些覆盖
+├── @AfterAll tearDownStack()             // 按拓扑逆序拆除
+└── client(name) → A2aServiceClient       // 按名取绑定到解析端口的客户端
 ```
 
-**继承选择指南**：
+**层级的差异不靠基类，而靠 `buildStack` + YAML + `@Tag`**：
 
-| 测试类型 | 继承哪个基类 | 典型场景 |
-|----------|-------------|---------|
-| 单接口协议校验 | `BaseComponentTest` | 验证 `sendMessage` 返回合法 task ID |
-| 多模块组合验证 | `BaseIntegrationTest` | 验证 A2A → Weather Agent 子链路 |
-| 全链路用户旅程 | `BaseE2ETest` | 模拟真实用户天气查询全流程 |
+| 测试类型 | 怎么实现 | 典型场景 |
+|----------|---------|---------|
+| 单接口协议校验 | `buildStack` 只装 1 个 agent + `@Tag("component")` | 验证 `sendMessage` 返回合法 task ID |
+| 多模块组合验证 | `buildStack` 串 2~3 个 agent + `@Tag("integration")` | 验证 A2A → Weather Agent 子链路 |
+| 全链路用户旅程 | `buildStack` 串全链 + `@Tag("e2e")` | 模拟真实用户天气查询全流程 |
+| 性能基准 | 同上 + `@Tag("performance")` | 长耗时 / 高并发 / 基准测试 |
+
+> **托管 vs Remote 也由 YAML 决定，不换基类**：agent 条目给 `group`/`artifact`/`version` ⇒ 托管
+> （框架 `java -jar` 拉起）；给 `url` ⇒ Remote（不拉进程，指向 `sut.base.url` 预部署环境，供 SIT/UAT）。
+> 详见 `src/main/java/.../lifecycle/SutStack.java` 的 managed/remote 解析。
 
 ### 10.5 用例编写约束
 
@@ -526,7 +530,7 @@ BaseIntegrationTest (通用基类)
 ```java
 @Tag("component")       // 层级 Tag（必须）：component | integration | e2e | performance
 @Tag("smoke")           // 功能 Tag（可选）：smoke 标记核心主链路用例
-class A2aHealthTest extends BaseComponentTest { ... }
+class A2aHealthTest extends BaseManagedStackTest { ... }
 ```
 
 Tag 与 Suite 的对应关系：

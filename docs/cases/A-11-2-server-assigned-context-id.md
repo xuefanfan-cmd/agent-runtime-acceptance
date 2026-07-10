@@ -55,7 +55,7 @@ depends_on:
 
 | # | 动作 | 协议 / 方法 | 预期 |
 |---|------|------------|------|
-| 1 | 拿到 `a2aClient`（默认连 `sut.base.url` = 7.209.189.82:13003 mainplan） | `BaseComponentTest` | 客户端可调用 |
+| 1 | 拿到 `a2aClient`（默认连 `sut.base.url` = 7.209.189.82:13003 mainplan） | `BaseManagedStackTest` | 客户端可调用 |
 | 2 | Turn 1：发送 `Message.builder()...parts(["hi"]).build()`（**不**带 contextId） | a2a-sdk `Client.sendMessage` | 收到 task-bearing 事件，状态到达 `isFinal()`（COMPLETED 或 INPUT_REQUIRED 均可） |
 | 3 | 抽出 Turn 1 的 `Task.contextId` 与 `Task.id` | `A2aEventCollector` | `contextId` 非空、`taskId` 非空 |
 | 4 | Turn 2：发送同样文本，**显式带** `Message.builder()...contextId(turn1ContextId).build()` | a2a-sdk `Client.sendMessage` | 同样到达 `isFinal()` 状态 |
@@ -100,7 +100,7 @@ A-11-2 不依赖 SUT 对该字符串的业务回答。若日后默认 SUT 切换
 |----|----|
 | 测试类 | `src/test/java/com/huawei/ascend/sit/cases/component/protocol/ServerAssignedContextIdTest.java` |
 | 标签 | `@Tag("component") @Tag("smoke")`（外部 SUT、单 boundary 协议契约，与 [A-01](A-01-agent-card-discovery.md) 同口径） |
-| 基类 | `BaseComponentTest`（外部 SUT，不自管栈，地址走 `sut.base.url`） |
+| 基类 | `BaseManagedStackTest`（`buildStack` 组装本用例栈） |
 | 客户端调用 | `a2aClient.sendMessage(Message, metadata=null, consumers, errorHandler)` —— **不**走 `InteractionFlow`（DSL 自动续 contextId 屏蔽了"不带 contextId" 的协议面） |
 | 事件收集 | 每轮独立 `A2aEventCollector` + `awaitTerminalState(timeoutMs)`；用 `findFirstContextId()` / `findFirstTaskId()` 取观测值 |
 | 断言 | AssertJ：`isNotBlank` / `isEqualTo` / `isNotEqualTo` |

@@ -95,8 +95,8 @@ jar from the local `~/.m2/repository` (override via `sut.m2.repo`).
 1. Add a design doc under `docs/cases/A-NN-<slug>.md` following the format
    of [A-01](docs/cases/A-01-agent-card-discovery.md).
 2. Add the test under `src/test/java/com/huawei/ascend/sit/cases/<layer>/`,
-   extending the right base class (`BaseComponentTest`,
-   `BaseIntegrationTest`, `BaseManagedStackTest`, or `BaseE2ETest`).
+   extending `BaseManagedStackTest` (the managed-stack base class that
+   owns the SUT lifecycle via `SutStack`).
 3. Tag the test with `@Tag("<layer>")` so it lands in the right Surefire /
    Failsafe selection.
 4. Externalise inputs under `src/test/resources/testdata/<layer>/...`.

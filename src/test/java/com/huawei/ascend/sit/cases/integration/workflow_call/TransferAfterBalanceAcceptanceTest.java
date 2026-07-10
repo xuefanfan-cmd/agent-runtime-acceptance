@@ -9,6 +9,9 @@ import com.huawei.ascend.sit.conversation.DriveMode;
 import com.huawei.ascend.sit.conversation.SseEvent;
 import com.huawei.ascend.sit.conversation.TurnResult;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Features;
+import io.qameta.allure.Stories;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -89,12 +92,12 @@ class TransferAfterBalanceAcceptanceTest extends BaseManagedStackTest {
         System.out.println("[gateway-protocol] " + protocol
                 + " (override via -DGATEWAY_PROTOCOL=a2a|rest)");
         return SutStack.builder(config)
-                .agent("edpa-versatile-call")
-                .agent("edpa-plan-agent", a -> a.downstream("edpa-versatile-call"))
+                .agent("edpa-adapter")
+                .agent("edpa-plan-agent", a -> a.downstream("edpa-adapter"))
                 .agent("edpa-gateway", a -> a
-                        .downstream("edpa-plan-agent", "workflow-openjiuwen.gateway.plan-agent-base-url")
+                        .downstream("edpa-plan-agent", "versatile-orchestration.gateway.plan-agent-base-url")
                         // 下行报文格式：a2a（默认）/a2a 或 rest /v1/query。流/断言与模式无关。
-                        .property("workflow-openjiuwen.gateway.plan-agent-protocol", protocol));
+                        .property("versatile-orchestration.gateway.plan-agent-protocol", protocol));
     }
 
     /**

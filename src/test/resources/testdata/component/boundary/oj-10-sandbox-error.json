@@ -1,5 +1,5 @@
 {
-  "_doc": "OJ-10 — hotel sandbox timeout / illegal command (P2). See docs/cases/OJ-10-openjiuwen-sandbox-timeout-error.md",
+  "_doc": "OJ-10 — hotel sandbox timeout / illegal command (P2). Constants in OpenjiuwenSandboxErrorTest; no main ScenarioData.",
   "timeoutPrompt": "在沙箱用 python 执行 import time; time.sleep(120); print('done')",
   "errorPrompt": "在沙箱执行命令：/nonexistent/command_xyz",
   "errorKeywords": ["error", "错误", "失败", "无法", "cannot", "No such"],

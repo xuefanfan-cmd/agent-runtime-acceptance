@@ -1,5 +1,5 @@
 {
-  "_doc": "C-09 LLM unavailable — managed G3 or remote url-llm-down. See docs/cases/C-09-llm-unavailable.md §7.",
+  "_doc": "C-09 LLM unavailable — managed G3 or remote url-llm-down. Authority: LlmUnavailableFlow constants (not loaded at runtime).",
   "inputText": "你好",
   "llmFailureTimeoutMs": 120000,
   "disallowedTerminalStates": ["TASK_STATE_COMPLETED"]

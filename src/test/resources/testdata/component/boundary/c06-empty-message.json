@@ -1,5 +1,5 @@
 {
-  "_doc": "C-06 empty user message — sync + stream sub-scenarios. See docs/cases/C-06-empty-message.md §7.",
+  "_doc": "C-06 empty user message — sync + stream. Authority: EmptyMessageFlow constants (not loaded at runtime).",
   "inputText": "",
   "healthProbeText": "你好",
   "emptyMessageTimeoutMs": 30000,

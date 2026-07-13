@@ -1,5 +1,5 @@
 {
-  "_doc": "A-05 tasks/get — sync send then query completed task. See docs/cases/A-05-task-get-completed.md §7.",
+  "_doc": "A-05 tasks/get — reference only. Constants in AgentTaskGetTest; no main ScenarioData.",
   "inputText": "你好",
   "sendTimeoutMs": 60000,
   "expectedTerminalState": "TASK_STATE_COMPLETED"

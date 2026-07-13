@@ -1,5 +1,5 @@
 {
-  "_doc": "A-04 message/stream — primary scenario input and timing budget. See docs/cases/A-04-message-stream.md §7.",
+  "_doc": "A-04 message/stream — reference only. Constants in AgentStreamMessageTest; no main ScenarioData.",
   "inputText": "你好",
   "streamTimeoutMs": 60000,
   "expectedTerminalState": "TASK_STATE_COMPLETED",

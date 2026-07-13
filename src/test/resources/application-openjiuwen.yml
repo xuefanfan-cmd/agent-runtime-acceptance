@@ -17,45 +17,82 @@ sut:
     envexplorer:
       image: agent-env/env-explorer:20260705
       port: 3001
+    jiuwenbox:
+      image: jiuwenbox:latest
+      port: 8321
+      # Remote mode must use host:port without a scheme, e.g. 127.0.0.1:8321.
+      # url: "127.0.0.1:8321"
+      env:
+        JIUWENBOX_POLICY_PATH: /app/configs/wsl-dev-policy.yaml
+      # Read only by OJ-09/OJ-10's inline container factory.
+      test-container:
+        privileged: true
+        host-port: 8321
+        source-policy: /app/configs/default-policy.yaml
+        working-policy: /app/configs/wsl-dev-policy.yaml
+        runtime-policy: /usr/local/lib/python3.11/configs/default-policy.yaml
+        policy-dir: /root/.jiuwenbox/policies
+        state-dir: /root/.jiuwenbox/state
+        restart-after-bootstrap: true
   # Managed SUT agents — Maven coordinates resolved from the local repository (~/.m2).
   # The framework launches these as black-box java -jar processes. third_party jars
   # are for code analysis only and are never used at runtime.
   # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
+    mock-mcp:
+      group: com.huawei.ascend.examples
+      artifact: travel-openjiuwen-test-support
+      version: 0.1.0
+      ready-mode: tcp
+
     # Travel scenario
     mainplan:
-      group: com.openjiuwen.example
-      artifact: travel-demo-mainplan
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
+          # MUST match RemoteTripRail agentName / jar default (not a short alias).
+          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+          # Standalone mainplan (no managed trip): discovery needs a URL or startup NPEs.
+          # Full-chain tests override this via SutStack.downstream("trip").
+          openjiuwen.service.a2a.remote-agents[0].url: "http://127.0.0.1:8092/a2a/"
     mainplan-redis:
-      group: com.openjiuwen.example
-      artifact: travel-demo-mainplan
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
+          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
       service-bindings:
         redis:
           url-key: main-plan-agent.redis-url
           url-template: "redis://{{url}}"
     trip:
-      group: com.openjiuwen.example
-      artifact: travel-demo-trip
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-trip
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "travel-hotel"
+          # MUST match RemoteHotelRail agentName / jar default.
+          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-hotel"
     hotel:
-      group: com.openjiuwen.example
-      artifact: travel-demo-hotel
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-hotel
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+    hotel-sandbox:
+      group: com.huawei.ascend.examples
+      artifact: agent-openjiuwen-travel-hotel
+      version: 0.1.0
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      service-bindings:
+        jiuwenbox:
+          url-key: openjiuwen.service.external.sandbox.servers[0].service-url
+          url-template: "http://{{url}}"
     # —— Expense Review（单 jar 双 profile；main profile 经 remote-agents[0] 调 workflow）——
     expense-review-workflow:
       group: com.openjiuwen.example

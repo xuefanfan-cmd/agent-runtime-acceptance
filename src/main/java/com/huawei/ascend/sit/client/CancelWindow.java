@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Waits for a cancel window on an in-flight A2A task before {@code tasks/cancel}.
  *
- * <p>Implements {@code docs/cases/A-06-task-cancel.md} §5.</p>
+ * <p>Implements {@code docs/cases/reactagent/A-06-task-cancel.md} §5.</p>
  */
 public final class CancelWindow {
 

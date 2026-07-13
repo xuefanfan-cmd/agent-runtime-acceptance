@@ -18,7 +18,7 @@ import java.util.Optional;
 /**
  * Extraction and inspection helpers for {@link SendStreamingMessage} event streams.
  *
- * <p>Centralises the rules in {@code docs/cases/A-04-message-stream.md} §5 so protocol
+ * <p>Centralises the rules in {@code docs/cases/reactagent/A-04-message-stream.md} §5 so protocol
  * tests do not scatter parsing logic. Reusable by A-04, A-09, and A-10.</p>
  */
 public final class StreamingEventAssertions {

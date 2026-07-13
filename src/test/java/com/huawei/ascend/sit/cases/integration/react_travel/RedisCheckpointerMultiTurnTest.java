@@ -5,7 +5,6 @@ import com.huawei.ascend.sit.cases.component.singleagent.CheckpointerRemoteMode;
 import com.huawei.ascend.sit.cases.component.singleagent.TwoTurnDialogueRunner;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -21,7 +20,7 @@ import java.util.logging.Logger;
  *
  * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
  * before launch so managed agents can reach the model; remote mode uses LLM on the pre-deployed
- * SUT. See {@code docs/cases/B-03-redis-checkpointer-multi-turn.md}.</p>
+ * SUT. See {@code docs/cases/reactagent/B-03-redis-checkpointer-multi-turn.md}.</p>
  */
 @Tag("integration")
 @Tag("smoke")
@@ -56,7 +55,6 @@ class RedisCheckpointerMultiTurnTest extends BaseManagedStackTest {
     @DisplayName("B-03: Redis checkpointer 多轮对话 — Turn2 理解 Turn1 上下文")
     void b03_redisMultiTurn_preservesContextAcrossTurns() throws InterruptedException {
         String clientAgent = CheckpointerRemoteMode.isRemoteMode(getConfig()) ? "mainplan" : MAINPLAN_REDIS;
-        RedisMultiTurnScenarioData scenario = RedisMultiTurnScenarioData.loadDefault();
-        TwoTurnDialogueRunner.run(client(clientAgent), scenario, "B-03");
+        TwoTurnDialogueRunner.run(client(clientAgent), "B-03");
     }
 }

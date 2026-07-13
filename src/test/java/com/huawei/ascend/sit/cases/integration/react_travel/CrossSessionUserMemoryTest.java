@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 各自 plan 的 brand-token 且不交叉污染。
  *
  * <p>判定四档：A plan 可观测到非空品牌 / B recall-NJ 命中 brand-A /
- * C recall-HZ 命中 brand-B / D 两路 recall 不交叉污染。详见 docs/cases/B-06-*.md。
+ * C recall-HZ 命中 brand-B / D 两路 recall 不交叉污染。详见 docs/cases/reactagent/B-06-*.md。
  *
  * <p>顺序刻意排成 plan-A → plan-B → recall-NJ → recall-HZ，让 plan-B 在 recall-NJ
  * 之前落地——同时验证 plan-B 不会冲走 NJ 维度的 memory 条目（同 userId 内

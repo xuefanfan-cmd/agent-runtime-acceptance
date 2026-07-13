@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 两个层面均不串扰。
  *
  * <p>判定四档：A 两 task.id 互异 / B 两 contextId 各自稳定且互异 / C 两路事件流
- * 互不污染 / D 终态 artifact 文本各自命中关键词。详见 docs/cases/A-11-1-*.md。
+ * 互不污染 / D 终态 artifact 文本各自命中关键词。详见 docs/cases/reactagent/A-11-1-*.md。
  *
  * <p>本类用 Java 21 virtual threads + {@link CountDownLatch} 同时起跑两路；
  * **不**走 {@link com.huawei.ascend.sit.client.InteractionFlow}—— Fluent DSL 为串行设计，

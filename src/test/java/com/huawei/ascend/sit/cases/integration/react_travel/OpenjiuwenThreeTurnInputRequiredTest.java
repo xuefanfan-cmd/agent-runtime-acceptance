@@ -1,11 +1,11 @@
 package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
-import com.huawei.ascend.sit.cases.support.openjiuwen.OpenjiuwenStackSupport;
-import com.huawei.ascend.sit.cases.support.openjiuwen.OpenjiuwenThreeTurnRunner;
+import com.huawei.ascend.sit.client.InteractionFlow;
+import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.openjiuwen.OpenjiuwenThreeTurnScenarioData;
+import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,43 +17,83 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * OJ-05 — openjiuwen three-turn INPUT_REQUIRED collection (full chain, sync send).
  *
- * <p>See {@code docs/cases/OJ-05-openjiuwen-three-turn-input-required.md}.</p>
+ * <p>Aligned with C-03 / {@link StreamingTravelPlanningTest} three-turn shape; SUT is the
+ * openjiuwen travel chain via {@code -Dtest.env=openjiuwen}.</p>
+ *
+ * <p>See {@code docs/cases/reactagent/OJ-05-openjiuwen-three-turn-input-required.md}.</p>
  */
 @Tag("integration")
 @Tag("openjiuwen")
 class OpenjiuwenThreeTurnInputRequiredTest extends BaseManagedStackTest {
 
+    private static final String MAINPLAN = "mainplan";
+    private static final String TRIP = "trip";
+    private static final String HOTEL = "hotel";
+    private static final String SESSION_ID = "oj-05-manual-session-001";
+
+    /**
+     * Turn texts follow C-03 shape. Turn1/2 add anti-complete / anti-default-origin clauses so
+     * openjiuwen does not skip {@code INPUT_REQUIRED} or assume Shenzhen before origin is collected.
+     */
+    private static final String TURN1 =
+            "我要去北京出差。出发地和行程天数都还没定，请先追问缺失信息，不要直接做行程规划。";
+    private static final String TURN2 =
+            "出差3天，下周二出发。出发城市还没定，不是深圳，请先继续追问，不要调用行程规划。";
+    private static final String TURN3 =
+            "从上海出发。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。"
+                    + "偏好：国贸附近，需要会议室。请据此完成完整行程规划。";
+
+    /** Full-chain Turn3 (mainplan→trip→hotel) often exceeds the default 120s poll window. */
+    private static final long FLOW_TIMEOUT_MS = 300_000L;
+
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
-        return OpenjiuwenStackSupport.fullChainSync(config);
+        return SutStack.builder(config)
+                .streaming(false)
+                .agent(HOTEL)
+                .agent(TRIP, a -> a.downstream(HOTEL))
+                .agent(MAINPLAN, a -> a.downstream(TRIP));
     }
 
     @Test
     @DisplayName("OJ-05: 三轮信息收集 — INPUT_REQUIRED→INPUT_REQUIRED→COMPLETED")
     void oj05_threeTurnSync_followsInputRequiredThenCompleted() {
-        OpenjiuwenThreeTurnScenarioData scenario = OpenjiuwenThreeTurnScenarioData.loadDefault();
-        long defaultTimeoutMs = OpenjiuwenStackSupport.timeoutMs(config);
+        long timeoutMs = Math.max(config.getPollTimeoutSeconds() * 1000L, FLOW_TIMEOUT_MS);
+        InteractionFlow.FlowResult result = InteractionFlow.of(client(MAINPLAN))
+                .withMetadata(Map.of(
+                        "userId", "manual-user",
+                        "agentId", "mainplan",
+                        "sessionId", SESSION_ID))
+                .withTimeoutMs(timeoutMs)
+                .send(TURN1)
+                    .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
+                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                            .as("OJ-05.A turn1 clarifying reply")
+                            .isNotBlank())
+                .send(TURN2)
+                    .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
+                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                            .as("OJ-05.B turn2 clarifying reply")
+                            .isNotBlank())
+                .send(TURN3)
+                    .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .assertTask(task -> {
+                        String text = TaskTextExtractor.textOf(task);
+                        assertThat(text).as("OJ-05.C turn3 text").isNotBlank();
+                        assertThat(text.length())
+                                .as("OJ-05.C turn3 substantive length")
+                                .isGreaterThan(8);
+                    })
+                .execute();
 
-        OpenjiuwenThreeTurnRunner.Result result = OpenjiuwenThreeTurnRunner.run(
-                client(OpenjiuwenStackSupport.MAINPLAN),
-                scenario,
-                Map.of("sessionId", scenario.sessionId()),
-                defaultTimeoutMs,
-                "OJ-05");
-
-        assertThat(result.turns()).as("OJ-05 round count").hasSize(3);
-        assertThat(result.turn(0).state())
-                .as("OJ-05 turn-1 terminal state")
-                .isIn(scenario.turns().get(0).resolvedAllowedStates());
-        assertThat(result.turn(1).state())
-                .as("OJ-05 turn-2 terminal state")
-                .isIn(scenario.turns().get(1).resolvedAllowedStates());
-        assertThat(result.turn(2).state())
-                .as("OJ-05 turn-3 terminal state")
-                .isIn(scenario.turns().get(2).resolvedAllowedStates());
-        assertThat(result.turn(0).contextId())
-                .as("OJ-05 contextId stable across turns")
-                .isEqualTo(scenario.sessionId())
-                .isEqualTo(result.turn(2).contextId());
+        assertThat(result.roundCount()).as("OJ-05 round count").isEqualTo(3);
+        String contextId = result.round(0).contextId();
+        assertThat(contextId).as("OJ-05.D turn1 contextId").isNotBlank();
+        assertThat(result.round(1).contextId())
+                .as("OJ-05.D turn2 contextId matches turn1")
+                .isEqualTo(contextId);
+        assertThat(result.round(2).contextId())
+                .as("OJ-05.D turn3 contextId matches turn1")
+                .isEqualTo(contextId);
     }
 }

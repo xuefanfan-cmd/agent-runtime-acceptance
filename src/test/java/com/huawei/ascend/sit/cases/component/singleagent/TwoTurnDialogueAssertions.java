@@ -1,7 +1,5 @@
 package com.huawei.ascend.sit.cases.component.singleagent;
 
-import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -12,16 +10,16 @@ final class TwoTurnDialogueAssertions {
     private TwoTurnDialogueAssertions() {
     }
 
-    static void assertTurn2Understanding(String turn2Text, RedisMultiTurnScenarioData scenario) {
+    static void assertTurn2Understanding(String turn2Text) {
         assertThat(turn2Text).as("B-03.C turn2 text").isNotBlank();
 
-        boolean matchedPositive = scenario.turn2MustMatchAny().stream()
+        boolean matchedPositive = TwoTurnDialogueRunner.TURN2_MUST_MATCH_ANY.stream()
                 .anyMatch(turn2Text::contains);
         assertThat(matchedPositive)
                 .as("B-03.D turn2MustMatchAny — text should reflect Turn1 travel intent")
                 .isTrue();
 
-        for (String forbidden : scenario.turn2MustNotMatchAny()) {
+        for (String forbidden : TwoTurnDialogueRunner.TURN2_MUST_NOT_MATCH_ANY) {
             assertThat(turn2Text)
                     .as("B-03.E turn2MustNotMatchAny — must not repeat fresh-session prompts")
                     .doesNotContain(forbidden);

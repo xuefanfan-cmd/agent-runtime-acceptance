@@ -4,7 +4,6 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.A2aStreamErrors;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.Task;
@@ -19,10 +18,29 @@ import static org.assertj.core.api.Assertions.fail;
 
 /**
  * Shared two-turn streaming dialogue for B-03 / B-04 (Turn1 → Turn2 with same {@code contextId}).
+ *
+ * <p>Scenario constants live here (no main ScenarioData). Matches
+ * {@code testdata/integration/react_travel/b03-redis-multi-turn.json}.</p>
  */
 public final class TwoTurnDialogueRunner {
 
     private static final Logger LOG = Logger.getLogger(TwoTurnDialogueRunner.class.getName());
+
+    static final String TURN1_TEXT = "我要出差";
+    static final String TURN2_TEXT =
+            "2026年6月19日从深圳去北京出差3天，给我推荐酒店，没有任何要求，随机选一个就好";
+    static final long TURN1_TIMEOUT_MS = 90_000L;
+    static final long TURN2_TIMEOUT_MS = 120_000L;
+    static final List<TaskState> TURN1_ALLOWED_TERMINAL_STATES = List.of(
+            TaskState.TASK_STATE_COMPLETED,
+            TaskState.TASK_STATE_INPUT_REQUIRED);
+    static final TaskState TURN2_EXPECTED_TERMINAL_STATE = TaskState.TASK_STATE_COMPLETED;
+    static final List<String> TURN2_MUST_MATCH_ANY = List.of("北京", "出差");
+    static final List<String> TURN2_MUST_NOT_MATCH_ANY = List.of(
+            "您要去哪里出差",
+            "请问您要去哪里",
+            "请告诉我您的目的地",
+            "您打算去哪里");
 
     private TwoTurnDialogueRunner() {
     }
@@ -35,18 +53,17 @@ public final class TwoTurnDialogueRunner {
     ) {
     }
 
-    public static Result run(A2aServiceClient a2a, RedisMultiTurnScenarioData scenario, String logPrefix)
-            throws InterruptedException {
+    public static Result run(A2aServiceClient a2a, String logPrefix) throws InterruptedException {
         A2aEventCollector turn1Collector = new A2aEventCollector();
         AtomicReference<Throwable> turn1Error = new AtomicReference<>();
         Thread turn1Thread = Thread.ofVirtual().name(logPrefix + "-turn1").start(() ->
                 a2a.sendMessage(
-                        A2A.toUserMessage(scenario.turn1Text()),
+                        A2A.toUserMessage(TURN1_TEXT),
                         List.of(turn1Collector.createConsumer()),
                         error -> turn1Error.set(error)));
 
-        TaskState turn1State = TwoTurnDialogueAwait.awaitTurn1Outcome(turn1Collector, scenario);
-        turn1Thread.join(scenario.turn1TimeoutMs());
+        TaskState turn1State = TwoTurnDialogueAwait.awaitTurn1Outcome(turn1Collector);
+        turn1Thread.join(TURN1_TIMEOUT_MS);
         assertStreamHealthy(turn1Error, logPrefix + " Turn1");
         assertThat(turn1Collector.eventCount())
                 .as(logPrefix + " Turn1 stream events")
@@ -56,7 +73,7 @@ public final class TwoTurnDialogueRunner {
         assertThat(contextId).as(logPrefix + " Turn1 contextId").isNotBlank();
         LOG.info(logPrefix + " turn1_terminal_state=" + turn1State);
 
-        Message turn2Message = Message.builder(A2A.toUserMessage(scenario.turn2Text()))
+        Message turn2Message = Message.builder(A2A.toUserMessage(TURN2_TEXT))
                 .contextId(contextId)
                 .build();
         A2aEventCollector turn2Collector = new A2aEventCollector();
@@ -67,12 +84,12 @@ public final class TwoTurnDialogueRunner {
                         List.of(turn2Collector.createConsumer()),
                         error -> turn2Error.set(error)));
 
-        TaskState turn2State = turn2Collector.awaitTerminalState(scenario.turn2TimeoutMs());
-        turn2Thread.join(scenario.turn2TimeoutMs());
+        TaskState turn2State = turn2Collector.awaitTerminalState(TURN2_TIMEOUT_MS);
+        turn2Thread.join(TURN2_TIMEOUT_MS);
         assertStreamHealthy(turn2Error, logPrefix + " Turn2");
         assertThat(turn2State)
                 .as(logPrefix + " Turn2 terminal state")
-                .isEqualTo(scenario.resolvedTurn2ExpectedState());
+                .isEqualTo(TURN2_EXPECTED_TERMINAL_STATE);
 
         String taskId = turn2Collector.findFirstTaskId();
         assertThat(taskId).as(logPrefix + " Turn2 taskId").isNotBlank();
@@ -81,7 +98,7 @@ public final class TwoTurnDialogueRunner {
         LOG.info(logPrefix + " Turn2 reply (truncated): "
                 + (turn2Text.length() > 200 ? turn2Text.substring(0, 200) + "..." : turn2Text));
 
-        TwoTurnDialogueAssertions.assertTurn2Understanding(turn2Text, scenario);
+        TwoTurnDialogueAssertions.assertTurn2Understanding(turn2Text);
         return new Result(turn1State, contextId, turn2State, turn2Text);
     }
 

@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * SKIPPED，避免环境未就绪误报 FAIL。
  *
  * <p>判定四档：A 终态可达不挂死 / B 终态为失败信号 OR COMPLETED+致歉文本 /
- * C artifact 不漏堆栈 / D 流层无非预期异常。详见 docs/cases/B-09-*.md。
+ * C artifact 不漏堆栈 / D 流层无非预期异常。详见 docs/cases/reactagent/B-09-*.md。
  *
  * <p>标签 {@code @Tag("degraded")} 而非 {@code integration}——避免 -P integration
  * 默认套件把本类拖进绿色 CI（trip 停掉时正常用例会全红）。运行靠显式

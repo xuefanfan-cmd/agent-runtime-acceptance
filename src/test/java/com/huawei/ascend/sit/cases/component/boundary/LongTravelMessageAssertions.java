@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.LongTravelMessageScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -24,12 +23,13 @@ final class LongTravelMessageAssertions {
     private LongTravelMessageAssertions() {
     }
 
-    static void assertLongMessageReachedTerminal(A2aEventCollector collector, LongTravelMessageScenarioData scenario, String label) {
-        assertLongMessageReachedTerminal(collector, scenario, label, scenario.longMessageTimeoutMs());
+    static void assertLongMessageReachedTerminal(A2aEventCollector collector, String label) {
+        assertLongMessageReachedTerminal(
+                collector, label, LongTravelMessageFlow.LONG_MESSAGE_TIMEOUT_MS);
     }
 
     static void assertLongMessageReachedTerminal(
-            A2aEventCollector collector, LongTravelMessageScenarioData scenario, String label, long awaitMs) {
+            A2aEventCollector collector, String label, long awaitMs) {
         TaskState terminal = collector.awaitTerminalState(awaitMs);
 
         assertThat(collector.eventCount())
@@ -55,10 +55,10 @@ final class LongTravelMessageAssertions {
         }
     }
 
-    static void assertHealthProbeCompleted(Task task, LongTravelMessageScenarioData scenario, String label) {
+    static void assertHealthProbeCompleted(Task task, String label) {
         assertThat(task.status().state())
                 .as(label + " C-07.E health probe state")
-                .isEqualTo(scenario.resolvedHealthProbeTerminalState());
+                .isEqualTo(LongTravelMessageFlow.HEALTH_PROBE_EXPECTED_TERMINAL_STATE);
         String text = TaskTextExtractor.textOf(task);
         assertThat(text).as(label + " C-07.E health probe text").isNotBlank();
     }

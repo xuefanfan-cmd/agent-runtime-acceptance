@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.EmptyMessageScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -25,8 +24,8 @@ final class EmptyMessageAssertions {
     private EmptyMessageAssertions() {
     }
 
-    static void assertEmptyMessageFailed(A2aEventCollector collector, EmptyMessageScenarioData scenario, String label) {
-        TaskState terminal = collector.awaitTerminalState(scenario.emptyMessageTimeoutMs());
+    static void assertEmptyMessageFailed(A2aEventCollector collector, String label) {
+        TaskState terminal = collector.awaitTerminalState(EmptyMessageFlow.EMPTY_MESSAGE_TIMEOUT_MS);
 
         assertThat(collector.eventCount())
                 .as(label + " C-06.A events")
@@ -34,29 +33,29 @@ final class EmptyMessageAssertions {
 
         assertThat(terminal)
                 .as(label + " C-06.B terminal state")
-                .isEqualTo(scenario.resolvedExpectedTerminalState());
+                .isEqualTo(EmptyMessageFlow.EXPECTED_TERMINAL_STATE);
 
         String taskId = collector.findFirstTaskId();
         assertThat(taskId).as(label + " C-06.D taskId").isNotBlank();
 
         Task task = taskFromCollector(collector).orElseThrow();
-        assertInvalidInputError(task, scenario, label);
+        assertInvalidInputError(task, label);
     }
 
-    static void assertHealthProbeCompleted(Task task, EmptyMessageScenarioData scenario, String label) {
+    static void assertHealthProbeCompleted(Task task, String label) {
         assertThat(task.status().state())
                 .as(label + " C-06.E health probe state")
-                .isEqualTo(scenario.resolvedHealthProbeTerminalState());
+                .isEqualTo(EmptyMessageFlow.HEALTH_PROBE_EXPECTED_TERMINAL_STATE);
         String text = TaskTextExtractor.textOf(task);
         assertThat(text).as(label + " C-06.E health probe text").isNotBlank();
     }
 
-    private static void assertInvalidInputError(Task task, EmptyMessageScenarioData scenario, String label) {
+    private static void assertInvalidInputError(Task task, String label) {
         String errorSurface = aggregateErrorText(task);
         assertThat(errorSurface)
                 .as(label + " C-06.C error surface")
-                .contains(scenario.expectedErrorCode());
-        for (String fragment : scenario.expectedErrorDetailFragments()) {
+                .contains(EmptyMessageFlow.EXPECTED_ERROR_CODE);
+        for (String fragment : EmptyMessageFlow.EXPECTED_ERROR_DETAIL_FRAGMENTS) {
             assertThat(errorSurface.toLowerCase())
                     .as(label + " C-06.C detail fragment")
                     .contains(fragment.toLowerCase());

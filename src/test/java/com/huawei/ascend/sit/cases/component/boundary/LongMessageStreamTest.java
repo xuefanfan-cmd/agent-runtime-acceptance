@@ -3,7 +3,6 @@ package com.huawei.ascend.sit.cases.component.boundary;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.component.boundary.LongTravelMessageScenarioData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -15,7 +14,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
  * before launch for managed mode; remote mode uses LLM on the pre-deployed SUT. See
- * {@code docs/cases/C-07-long-message.md}.</p>
+ * {@code docs/cases/reactagent/C-07-long-message.md}.</p>
  */
 @Tag("component")
 class LongMessageStreamTest extends BaseManagedStackTest {
@@ -28,7 +27,6 @@ class LongMessageStreamTest extends BaseManagedStackTest {
     @Test
     @DisplayName("C-07-S: 流式超长消息到达终态 + 后置「你好」COMPLETED")
     void c07_streamLongMessage_reachesTerminalState_thenHealthProbeCompletes() throws InterruptedException {
-        LongTravelMessageScenarioData scenario = LongTravelMessageScenarioData.loadDefault();
-        LongTravelMessageFlow.run(client("mainplan"), scenario, "C-07.S", true);
+        LongTravelMessageFlow.run(client("mainplan"), "C-07.S", true);
     }
 }

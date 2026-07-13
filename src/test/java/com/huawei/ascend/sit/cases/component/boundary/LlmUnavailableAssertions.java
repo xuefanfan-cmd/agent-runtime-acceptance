@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
-import com.huawei.ascend.sit.model.component.boundary.LlmUnavailableScenarioData;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -29,13 +28,13 @@ final class LlmUnavailableAssertions {
     private LlmUnavailableAssertions() {
     }
 
-    static void assertLlmUnavailableNonSuccessTerminal(
-            A2aEventCollector collector, LlmUnavailableScenarioData scenario, String label) {
-        assertLlmUnavailableNonSuccessTerminal(collector, scenario, label, scenario.llmFailureTimeoutMs());
+    static void assertLlmUnavailableNonSuccessTerminal(A2aEventCollector collector, String label) {
+        assertLlmUnavailableNonSuccessTerminal(
+                collector, label, LlmUnavailableFlow.LLM_FAILURE_TIMEOUT_MS);
     }
 
     static void assertLlmUnavailableNonSuccessTerminal(
-            A2aEventCollector collector, LlmUnavailableScenarioData scenario, String label, long awaitMs) {
+            A2aEventCollector collector, String label, long awaitMs) {
         TaskState terminal = collector.awaitTerminalState(awaitMs);
 
         assertThat(collector.eventCount())
@@ -46,7 +45,7 @@ final class LlmUnavailableAssertions {
                 .as(label + " C-09.B terminal is final")
                 .isTrue();
 
-        assertThat(scenario.resolvedDisallowedTerminalStates())
+        assertThat(LlmUnavailableFlow.DISALLOWED_TERMINAL_STATES)
                 .as(label + " C-09.B disallowed terminal")
                 .doesNotContain(terminal);
 

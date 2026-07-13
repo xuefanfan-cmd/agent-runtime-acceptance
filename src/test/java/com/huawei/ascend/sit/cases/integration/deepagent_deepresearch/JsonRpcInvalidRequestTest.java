@@ -18,10 +18,14 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-001.jsonrpc-invalid-request + FEAT-001.jsonrpc-id-preserved —
+ * jsonrpc-invalid-request + jsonrpc-id-preserved —
  * 合法 JSON 但不符 JSON-RPC 请求 shape → {@code -32600}, 且 id 回显不丢.
  *
- * <p>FEAT-001 §5.1.2。POST {@code {"jsonrpc":"2.0","id":"1"}}（缺 method）到 {@code /a2a}，SUT 必须返：
+ * <p>version-scope FEAT-001 §5.1.2/§5.1.8 只承诺 "invalid-request 语义" + "错误 response 尽量
+ * 保留原 request id"，不再固定 {@code -32600} 这个码值。本用例的具体码断言按 L2 §5.3
+ * <b>当前实现事实</b> 表钉住 —— SUT 换表达形式时用例 FAIL 是"L2 实现现状变化"，需回 L2 对齐。
+ *
+ * <p>POST {@code {"jsonrpc":"2.0","id":"1"}}（缺 method）到 {@code /a2a}，SUT 必须返：
  * <ul>
  *   <li>HTTP 200</li>
  *   <li>合法 JSON-RPC error response</li>

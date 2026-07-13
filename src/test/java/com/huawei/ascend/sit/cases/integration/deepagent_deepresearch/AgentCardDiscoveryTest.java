@@ -134,13 +134,17 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
         assertThat(card.skills().get(0).tags())
                 .as("skills[0].tags").contains("research", "comparison", "llm");
 
-        // supportedInterfaces[0] — JSONRPC 绑定；url 结尾 /a2a
+        // supportedInterfaces[0] — JSONRPC 绑定；url 结尾 /a2a；protocolVersion 锁 1.0；tenant 未启用为 null
         assertThat(card.supportedInterfaces())
                 .as("supportedInterfaces").isNotEmpty();
         assertThat(card.supportedInterfaces().get(0).protocolBinding())
                 .as("supportedInterfaces[0].protocolBinding").isEqualTo("JSONRPC");
         assertThat(card.supportedInterfaces().get(0).url())
                 .as("supportedInterfaces[0].url").endsWith("/a2a");
+        assertThat(card.supportedInterfaces().get(0).protocolVersion())
+                .as("supportedInterfaces[0].protocolVersion").isEqualTo("1.0");
+        assertThat(card.supportedInterfaces().get(0).tenant())
+                .as("supportedInterfaces[0].tenant (SUT 未启用多租户)").isNull();
     }
 
     /**

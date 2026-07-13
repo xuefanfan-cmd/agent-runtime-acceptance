@@ -11,7 +11,8 @@ depends_on:
   - deep-research 启动时按 SIT env 就绪 (含 SANDBOX_ENABLED / redis-checkpointer / long-term-memory 等按子用例前置声明)
   - 部分子用例需算子在跑前手工重启 deep-research（与 DA-06 / DA-07 同源 bug 触发条件）
 related_docs:
-  - FEAT-001 特性文档：`D:\openjiuwen-java\2012\version-scope\FEAT-001-standardized-agent-service-entrypoint.md`
+  - FEAT-001 特性文档（version-scope，外部契约）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `version-scope/FEAT-001-standardized-agent-service-entrypoint.md`（2026-07-15 版本；已抽象化错误码值、把 gRPC / generic-client webhook / mid-state webhook / HITL webhook / agent-bus 私有入口 / outbound / 认证等明示 OUT）
+  - FEAT-001 L2 设计文档（当前实现事实）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-001-standardized-agent-service-entrypoint.md`（2026-07-09 版本；⬜ Push Notification Config CRUD JSON-RPC 分发 / runtime-to-runtime webhook 实际推送 / gRPC 均未激活；✅ SendMessage / SendStreamingMessage / GetTask / Agent Card 发现 / JSON-RPC 错误面 / SSE 已激活）
   - FEAT-001 评审与待澄清清单：[FEAT-001-standardized-agent-service-entrypoint-review.md](FEAT-001-standardized-agent-service-entrypoint-review.md)
   - 旧档：[deepagent/DA-01-agent-card-discovery.md](deepagent/DA-01-agent-card-discovery.md) ~ [DA-07-sandbox-tools.md](deepagent/DA-07-sandbox-tools.md)（增量沉淀之前 smoke，本档为 FEAT-001 覆盖全景视角，不废弃）
 ---
@@ -164,37 +165,42 @@ related_docs:
 
 #### FEAT-001.jsonrpc-parse-error — 非法 JSON → parse error
 - **状态**：runnable
-- **FEAT 依据**：§5.1.2 + §5.1.8。
+- **FEAT 依据**：version-scope §5.1.2 + §5.1.8 承诺 "parse error 语义"（不再固定具体码值）；具体码 `-32700` 按 L2 §5.3 当前实现事实钉。
 - **G**：deep-research 就绪。
 - **W**：`POST /a2a` body 为 `{not-json`。
-- **T**：HTTP 200；body 是 JSON-RPC error response；`error.code == -32700`；`id == null`。
+- **T**：HTTP 200；body 是 JSON-RPC error response；`error.code == -32700`（L2 §5.3 当前实现）；`id == null`。
 - **PASS**：满足。**FAIL**：HTTP 4xx/5xx / body 不是标准 JSON-RPC error / code 不匹配。
 - **框架落点**：待新建（`JsonRpcParseErrorTest`）。
 
 #### FEAT-001.jsonrpc-invalid-request — shape 不符 → invalid request
 - **状态**：runnable
-- **FEAT 依据**：§5.1.2。
+- **FEAT 依据**：version-scope §5.1.2 承诺 "invalid-request 语义" + "错误 response 尽量保留原 request id"（不再固定具体码值）；具体码 `-32600` 按 L2 §5.3 当前实现事实钉。
 - **G**：deep-research 就绪。
 - **W**：`POST /a2a` body = `{"jsonrpc":"2.0","id":"1"}`。
-- **T**：HTTP 200；error response；`error.code == -32600`；`id == "1"`。
+- **T**：HTTP 200；error response;`error.code == -32600`（L2 §5.3 当前实现）；`id == "1"`。
 - **PASS**：满足。**FAIL**：code 不匹配 / id 丢失。
 - **框架落点**：待新建（`JsonRpcInvalidRequestTest`）。
 
 #### FEAT-001.jsonrpc-method-not-found — 未知 method
 - **状态**：runnable
-- **FEAT 依据**：§5.1.2。
+- **FEAT 依据**：version-scope §5.1.2 承诺 "method-not-found 语义" + "错误 response 尽量保留原 request id"（不再固定具体码值）；具体码 `-32601` 按 L2 §5.3 当前实现事实钉。
 - **G**：deep-research 就绪。
 - **W**：`POST /a2a` body method 为 `NoSuchMethodEver`。
-- **T**：HTTP 200；error response；`error.code == -32601`；`id == "7"`。
+- **T**：HTTP 200；error response；`error.code == -32601`（L2 §5.3 当前实现）；`id == "7"`。
 - **PASS**：满足。**FAIL**：其他 code / HTTP 5xx / id 丢失。
 - **框架落点**：待新建（`JsonRpcMethodNotFoundTest`）。
 
 #### FEAT-001.jsonrpc-id-preserved — error response 保留 request id
 - **状态**：runnable（并入上面三条断言）
-- **FEAT 依据**：§2「JSON-RPC 错误表面」。
+- **FEAT 依据**：version-scope §5.1.8「错误 response 尽量保留原 request id」；对应 L2 §5.3 表里各错误行的 id 回显要求。
 - **框架落点**：断言并入 `JsonRpcInvalidRequestTest` / `JsonRpcMethodNotFoundTest`。
 
 ### 3.3 核心 A2A 方法（send / get / cancel / list / subscribe）
+
+> **⚠️ Scope 说明**（对齐新 version-scope §2 能力表 + §3 事实要求列）：
+> - **MUST 集**：`SendMessage` / `SendStreamingMessage` / `GetTask` / push config CRUD（`Create/Get/List/DeleteTaskPushNotificationConfig`，见 §3.4）。
+> - **不在 MUST 集**：`CancelTask` / `ListTasks` / `SubscribeToTask`。version-scope §5.1.8 明示"method unsupported → method-not-found"，即 SUT 不实现这三个 method 返 `-32601` 是**合规**的。
+> - **本档处理**：这三个子用例保留在框架落点里作为"如 SUT 实现则做实现快照"，但断言口径应加一步 assumeTrue 探针 —— 先探 method 是否可用（返 `-32601` 视为"能力未激活，本用例 INCONCLUSIVE"），可用才继续正路径断言。
 
 #### FEAT-001.send-message-blocking — 阻塞 send
 - **状态**：runnable（DA-02 已覆盖）
@@ -219,38 +225,38 @@ related_docs:
 - **框架落点**：[GetTaskTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/GetTaskTest.java)。
 
 #### FEAT-001.cancel-task-in-flight — 取消执行中任务
-- **状态**：partial
+- **状态**：partial（scope 降级：新 version-scope §2 未把 `CancelTask` 列入 MUST；SUT 未实现则合规，返 `-32601` 时本用例走 INCONCLUSIVE）
 - **评审关联**：§5 —— cancel 到 CANCELED 时限未定，本用例用宽松窗口（30s）观察，不断言时限
-- **FEAT 依据**：§2「取消任务」+ §4 + §5.1.6 + §5.1.8。
+- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §5.1.6 曾要求 cancel 语义，新档已收窄。若 SUT 实现了 `CancelTask`，则按下方期望断言；若返 method-not-found，视为"能力未激活"，本条 INCONCLUSIVE。
 - **G**：deep-research 就绪；发起一个足够长的流式任务。
 - **W**：拿到 `taskId` 后立即 `CancelTask(taskId)`。
-- **T**：CancelTask 返回的 Task 状态在宽松窗口内到达 `TASK_STATE_CANCELED`；后续 `GetTask(taskId)` 也是 CANCELED；stream 侧收到 canceled 终态事件。
-- **PASS**：三处一致 CANCELED。**FAIL**：CancelTask 抛异常 / 返回 COMPLETED / 状态漂移。
+- **T**：先探针一次 `CancelTask`，若返 `-32601` 则 INCONCLUSIVE；否则 CancelTask 返回的 Task 状态在宽松窗口内到达 `TASK_STATE_CANCELED`；后续 `GetTask(taskId)` 也是 CANCELED；stream 侧收到 canceled 终态事件。
+- **PASS**：三处一致 CANCELED。**FAIL**：CancelTask 抛异常（非 method-not-found） / 返回 COMPLETED / 状态漂移。**INCONCLUSIVE**：method 未激活。
 - **框架落点**：待新建（`CancelTaskInFlightTest`）。
 
 #### FEAT-001.cancel-task-terminal — cancel 已完成任务的幂等语义
-- **状态**：blocked
+- **状态**：blocked（+ scope 降级：同上，不在新 version-scope MUST 集）
 - **评审关联**：§5 §6 —— 期望行为未定（幂等 no-op 还是错误）+ 若错误无 code 承载
-- **FEAT 依据**：§5.1.6 边界 + §5.1.8。
+- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §5.1.6 边界 + §5.1.8。
 - **备注**：等评审澄清"已 terminal 的 Task 再 cancel 是幂等 200 完整回终态还是返回 A2A 特定错误码"后再落地。当前只能弱断言"不 HTTP 5xx"。
 - **框架落点**：待新建，与 in-flight 用例合并到 `CancelTaskTest`；本条目前只写"不 5xx"最弱断言，等评审。
 
 #### FEAT-001.list-tasks — 任务列表查询
-- **状态**：runnable
-- **FEAT 依据**：§2「任务列表」+ §3「`ListTasks`」。
+- **状态**：runnable（scope 降级：不在新 version-scope §2 MUST 集；未实现返 `-32601` 时 INCONCLUSIVE）
+- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §2「任务列表」+ §3「`ListTasks`」。若 SUT 实现则做实现快照。
 - **G**：deep-research 就绪；先跑 2~3 个 `SendMessage` 建 task。
-- **W**：调 `ListTasks(pageSize=..., pageToken=...)`。
+- **W**：先探针 `ListTasks(pageSize=1)`，若返 `-32601` 则 INCONCLUSIVE；否则调 `ListTasks(pageSize=..., pageToken=...)`。
 - **T**：返回结果集包含刚建的 taskId；分页语义；contextId / tenantId 过滤（若 SDK 支持）能正确缩小结果集。
-- **PASS**：所有断言满足。**FAIL**：taskId 缺失 / 分页 / 过滤不工作。
+- **PASS**：所有断言满足。**FAIL**：taskId 缺失 / 分页 / 过滤不工作。**INCONCLUSIVE**：method 未激活。
 - **框架落点**：待新建（`ListTasksTest`）。
 
 #### FEAT-001.subscribe-to-task — SSE 断线重连
-- **状态**：runnable（依赖 SDK API 存在性，非评审风险）
-- **FEAT 依据**：§2「重新订阅」+ §4「断线重连」。
+- **状态**：runnable（scope 降级：不在新 version-scope §2 MUST 集；依赖 SDK API 存在性，未实现返 `-32601` 时 INCONCLUSIVE）
+- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §2「重新订阅」+ §4「断线重连」。若 SUT 实现则做实现快照。
 - **G**：deep-research 就绪；起一个长任务。
-- **W**：`SendStreamingMessage` 拿到 taskId 后 close SSE；调 `SubscribeToTask(taskId)` 重连。
+- **W**：`SendStreamingMessage` 拿到 taskId 后 close SSE；先探针 `SubscribeToTask(taskId)`，若返 `-32601` 则 INCONCLUSIVE；否则调 `SubscribeToTask(taskId)` 重连。
 - **T**：重连成功；后续事件序列包含 working / artifact update / terminal；终态与"不断线"路径一致。
-- **PASS**：满足。**FAIL**：重连 4xx/5xx / 空事件流 / 终态不一致。
+- **PASS**：满足。**FAIL**：重连 4xx/5xx（非 method-not-found） / 空事件流 / 终态不一致。**INCONCLUSIVE**：method 未激活。
 - **框架落点**：待新建（`SubscribeToTaskTest`；先跑 SDK API smoke 探针确认 `resubscribe` 存在）。
 
 ### 3.4 Push Notification config CRUD
@@ -332,23 +338,25 @@ related_docs:
 ### 3.6 传输 / 上下文 / 输入边界
 
 #### FEAT-001.tenant-id-propagation — X-Tenant-Id 头传递
-- **状态**：partial
+- **状态**：partial（scope 降级 + SUT 现状）
 - **评审关联**：§7 缺 tenant header 时的落点未定 —— 本用例只测"带 header 时可被观测"
-- **FEAT 依据**：§2「租户标识传递」+ §4「多租户网关接入」+ §5.1.7。
+- **FEAT 依据**：新 version-scope §2 能力表**未明确 `X-Tenant-Id` header 契约**（能力被抽象为"运行时上下文传递 / 多租户隔离"，未固定 header 名称）；旧 FEAT §5.1.7 曾承诺 `X-Tenant-Id` 落点，本条按旧口径断言。
+- **SUT 现状快照**：deep-research 的 Agent Card `supportedInterfaces[0].tenant == null`（DA-01.C 已断言），表明 SUT 侧多租户尚未启用；带 header 也可能无观测面，本条大概率 INCONCLUSIVE。
 - **G**：deep-research 就绪；能观测到 `tenantId` 落到 task metadata / trajectory / artifact 中（若 SUT 侧回显；否则本条 INCONCLUSIVE）。
 - **W**：`POST /a2a` 带 `X-Tenant-Id: sit-tenant-<uuid>`；跑 `SendMessage`。
 - **T**：task metadata（或 SUT 侧可读的其他 observability 面）里能读到该 tenantId。
-- **PASS**：tenantId 能被回显 / 追踪。**FAIL**：header 被丢弃。**INCONCLUSIVE**：SUT 侧无 tenantId 可观测面 → 走 §3.6.tenant-isolation 间接证据。
+- **PASS**：tenantId 能被回显 / 追踪。**FAIL**：header 被丢弃。**INCONCLUSIVE**：SUT 侧无 tenantId 可观测面 / 多租户未启用 → 走 §3.6.tenant-isolation 间接证据。
 - **框架落点**：待新建（`TenantIdPropagationTest`）。
 
 #### FEAT-001.tenant-isolation — 跨租户记忆隔离（间接证据）
-- **状态**：partial
+- **状态**：partial（scope 降级 + SUT 现状）
 - **评审关联**：§7 —— 特性文档要求 SIT 承认此为验收证据
-- **FEAT 依据**：§5.1.7「租户 …… 派生默认 `agentStateKey` 与 `memoryScope`」。
+- **FEAT 依据**：新 version-scope §2「多租户隔离」抽象化未固定 header 与 key 派生规则；旧 FEAT §5.1.7「租户 …… 派生默认 `agentStateKey` 与 `memoryScope`」保留作为期望参考。
+- **SUT 现状快照**：同上，SUT 当前 `supportedInterfaces[0].tenant == null`，多租户未激活；本条大概率 INCONCLUSIVE。
 - **G**：deep-research 就绪；redis-checkpointer 或 long-term-memory 已启用（依赖 DA-05 / DA-06 链路）。
 - **W**：用 tenant=A 跑一轮存记忆 → 用 tenant=B 相同 prompt 尝试召回。
 - **T**：tenant=B 无法召回 tenant=A 的记忆内容。
-- **PASS**：跨租户隔离生效。**FAIL**：tenant=B 召回到 tenant=A 的内容（隔离失守）。**INCONCLUSIVE**：deep-research 记忆链路本身不 work（回退到 DA-05/DA-06 排障）。
+- **PASS**：跨租户隔离生效。**FAIL**：tenant=B 召回到 tenant=A 的内容（隔离失守）。**INCONCLUSIVE**：deep-research 记忆链路本身不 work（回退到 DA-05/DA-06 排障） / 多租户未启用。
 - **框架落点**：待新建（`TenantIsolationTest`；复用 DA-05/DA-06 的 fixture）。
 
 #### FEAT-001.empty-text-input — 空文本输入拒绝

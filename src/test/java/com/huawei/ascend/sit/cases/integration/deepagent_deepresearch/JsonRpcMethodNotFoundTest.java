@@ -18,10 +18,14 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-001.jsonrpc-method-not-found + FEAT-001.jsonrpc-id-preserved —
+ * jsonrpc-method-not-found + jsonrpc-id-preserved —
  * 未知 method → {@code -32601}, 且 id 回显不丢.
  *
- * <p>FEAT-001 §5.1.2。POST 合法 shape 但 method 名不存在到 {@code /a2a}，SUT 必须返：
+ * <p>version-scope FEAT-001 §5.1.2/§5.1.8 只承诺 "method-not-found 语义" + "错误 response 尽量
+ * 保留原 request id"，不再固定 {@code -32601} 这个码值。本用例的具体码断言按 L2 §5.3
+ * <b>当前实现事实</b> 表钉住 —— SUT 换表达形式时用例 FAIL 是"L2 实现现状变化"，需回 L2 对齐。
+ *
+ * <p>POST 合法 shape 但 method 名不存在到 {@code /a2a}，SUT 必须返：
  * <ul>
  *   <li>HTTP 200</li>
  *   <li>合法 JSON-RPC error response</li>

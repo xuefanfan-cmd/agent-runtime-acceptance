@@ -18,9 +18,13 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-001.jsonrpc-parse-error — 非法 JSON body → 标准 JSON-RPC parse error {@code -32700}.
+ * jsonrpc-parse-error — 非法 JSON body → 标准 JSON-RPC parse error {@code -32700}.
  *
- * <p>FEAT-001 §5.1.2 + §5.1.8。POST 非法 JSON 到 {@code /a2a}，SUT 必须返：
+ * <p>version-scope FEAT-001 §5.1.2/§5.1.8 只承诺"parse error 语义"，不再固定具体码值。
+ * 这里的 {@code -32700} 断言按 L2 §5.3 <b>当前实现事实</b> 表：一旦 SUT 换实现改用其它
+ * 表达形式，此用例 FAIL 是"L2 实现现状变化"，而不是"违反 version-scope 契约"，需回到 L2 对齐。
+ *
+ * <p>POST 非法 JSON 到 {@code /a2a}，SUT 必须返：
  * <ul>
  *   <li>HTTP 200（错误在 JSON-RPC 层面表达，不是 HTTP 层面）</li>
  *   <li>合法 JSON-RPC error response（含 {@code jsonrpc:"2.0"} + {@code error} 对象）</li>

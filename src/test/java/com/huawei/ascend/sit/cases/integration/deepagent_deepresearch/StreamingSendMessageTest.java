@@ -114,6 +114,24 @@ class StreamingSendMessageTest extends BaseManagedStackTest {
                 .as("DA-03: SSE 应观测到 COMPLETED 状态\ntrajectory=%s", stateTrajectory)
                 .contains(TaskState.TASK_STATE_COMPLETED);
 
+        // FEAT-001.task-lifecycle 扩展：严格顺序 —— SUBMITTED 必须先于 WORKING 先于 COMPLETED。
+        int firstSubmitted = stateTrajectory.indexOf(TaskState.TASK_STATE_SUBMITTED);
+        int firstWorking = stateTrajectory.indexOf(TaskState.TASK_STATE_WORKING);
+        int firstCompleted = stateTrajectory.indexOf(TaskState.TASK_STATE_COMPLETED);
+        assertThat(firstSubmitted)
+                .as("FEAT-001.task-lifecycle: SUBMITTED 首现 index 应先于 WORKING 首现 index\ntrajectory=%s", stateTrajectory)
+                .isLessThan(firstWorking);
+        assertThat(firstWorking)
+                .as("FEAT-001.task-lifecycle: WORKING 首现 index 应先于 COMPLETED 首现 index\ntrajectory=%s", stateTrajectory)
+                .isLessThan(firstCompleted);
+
+        // FEAT-001.task-lifecycle 扩展：无回退 —— 到达 COMPLETED 后不应再出现 SUBMITTED / WORKING。
+        List<TaskState> afterCompleted = stateTrajectory.subList(firstCompleted, stateTrajectory.size());
+        assertThat(afterCompleted)
+                .as("FEAT-001.task-lifecycle: COMPLETED 之后不应回退到 SUBMITTED / WORKING\ntrajectory=%s", stateTrajectory)
+                .doesNotContain(TaskState.TASK_STATE_SUBMITTED)
+                .doesNotContain(TaskState.TASK_STATE_WORKING);
+
         // 至少有 1 个 artifact chunk
         assertThat(collector.findFirstArtifactUpdate())
                 .as("DA-03: 至少收到 1 个 artifactUpdate 事件").isPresent();

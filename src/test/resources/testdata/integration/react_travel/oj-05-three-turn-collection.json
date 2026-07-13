@@ -1,23 +1,19 @@
 {
-  "_doc": "OJ-05 — three-turn collection (local verify profile). Turn 1/2 allow COMPLETED plain-text fallback. Turn 2 wording blocks default-Shenzhen assumption to reduce premature trip delegation. Turn 3 is self-contained so a fresh A2A task (after turn-2 COMPLETED) can complete mainplan→trip→hotel in one trip call. Turn 3 timeout raised for full-chain LLM + remote delegation.",
-  "sessionId": "oj-05-3turn-local-002",
-  "timeoutMs": 180000,
+  "_doc": "OJ-05 — three-turn INPUT_REQUIRED collection (C-03 shape). Turn1/2 block premature COMPLETED / default-Shenzhen. Flow timeout floor 300s for full-chain Turn3. Hard states: Turn1/2 INPUT_REQUIRED, Turn3 COMPLETED (do not relax).",
+  "sessionId": "oj-05-manual-session-001",
+  "timeoutMs": 300000,
   "turns": [
     {
-      "text": "我要去北京出差。",
-      "expectedTerminal": "TASK_STATE_INPUT_REQUIRED",
-      "allowedTerminalStates": ["TASK_STATE_INPUT_REQUIRED", "TASK_STATE_COMPLETED"]
+      "text": "我要去北京出差。出发地和行程天数都还没定，请先追问缺失信息，不要直接做行程规划。",
+      "expectedTerminal": "TASK_STATE_INPUT_REQUIRED"
     },
     {
       "text": "出差3天，下周二出发。出发城市还没定，不是深圳，请先继续追问，不要调用行程规划。",
-      "expectedTerminal": "TASK_STATE_INPUT_REQUIRED",
-      "allowedTerminalStates": ["TASK_STATE_INPUT_REQUIRED", "TASK_STATE_COMPLETED"]
+      "expectedTerminal": "TASK_STATE_INPUT_REQUIRED"
     },
     {
-      "text": "从上海出发。差标：每晚不超过 800 元、最低 4 星。偏好：国贸附近，需要会议室。请据此完成完整行程规划。",
+      "text": "从上海出发。差标：每晚不超过 800 元、最低 4 星、协议品牌 全季/亚朵/希尔顿欢朋。偏好：国贸附近，需要会议室。请据此完成完整行程规划。",
       "expectedTerminal": "TASK_STATE_COMPLETED",
-      "allowedTerminalStates": ["TASK_STATE_COMPLETED", "TASK_STATE_INPUT_REQUIRED"],
-      "timeoutMs": 600000,
       "minResponseLength": 8
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "_doc": "B-03 Redis checkpointer — two-turn dialogue. See docs/cases/B-03-redis-checkpointer-multi-turn.md §7.",
+  "_doc": "B-03 / B-04 Redis checkpointer two-turn dialogue. Authority: TwoTurnDialogueRunner constants (not loaded at runtime).",
   "turn1Text": "我要出差",
   "turn2Text": "2026年6月19日从深圳去北京出差3天，给我推荐酒店，没有任何要求，随机选一个就好",
   "turn1TimeoutMs": 90000,

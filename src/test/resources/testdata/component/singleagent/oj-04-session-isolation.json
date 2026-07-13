@@ -1,7 +1,6 @@
 {
-  "_doc": "OJ-04 — session isolation. See docs/cases/OJ-04-openjiuwen-session-isolation.md",
+  "_doc": "OJ-04 — session isolation. See docs/cases/reactagent/OJ-04-openjiuwen-session-isolation.md. Timeout from sut.timeout.poll-seconds; test uses InteractionFlow + withContextId (no main ScenarioData).",
   "turn2Text": "住宿标准每晚 800 以内",
-  "timeoutMs": 120000,
   "turn2MustMatchAny": ["住宿", "800", "出差"],
   "sessions": [
     {

@@ -1,5 +1,5 @@
 {
-  "_doc": "OJ-09 — hotel sandbox python print('ok') streaming. See docs/cases/OJ-09-openjiuwen-sandbox-code-execution.md",
+  "_doc": "OJ-09 — hotel sandbox python print('ok') streaming. Constants in OpenjiuwenSandboxCodeExecutionTest; no main ScenarioData.",
   "inputText": "在沙箱用 python 执行 print('ok') 并返回输出",
   "expectedTerminalState": "TASK_STATE_COMPLETED",
   "expectedResponseSubstrings": ["ok"],

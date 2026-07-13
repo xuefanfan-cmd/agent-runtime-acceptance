@@ -1,7 +1,6 @@
 package com.huawei.ascend.sit.cases.component.protocol;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
-import com.huawei.ascend.sit.cases.support.openjiuwen.OpenjiuwenStackSupport;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
@@ -26,31 +25,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * OJ-02 — openjiuwen synchronous contextId assignment and resume.
  *
- * <p>See {@code docs/cases/OJ-02-openjiuwen-sync-context-id-resume.md}.</p>
+ * <p>Same protocol surface as {@link ServerAssignedContextIdTest} (A-11-2); SUT is the
+ * openjiuwen mainplan artifact via {@code -Dtest.env=openjiuwen}.</p>
+ *
+ * <p>Does <em>not</em> use {@link com.huawei.ascend.sit.client.InteractionFlow} — the DSL
+ * would hide the explicit omit/carry {@code contextId} contract under test.</p>
+ *
+ * <p>See {@code docs/cases/reactagent/OJ-02-openjiuwen-sync-context-id-resume.md}.</p>
  */
 @Tag("component")
 @Tag("openjiuwen")
 class OpenjiuwenSyncContextIdTest extends BaseManagedStackTest {
 
+    private static final String MAINPLAN = "mainplan";
     private static final String INPUT_TEXT = "hi";
-    private static final long ROUND_TIMEOUT_MS = 120_000;
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
-        return OpenjiuwenStackSupport.mainplanSync(config);
+        return SutStack.builder(config)
+                .streaming(false)
+                .agent(MAINPLAN);
     }
 
     @Test
     @DisplayName("OJ-02: Turn1 不带 contextId → 服务端分配；Turn2 带回 → 透传，taskId 互异")
     void oj02_syncContextIdAssignedAndPreservedAcrossTurns() {
-        A2aServiceClient a2a = client(OpenjiuwenStackSupport.MAINPLAN);
+        A2aServiceClient a2a = client(MAINPLAN);
+        long timeoutMs = config.getPollTimeoutSeconds() * 1000L;
 
         Message turn1 = Message.builder()
                 .role(Message.Role.ROLE_USER)
                 .messageId(UUID.randomUUID().toString())
                 .parts(List.of(new TextPart(INPUT_TEXT)))
                 .build();
-        TurnObservation t1 = sendOneTurn(a2a, turn1);
+        TurnObservation t1 = sendOneTurn(a2a, turn1, timeoutMs);
 
         assertThat(t1.streamError()).as("Turn 1 stream error").isNull();
         assertThat(t1.finalState().isFinal()).as("Turn 1 final state").isTrue();
@@ -65,7 +73,7 @@ class OpenjiuwenSyncContextIdTest extends BaseManagedStackTest {
                 .contextId(t1.contextId())
                 .parts(List.of(new TextPart(INPUT_TEXT)))
                 .build();
-        TurnObservation t2 = sendOneTurn(a2a, turn2);
+        TurnObservation t2 = sendOneTurn(a2a, turn2, timeoutMs);
 
         assertThat(t2.streamError()).as("Turn 2 stream error").isNull();
         assertThat(t2.finalState().isFinal()).as("Turn 2 final state").isTrue();
@@ -78,7 +86,7 @@ class OpenjiuwenSyncContextIdTest extends BaseManagedStackTest {
                 .isNotEqualTo(t1.taskId());
     }
 
-    private TurnObservation sendOneTurn(A2aServiceClient a2a, Message message) {
+    private TurnObservation sendOneTurn(A2aServiceClient a2a, Message message, long timeoutMs) {
         A2aEventCollector collector = new A2aEventCollector();
         AtomicReference<Throwable> streamError = new AtomicReference<>();
 
@@ -86,7 +94,7 @@ class OpenjiuwenSyncContextIdTest extends BaseManagedStackTest {
         Consumer<Throwable> errorHandler = streamError::set;
 
         a2a.sendMessage(message, null, consumers, errorHandler);
-        TaskState finalState = collector.awaitTerminalState(ROUND_TIMEOUT_MS);
+        TaskState finalState = collector.awaitTerminalState(timeoutMs);
 
         return new TurnObservation(
                 collector.findFirstTaskId(),

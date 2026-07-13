@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 后续轮自动续 contextId 的逻辑封装进 {@code executeRound}，对本用例反而屏蔽了我们要观测的
  * 协议面（首轮**显式无** contextId、第二轮**显式有** contextId）。
  *
- * <p>详见 {@code docs/cases/A-11-2-server-assigned-context-id.md}。
+ * <p>详见 {@code docs/cases/reactagent/A-11-2-server-assigned-context-id.md}。
  */
 @Tag("component")
 @Tag("smoke")

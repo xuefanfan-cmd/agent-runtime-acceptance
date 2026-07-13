@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.integration.checkpointer.RedisMultiTurnScenarioData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * B-04 — Checkpointer config switch InMemory → Redis (特性 2-4).
  *
  * <p>Single test method, two phases: Phase1 {@code in-memory} mainplan, Phase2 {@code redis}
- * mainplan, same {@link RedisMultiTurnScenarioData} dialogue each phase.</p>
+ * mainplan, same {@link TwoTurnDialogueRunner} dialogue each phase.</p>
  *
  * <p>Managed Phase2 uses {@code mainplan-redis} + {@code sut.services.redis} backing service
  * ({@code application-local.yml}); redis-url is injected by {@link SutStack}, not test code.</p>
@@ -28,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
  * before launch for managed phases; remote mode uses LLM on the pre-deployed SUT. See
- * {@code docs/cases/B-04-checkpointer-config-switch.md}.</p>
+ * {@code docs/cases/reactagent/B-04-checkpointer-config-switch.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
@@ -45,16 +44,15 @@ class CheckpointerConfigSwitchTest {
     @DisplayName("B-04: InMemory → Redis 配置切换 — 两阶段对话各自达标")
     void b04_inMemoryThenRedis_sameDialogue_bothPassSemantics() throws Exception {
         TestConfig config = TestConfig.load();
-        RedisMultiTurnScenarioData scenario = RedisMultiTurnScenarioData.loadDefault();
 
         if (CheckpointerSwitchRemoteSupport.isRemoteMode()) {
-            runRemotePhases(config, scenario);
+            runRemotePhases(config);
         } else {
-            runManagedPhases(config, scenario);
+            runManagedPhases(config);
         }
     }
 
-    private static void runRemotePhases(TestConfig config, RedisMultiTurnScenarioData scenario) throws Exception {
+    private static void runRemotePhases(TestConfig config) throws Exception {
         MainplanPhaseConfig phase1Config = MainplanPhaseConfig.remoteInMemory(
                 CheckpointerSwitchRemoteSupport.phase1RemoteUrl(config));
         MainplanPhaseConfig phase2Config = MainplanPhaseConfig.remoteRedis(
@@ -63,28 +61,28 @@ class CheckpointerConfigSwitchTest {
 
         LOG.info("B-04 Phase1 remote in-memory: " + phase1Config.remoteUrl());
         try (SutStack phase1 = phase1Config.toStackBuilder(config).start()) {
-            TwoTurnDialogueRunner.run(phase1.client(MAINPLAN), scenario, "B-04.P1");
+            TwoTurnDialogueRunner.run(phase1.client(MAINPLAN), "B-04.P1");
         }
 
         LOG.info("B-04 Phase2 remote redis: " + phase2Config.remoteUrl());
         try (SutStack phase2 = phase2Config.toStackBuilder(config).start()) {
-            TwoTurnDialogueRunner.run(phase2.client(MAINPLAN), scenario, "B-04.P2");
+            TwoTurnDialogueRunner.run(phase2.client(MAINPLAN), "B-04.P2");
         }
     }
 
-    private static void runManagedPhases(TestConfig config, RedisMultiTurnScenarioData scenario) throws Exception {
+    private static void runManagedPhases(TestConfig config) throws Exception {
         MainplanPhaseConfig phase1Config = MainplanPhaseConfig.managedInMemory();
         MainplanPhaseConfig phase2Config = MainplanPhaseConfig.managedRedis();
         assertConfigDiffGate(phase1Config, phase2Config);
 
         LOG.info("B-04 Phase1 managed in-memory (agent=" + MAINPLAN + ")");
         try (SutStack phase1 = phase1Config.toStackBuilder(config).start()) {
-            TwoTurnDialogueRunner.run(phase1.client(MAINPLAN), scenario, "B-04.P1");
+            TwoTurnDialogueRunner.run(phase1.client(MAINPLAN), "B-04.P1");
         }
 
         LOG.info("B-04 Phase2 managed redis (agent=" + MAINPLAN_REDIS + ", backing service from yml)");
         try (SutStack phase2 = phase2Config.toStackBuilder(config).start()) {
-            TwoTurnDialogueRunner.run(phase2.client(MAINPLAN_REDIS), scenario, "B-04.P2");
+            TwoTurnDialogueRunner.run(phase2.client(MAINPLAN_REDIS), "B-04.P2");
         }
     }
 

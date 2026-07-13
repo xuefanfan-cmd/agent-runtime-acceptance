@@ -3,19 +3,16 @@ package com.huawei.ascend.sit.cases.component.protocol;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
+import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.MessageStreamScenarioData;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
 import org.a2aproject.sdk.spec.AgentCard;
-import org.a2aproject.sdk.spec.Artifact;
-import org.a2aproject.sdk.spec.Part;
 import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
-import org.a2aproject.sdk.spec.TextPart;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -36,17 +33,22 @@ import static org.assertj.core.api.Assertions.fail;
  *
  * <p>Uses {@link SutStack.Builder#streaming(boolean)} + {@link A2aServiceClient#sendMessage}
  * + {@link A2aEventCollector} — the framework's standard streaming client path
- * ({@code message/stream} when {@code streaming=true}).</p>
+ * ({@code message/stream} when {@code streaming=true}). Scenario constants live in this class
+ * (no main ScenarioData); see {@code testdata/component/protocol/a04-stream-hello.json}.</p>
  *
- * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
- * before launch so the managed mainplan process can reach the model. See
- * {@code docs/cases/A-04-message-stream.md}.</p>
+ * <p>See {@code docs/cases/reactagent/A-04-message-stream.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
 class AgentStreamMessageTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentStreamMessageTest.class.getName());
+
+    /** Matches {@code testdata/component/protocol/a04-stream-hello.json}. */
+    private static final String INPUT_TEXT = "你好";
+    private static final long STREAM_TIMEOUT_MS = 60_000L;
+    private static final TaskState EXPECTED_TERMINAL = TaskState.TASK_STATE_COMPLETED;
+    private static final List<TaskState> REQUIRED_STATES = List.of(TaskState.TASK_STATE_SUBMITTED);
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
@@ -58,7 +60,6 @@ class AgentStreamMessageTest extends BaseManagedStackTest {
     @Test
     @DisplayName("A-04: message/stream 流式调用 — SUBMITTED→COMPLETED 最小闭环")
     void a04_streamMessage_primaryScenario() {
-        MessageStreamScenarioData scenario = MessageStreamScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
 
         AgentCard card = a2a.getAgentCard();
@@ -70,12 +71,12 @@ class AgentStreamMessageTest extends BaseManagedStackTest {
         AtomicReference<Throwable> streamError = new AtomicReference<>();
 
         a2a.sendMessage(
-                A2A.toUserMessage(scenario.inputText()),
+                A2A.toUserMessage(INPUT_TEXT),
                 List.of(collector.createConsumer()),
                 error -> streamError.set(error));
 
         // SendStreamingMessage is async: sendMessage returns before SSE events arrive.
-        TaskState terminalState = collector.awaitTerminalState(scenario.streamTimeoutMs());
+        TaskState terminalState = collector.awaitTerminalState(STREAM_TIMEOUT_MS);
 
         Throwable streamFailure = streamError.get();
         if (streamFailure != null && !isBenignStreamShutdown(streamFailure)) {
@@ -89,15 +90,15 @@ class AgentStreamMessageTest extends BaseManagedStackTest {
 
         List<TaskState> states = extractStates(collector);
 
-        for (String required : scenario.requiredStates()) {
+        for (TaskState required : REQUIRED_STATES) {
             assertThat(states)
                     .as("required state %s", required)
-                    .contains(parseStateName(required));
+                    .contains(required);
         }
 
         assertThat(terminalState)
                 .as("terminal state")
-                .isEqualTo(parseStateName(scenario.expectedTerminalState()));
+                .isEqualTo(EXPECTED_TERMINAL);
         assertThat(states.get(states.size() - 1))
                 .as("last observed state")
                 .isEqualTo(terminalState);
@@ -145,8 +146,10 @@ class AgentStreamMessageTest extends BaseManagedStackTest {
     }
 
     private static String extractResponseText(A2aEventCollector collector) {
-        Optional<Task> terminalTask = collector.findTerminalEvent().flatMap(AgentStreamMessageTest::taskFrom);
-        return terminalTask.map(AgentStreamMessageTest::textOf).orElse("");
+        return collector.findTerminalEvent()
+                .flatMap(AgentStreamMessageTest::taskFrom)
+                .map(TaskTextExtractor::textOf)
+                .orElse("");
     }
 
     private static Optional<Task> taskFrom(ClientEvent event) {
@@ -157,36 +160,5 @@ class AgentStreamMessageTest extends BaseManagedStackTest {
             return Optional.of(updateEvent.getTask());
         }
         return Optional.empty();
-    }
-
-    private static TaskState parseStateName(String name) {
-        return TaskState.valueOf(name);
-    }
-
-    private static String textOf(Task task) {
-        StringBuilder sb = new StringBuilder();
-        if (task.artifacts() != null) {
-            for (Artifact artifact : task.artifacts()) {
-                appendText(sb, artifact.parts());
-            }
-        }
-        if (sb.length() == 0 && task.status() != null && task.status().message() != null) {
-            appendText(sb, task.status().message().parts());
-        }
-        if (sb.length() == 0 && task.history() != null && !task.history().isEmpty()) {
-            appendText(sb, task.history().get(task.history().size() - 1).parts());
-        }
-        return sb.toString().trim();
-    }
-
-    private static void appendText(StringBuilder sb, List<Part<?>> parts) {
-        if (parts == null) {
-            return;
-        }
-        for (Part<?> part : parts) {
-            if (part instanceof TextPart textPart && textPart.text() != null) {
-                sb.append(textPart.text());
-            }
-        }
     }
 }

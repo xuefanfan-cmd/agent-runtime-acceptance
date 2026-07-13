@@ -1,17 +1,13 @@
 package com.huawei.ascend.sit.cases.component.singleagent;
 
-import com.huawei.ascend.sit.cases.support.openjiuwen.MockMcpServerProcess;
-import com.huawei.ascend.sit.cases.support.openjiuwen.OpenjiuwenMcpToolCallGate;
-import com.huawei.ascend.sit.cases.support.openjiuwen.OpenjiuwenStackSupport;
-import com.huawei.ascend.sit.client.A2aEventCollector;
-import com.huawei.ascend.sit.client.A2aServiceClient;
-import com.huawei.ascend.sit.client.A2aStreamErrors;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huawei.ascend.sit.client.InteractionFlow;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
+import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.openjiuwen.OpenjiuwenMcpDemoEchoScenarioData;
-import org.a2aproject.sdk.A2A;
-import org.a2aproject.sdk.spec.Task;
+import com.huawei.ascend.sit.utils.JsonUtils;
 import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,24 +16,28 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 
 /**
  * OJ-08 — openjiuwen hotel MCP {@code demo_echo} end-to-end (streaming).
  *
- * <p>Mock MCP must start before hotel ({@code mcp} profile). See
- * {@code docs/cases/OJ-08-openjiuwen-mcp-tool-call.md}.</p>
+ * <p>Uses {@link SutStack} + {@link InteractionFlow} directly (no OJ StackSupport / main
+ * ScenarioData). Mock MCP must start before hotel ({@code mcp} profile). Terminal state
+ * hard-requires {@code COMPLETED}; reply must contain {@code demo_echo:hello}.</p>
  *
- * <p>Requires {@code agent-openjiuwen-travel-hotel:0.1.0} and
- * {@code travel-openjiuwen-test-support-0.1.0.jar} in {@code ~/.m2} (hotel jar must include
- * {@code application-mcp.yml}; rebuild with
- * {@code mvn -f examples/travel-openjiuwen/pom.xml -pl :agent-openjiuwen-travel-hotel -am install -DskipTests})
- * and {@code LLM_*} env vars for tool-call capable model.</p>
+ * <p>See {@code docs/cases/reactagent/OJ-08-openjiuwen-mcp-tool-call.md}.</p>
  */
 @Tag("component")
 @Tag("openjiuwen")
@@ -47,23 +47,39 @@ class OpenjiuwenMcpToolCallTest {
 
     private static final Logger LOG = Logger.getLogger(OpenjiuwenMcpToolCallTest.class.getName());
 
+    private static final String HOTEL = "hotel";
+    private static final String MOCK_MCP = "mock-mcp";
+    private static final String MCP_PROFILE = "mcp";
+    private static final ObjectMapper MAPPER = JsonUtils.mapper();
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+    private static final String TOOLS_LIST_BODY =
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}";
+
+    /** Matches {@code testdata/component/singleagent/oj-08-mcp-demo-echo.json}. */
+    private static final String INPUT_TEXT = "请调用 demo_echo 工具，输入 text=hello";
+    private static final List<String> EXPECTED_SUBSTRINGS = List.of("demo_echo:hello");
+    private static final long FLOW_TIMEOUT_MS = 120_000L;
+
     private TestConfig config;
-    private OpenjiuwenMcpDemoEchoScenarioData scenario;
-    private MockMcpServerProcess mockMcp;
     private SutStack stack;
 
     @BeforeAll
     void startMockMcpAndHotel() throws Exception {
         config = TestConfig.load();
-        scenario = OpenjiuwenMcpDemoEchoScenarioData.loadDefault();
 
-        mockMcp = MockMcpServerProcess.start(config, scenario.preferredMcpPort());
-        OpenjiuwenMcpToolCallGate.assertDemoEchoToolAvailable(mockMcp.host(), mockMcp.port());
-        LOG.info("OJ-08 Mock MCP ready at http://" + mockMcp.host() + ":" + mockMcp.port() + "/mcp");
+        stack = SutStack.builder(config)
+                .streaming(true)
+                .agent(MOCK_MCP)
+                .agent(HOTEL, a -> a
+                        .profile(MCP_PROFILE)
+                        .downstream(MOCK_MCP,
+                                "openjiuwen.service.external.mcp.servers[0].server-path"))
+                .start();
 
-        stack = OpenjiuwenStackSupport.hotelMcpStreaming(
-                config, mockMcp.host(), String.valueOf(mockMcp.port())).start();
-        OpenjiuwenMcpToolCallGate.assertHotelUsesMcpProfile(stack);
+        String mockMcpBaseUrl = stack.baseUrl(MOCK_MCP);
+        assertDemoEchoToolAvailable(mockMcpBaseUrl);
+        LOG.info("OJ-08 Mock MCP ready at " + mockMcpBaseUrl);
+        assertHotelUsesMcpProfile(stack);
         LOG.info("OJ-08 hotel mcp profile ready");
     }
 
@@ -72,47 +88,93 @@ class OpenjiuwenMcpToolCallTest {
         if (stack != null) {
             stack.close();
         }
-        if (mockMcp != null) {
-            mockMcp.close();
-        }
     }
 
     @Test
     @DisplayName("OJ-08: hotel MCP demo_echo — 流式 COMPLETED 且回显 demo_echo:hello")
     void oj08_mcpDemoEcho_streamingCompletedWithEcho() {
-        A2aServiceClient a2a = stack.client(OpenjiuwenStackSupport.HOTEL);
-        A2aEventCollector collector = new A2aEventCollector();
-        AtomicReference<Throwable> streamError = new AtomicReference<>();
+        long timeoutMs = Math.max(config.getPollTimeoutSeconds() * 1000L, FLOW_TIMEOUT_MS);
 
-        a2a.sendMessage(
-                A2A.toUserMessage(scenario.inputText()),
-                List.of(collector.createConsumer()),
-                error -> streamError.set(error));
+        InteractionFlow.of(stack.client(HOTEL))
+                .withTimeoutMs(timeoutMs)
+                .send(INPUT_TEXT)
+                    .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .assertTask(task -> {
+                        String text = TaskTextExtractor.textOf(task);
+                        assertThat(text).as("OJ-08 response text").isNotBlank();
+                        LOG.info("OJ-08 reply (truncated): "
+                                + (text.length() > 200 ? text.substring(0, 200) + "..." : text));
+                        for (String expected : EXPECTED_SUBSTRINGS) {
+                            assertThat(text)
+                                    .as("OJ-08.B MCP echo substring '%s'", expected)
+                                    .contains(expected);
+                        }
+                    })
+                .execute();
+    }
 
-        TaskState terminalState = collector.awaitTerminalState(scenario.timeoutMs());
-        Throwable failure = streamError.get();
-        if (failure != null && !A2aStreamErrors.isBenignShutdown(failure)) {
-            fail("OJ-08 message/stream failed", failure);
+    private static void assertDemoEchoToolAvailable(String baseUrl)
+            throws IOException, InterruptedException {
+        assertThat(toolsListContainsDemoEcho(baseUrl))
+                .as("OJ-08.0 Mock MCP tools/list contains demo_echo at %s", baseUrl)
+                .isTrue();
+    }
+
+    private static void assertHotelUsesMcpProfile(SutStack stack) throws IOException {
+        Path log = hotelStdoutLog(stack);
+        String content = Files.readString(log, StandardCharsets.UTF_8);
+        assertThat(lastLineContaining(content, "profile is active: \"mcp\""))
+                .as("OJ-08.C hotel active profile mcp (see %s)", log)
+                .isNotNull();
+        assertThat(lastLineContaining(content, "Registered external MCP server"))
+                .as("OJ-08.C hotel MCP server registration "
+                        + "(rebuild agent-openjiuwen-travel-hotel:0.1.0 if missing; see %s)", log)
+                .isNotNull();
+        assertThat(lastLineContaining(content, "Bound MCP server to hotel agent ability manager"))
+                .as("OJ-08.C hotel MCP server binding (see %s)", log)
+                .isNotNull();
+    }
+
+    private static boolean toolsListContainsDemoEcho(String baseUrl)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl))
+                .timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(TOOLS_LIST_BODY))
+                .build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            return false;
         }
-
-        assertThat(collector.eventCount()).as("OJ-08 stream events").isGreaterThan(0);
-        assertThat(terminalState)
-                .as("OJ-08.A terminal state")
-                .isEqualTo(scenario.resolvedExpectedTerminalState());
-
-        String taskId = collector.findFirstTaskId();
-        assertThat(taskId).as("OJ-08 taskId").isNotBlank();
-
-        Task task = a2a.getTask(taskId);
-        String responseText = TaskTextExtractor.textOf(task);
-        assertThat(responseText).as("OJ-08 response text").isNotBlank();
-        LOG.info("OJ-08 reply (truncated): "
-                + (responseText.length() > 200 ? responseText.substring(0, 200) + "..." : responseText));
-
-        for (String expected : scenario.expectedResponseSubstrings()) {
-            assertThat(responseText)
-                    .as("OJ-08.B MCP echo substring '%s'", expected)
-                    .contains(expected);
+        JsonNode tools = MAPPER.readTree(response.body()).path("result").path("tools");
+        if (!tools.isArray()) {
+            return false;
         }
+        for (JsonNode tool : tools) {
+            if ("demo_echo".equals(tool.path("name").asText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String lastLineContaining(String logContent, String needle) {
+        String last = null;
+        for (String line : logContent.split("\n")) {
+            if (line.contains(needle)) {
+                last = line;
+            }
+        }
+        return last;
+    }
+
+    private static Path hotelStdoutLog(SutStack stack) {
+        var instance = stack.managedInstance(HOTEL);
+        assertThat(instance)
+                .as("managed hotel agent for OJ-08.C log gate")
+                .isNotNull()
+                .isInstanceOf(ManagedSutInstance.class);
+        return ((ManagedSutInstance) instance).logFile();
     }
 }

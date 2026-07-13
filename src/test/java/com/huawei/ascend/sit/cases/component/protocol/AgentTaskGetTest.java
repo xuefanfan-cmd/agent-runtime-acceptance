@@ -1,45 +1,40 @@
 package com.huawei.ascend.sit.cases.component.protocol;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
-import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
+import com.huawei.ascend.sit.client.InteractionFlow;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.model.protocol.TaskGetCompletedScenarioData;
-import org.a2aproject.sdk.A2A;
-import org.a2aproject.sdk.client.ClientEvent;
-import org.a2aproject.sdk.client.TaskEvent;
-import org.a2aproject.sdk.client.TaskUpdateEvent;
 import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 
 /**
  * A-05 — tasks/get 查询已完成任务 (特性 4-4).
  *
- * <p>Sync {@code message/send} ({@code streaming(false)}) to {@code COMPLETED}, then
- * {@code getTask(taskId)} and assert id/state/text match the send-side terminal snapshot.</p>
+ * <p>Sync {@code message/send} ({@code streaming(false)}) to {@code COMPLETED} via
+ * {@link InteractionFlow}, then {@code getTask(taskId)} and assert id/state/text match.
+ * Scenario constants live in this class (no main ScenarioData).</p>
  *
- * <p>LLM credentials are not checked in this class — configure {@code LLM_*} (or equivalent)
- * before launch so the managed mainplan process can reach the model. See
- * {@code docs/cases/A-05-task-get-completed.md}.</p>
+ * <p>See {@code docs/cases/reactagent/A-05-task-get-completed.md}.</p>
  */
 @Tag("component")
 @Tag("smoke")
 class AgentTaskGetTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(AgentTaskGetTest.class.getName());
+
+    /** Matches {@code testdata/component/protocol/a05-get-completed-hello.json}. */
+    private static final String INPUT_TEXT = "你好";
+    private static final long SEND_TIMEOUT_MS = 60_000L;
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
@@ -51,37 +46,23 @@ class AgentTaskGetTest extends BaseManagedStackTest {
     @Test
     @DisplayName("A-05: tasks/get 查询已完成任务 — send 快照与 get 一致")
     void a05_getTask_matchesSendSnapshotAfterCompleted() {
-        TaskGetCompletedScenarioData scenario = TaskGetCompletedScenarioData.loadDefault();
         A2aServiceClient a2a = client("mainplan");
+        AtomicReference<String> sendTextRef = new AtomicReference<>();
 
-        A2aEventCollector collector = new A2aEventCollector();
-        AtomicReference<Throwable> sendError = new AtomicReference<>();
+        InteractionFlow.FlowResult flow = InteractionFlow.of(a2a)
+                .withTimeoutMs(SEND_TIMEOUT_MS)
+                .send(INPUT_TEXT)
+                    .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .assertTask(task -> {
+                        String sendText = TaskTextExtractor.textOf(task);
+                        assertThat(sendText).as("send response text").isNotBlank();
+                        sendTextRef.set(sendText);
+                    })
+                .execute();
 
-        a2a.sendMessage(
-                A2A.toUserMessage(scenario.inputText()),
-                List.of(collector.createConsumer()),
-                error -> sendError.set(error));
-
-        if (sendError.get() != null) {
-            fail("message/send failed", sendError.get());
-        }
-
-        TaskState terminalState = collector.awaitTerminalState(scenario.sendTimeoutMs());
-        assertThat(terminalState)
-                .as("send terminal state")
-                .isEqualTo(TaskState.valueOf(scenario.expectedTerminalState()));
-
-        Task sendTask = collector.findTerminalEvent()
-                .flatMap(AgentTaskGetTest::taskFrom)
-                .orElseThrow(() -> new AssertionError("send did not produce a terminal task snapshot"));
-
-        String taskId = sendTask.id();
+        String taskId = flow.round(0).taskId();
         assertThat(taskId).as("send taskId").isNotBlank();
-
-        String sendText = TaskTextExtractor.textOf(sendTask);
-        assertThat(sendText).as("send response text").isNotBlank();
-
-        LOG.info("A-05.E send_event_count=" + collector.eventCount());
+        LOG.info("A-05.E send_event_count=" + flow.round(0).eventCount());
 
         Task queried = a2a.getTask(taskId);
         assertThat(queried).as("getTask result").isNotNull();
@@ -92,16 +73,6 @@ class AgentTaskGetTest extends BaseManagedStackTest {
 
         String getText = TaskTextExtractor.textOf(queried);
         assertThat(getText).as("get response text").isNotBlank();
-        assertThat(getText).as("send vs get text").isEqualTo(sendText);
-    }
-
-    private static Optional<Task> taskFrom(ClientEvent event) {
-        if (event instanceof TaskEvent taskEvent) {
-            return Optional.of(taskEvent.getTask());
-        }
-        if (event instanceof TaskUpdateEvent updateEvent) {
-            return Optional.of(updateEvent.getTask());
-        }
-        return Optional.empty();
+        assertThat(getText).as("send vs get text").isEqualTo(sendTextRef.get());
     }
 }

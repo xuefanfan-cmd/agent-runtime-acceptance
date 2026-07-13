@@ -52,8 +52,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code url} and {@code preferredTransport} are deprecated and must NOT be
  * emitted — the SUT wrongly still emits them, which A-02.E captures.
  *
- * <p>See {@code docs/cases/A-01-agent-card-discovery.md} and
- * {@code docs/cases/A-02-agent-card-completeness.md}.
+ * <p>See {@code docs/cases/reactagent/A-01-agent-card-discovery.md} and
+ * {@code docs/cases/reactagent/A-02-agent-card-completeness.md}.
  */
 @Tag("component")
 @Tag("smoke")

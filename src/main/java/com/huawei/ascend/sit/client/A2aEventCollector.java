@@ -284,14 +284,20 @@ public class A2aEventCollector {
      * @return true if INPUT_REQUIRED was observed, false if a terminal state arrived first
      */
     public boolean awaitInputRequired(long timeoutMs) {
+        // Predicate must accept Boolean.FALSE: a hard terminal (COMPLETED/FAILED/...) means
+        // INPUT_REQUIRED will not arrive; returning false (not timing out) matches the javadoc.
         return Awaitility.await("INPUT_REQUIRED state")
                 .atMost(timeoutMs, TimeUnit.MILLISECONDS)
                 .pollInterval(200, TimeUnit.MILLISECONDS)
                 .until(() -> {
-                    if (findInputRequiredEvent().isPresent()) return true;
-                    if (findTerminalEvent().isPresent()) return false;
+                    if (findInputRequiredEvent().isPresent()) {
+                        return Boolean.TRUE;
+                    }
+                    if (findTerminalEvent().isPresent()) {
+                        return Boolean.FALSE;
+                    }
                     return null;
-                }, Boolean.TRUE::equals);
+                }, Objects::nonNull);
     }
 
     /**

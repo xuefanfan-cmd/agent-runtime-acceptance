@@ -69,7 +69,7 @@ SutStack stack = SutStack.builder(config)
 
 See [src/main/java/com/huawei/ascend/sit/lifecycle/SutStack.java](src/main/java/com/huawei/ascend/sit/lifecycle/SutStack.java)
 for the top-level abstraction and
-[docs/cases/A-01-agent-card-discovery.md](docs/cases/A-01-agent-card-discovery.md)
+[docs/cases/reactagent/A-01-agent-card-discovery.md](docs/cases/reactagent/A-01-agent-card-discovery.md)
 for a worked case example.
 
 ## Running tests
@@ -92,8 +92,8 @@ jar from the local `~/.m2/repository` (override via `sut.m2.repo`).
 
 ## Authoring a new case
 
-1. Add a design doc under `docs/cases/A-NN-<slug>.md` following the format
-   of [A-01](docs/cases/A-01-agent-card-discovery.md).
+1. Add a design doc under `docs/cases/reactagent/A-NN-<slug>.md` following the format
+   of [A-01](docs/cases/reactagent/A-01-agent-card-discovery.md).
 2. Add the test under `src/test/java/com/huawei/ascend/sit/cases/<layer>/`,
    extending `BaseManagedStackTest` (the managed-stack base class that
    owns the SUT lifecycle via `SutStack`).

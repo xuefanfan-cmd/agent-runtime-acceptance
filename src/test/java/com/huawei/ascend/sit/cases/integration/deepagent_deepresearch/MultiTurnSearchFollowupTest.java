@@ -59,10 +59,10 @@ class MultiTurnSearchFollowupTest extends BaseManagedStackTest {
     private static final int MAX_ROUNDS = 5;
 
     private static final String TURN1_TEXT = "你好,帮我查一下DeepSeek官方定价，请给出官网链接";
-    private static final String TURN2_TEXT = "DeepSeek-V3";
+    private static final String TURN2_TEXT = "帮我查DeepSeek-R1的官方定价";
 
     /** DA-08.D 必含专有名 —— 证明 agent 定位到用户指定的型号。 */
-    private static final String MODEL_MARKER = "DeepSeek-V3";
+    private static final String MODEL_MARKER = "DeepSeek-R1";
 
     /** DA-08.D 至少含其一 —— 价格语义信号词。 */
     private static final List<String> PRICE_SIGNAL_WORDS = List.of("价格", "定价", "token", "元", "USD", "$");

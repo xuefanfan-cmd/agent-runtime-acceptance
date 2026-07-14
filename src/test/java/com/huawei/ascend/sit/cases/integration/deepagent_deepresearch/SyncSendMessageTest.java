@@ -1,39 +1,46 @@
 package com.huawei.ascend.sit.cases.integration.deepagent_deepresearch;
 
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import org.a2aproject.sdk.client.ClientEvent;
+import org.a2aproject.sdk.spec.AgentCard;
+import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.Task;
+import org.a2aproject.sdk.spec.TaskState;
+import org.a2aproject.sdk.spec.TextPart;
+import org.awaitility.Awaitility;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import org.a2aproject.sdk.client.ClientEvent;
-import org.a2aproject.sdk.client.TaskEvent;
-import org.a2aproject.sdk.client.TaskUpdateEvent;
-import org.a2aproject.sdk.spec.AgentCard;
-import org.a2aproject.sdk.spec.Message;
-import org.a2aproject.sdk.spec.Task;
-import org.a2aproject.sdk.spec.TaskState;
-import org.a2aproject.sdk.spec.TextPart;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 
 /**
  * DA-02 — deep-research 同步 SendMessage (场景 2).
  *
- * <p>参考 §2 curl：{@code method=SendMessage} 同步一发一收，期望 COMPLETED + artifact
+ * <p>参考 §2 curl：{@code method=SendMessage} 同步一发一收，期望最终 COMPLETED + artifact
  * 非空。走 {@code streaming(false)} 让 SDK client 使用同步 {@code message/send} 路径
  * （与手工脚本一致），而不是 SSE 流式。
+ *
+ * <h3>A2A 同步语义（服务侧手工 curl 观测）</h3>
+ * <ul>
+ *   <li>{@code POST /a2a} {@code SendMessage} 同步响应 <b>不是</b> 终态：几百毫秒内返
+ *       {@code state=TASK_STATE_WORKING} + 空 artifacts，仅携带 taskId 让客户端后续拉取。</li>
+ *   <li>客户端需要用 {@code GetTask(id)} REST 轮询到 {@code state.isFinal()==true} 拿终态。</li>
+ * </ul>
+ * 所以本用例分两阶段：先等 collector 拿到任何 TaskState 事件抽出 taskId，再 REST 轮询终态。
  *
  * <p><b>Bug 断言（用户明示，§2 手工脚本记录两种变体）</b>：
  * <ul>
@@ -51,7 +58,11 @@ import static org.assertj.core.api.Assertions.fail;
 class SyncSendMessageTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";
-    private static final long SEND_TIMEOUT_MS = 240_000;
+    /** 同步响应超时 —— SUT 一般毫秒级返 working。 */
+    private static final long SYNC_ACK_TIMEOUT_MS = 30_000;
+    /** REST 轮询终态总超时 —— 长任务包含 LLM + 搜索链路。 */
+    private static final long TERMINAL_POLL_TIMEOUT_MS = 240_000;
+    private static final long POLL_INTERVAL_MS = 2_000;
 
     /** 已知 bug 标志串（用户明示：出现即用例 FAIL）。 */
     private static final String BUG_MARKER_TASK_EXISTS = "deep_agent_task_1 already exists";
@@ -65,13 +76,13 @@ class SyncSendMessageTest extends BaseManagedStackTest {
     }
 
     @Test
-    @DisplayName("DA-02: 同步 SendMessage → COMPLETED + artifact 非空且不含已知 bug 标志串")
+    @DisplayName("DA-02: 同步 SendMessage → REST 轮询到 COMPLETED + artifact 非空且不含已知 bug 标志串")
     void syncSendMessageReachesCompletedWithoutKnownBug() {
         A2aServiceClient a2a = client(DEEP_RESEARCH);
 
         String runSuffix = "-" + UUID.randomUUID().toString().substring(0, 8);
         String contextId = "ctx-da02-sync" + runSuffix;
-        String userInput = "你好,请用一句话介绍你是什么 agent";
+        String userInput = "你好,到deepseek官网查询下DeepSeek-V3 上下文长度多少 tokens。";
 
         Message message = Message.builder()
                 .role(Message.Role.ROLE_USER)
@@ -91,18 +102,36 @@ class SyncSendMessageTest extends BaseManagedStackTest {
             fail("DA-02: message/send 失败", sendError.get());
         }
 
-        TaskState terminalState = collector.awaitTerminalState(SEND_TIMEOUT_MS);
-        assertThat(terminalState).as("DA-02: 终态应为 COMPLETED")
-                .isEqualTo(TaskState.TASK_STATE_COMPLETED);
-
-        Task task = collector.findTerminalEvent()
-                .flatMap(SyncSendMessageTest::taskFrom)
-                .orElseThrow(() -> new AssertionError("DA-02: 未拿到终态 task 快照"));
-        assertThat(task.id()).as("task.id").isNotBlank();
-        assertThat(task.contextId()).as("task.contextId 应回显 send 时值")
+        // 阶段 1：同步响应（预期 state=WORKING）—— 唯一目的是抽 taskId
+        TaskState ackState = collector.awaitAnyTaskState(SYNC_ACK_TIMEOUT_MS);
+        assertThat(ackState).as("DA-02.A: 同步 ack 应带任意 TaskState（通常 WORKING）").isNotNull();
+        String taskId = collector.findFirstTaskId();
+        assertThat(taskId).as("DA-02.A: 同步 ack 中应能抽出 taskId").isNotBlank();
+        String ackContextId = collector.findFirstContextId();
+        assertThat(ackContextId).as("DA-02.A: 同步 ack 中 contextId 应回显 send 时值")
                 .isEqualTo(contextId);
 
-        String artifactText = TaskTextExtractor.textOf(task);
+        // 阶段 2：REST 轮询终态
+        Task terminalTask = Awaitility.await("terminal task via GetTask")
+                .atMost(TERMINAL_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .pollInterval(POLL_INTERVAL_MS, TimeUnit.MILLISECONDS)
+                .until(() -> {
+                    Task t = a2a.getTask(taskId);
+                    if (t == null || t.status() == null || t.status().state() == null) {
+                        return null;
+                    }
+                    return t.status().state().isFinal() ? t : null;
+                }, task -> task != null);
+
+        TaskState terminalState = terminalTask.status().state();
+        assertThat(terminalState).as("DA-02.B: 终态应为 COMPLETED\n任务 id=%s", terminalTask.id())
+                .isEqualTo(TaskState.TASK_STATE_COMPLETED);
+
+        assertThat(terminalTask.id()).as("task.id").isNotBlank();
+        assertThat(terminalTask.contextId()).as("DA-02.B: task.contextId 应回显 send 时值")
+                .isEqualTo(contextId);
+
+        String artifactText = TaskTextExtractor.textOf(terminalTask);
         assertThat(artifactText)
                 .as("DA-02.C: artifact 文本非空（bug variant 2：COMPLETED 但 parts.text 空字符串）")
                 .isNotBlank();
@@ -113,16 +142,6 @@ class SyncSendMessageTest extends BaseManagedStackTest {
                         BUG_MARKER_TASK_EXISTS, truncate(artifactText, 300))
                 .doesNotContain(BUG_MARKER_TASK_EXISTS)
                 .doesNotContain(BUG_MARKER_CONTROLLER_ERR);
-    }
-
-    private static Optional<Task> taskFrom(ClientEvent event) {
-        if (event instanceof TaskEvent taskEvent) {
-            return Optional.of(taskEvent.getTask());
-        }
-        if (event instanceof TaskUpdateEvent updateEvent) {
-            return Optional.of(updateEvent.getTask());
-        }
-        return Optional.empty();
     }
 
     private static String truncate(String s, int max) {

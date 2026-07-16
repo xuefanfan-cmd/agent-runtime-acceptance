@@ -37,25 +37,22 @@ related_docs:
 
 | FEAT-001 事实要求 | 本档子用例 ID | 现状 | 状态 | 评审关联 | 备注 |
 |---|---|---|---|---|---|
-| Agent Card 双入口发现 | `FEAT-001.agent-card` | DA-01 部分覆盖 | runnable | — | 补两入口等价对比 |
-| Agent Card 公开 base URL 解析 | `FEAT-001.agent-card-public-base-url` | 未覆盖 | partial | — | SUT 侧配置可见性影响判定 |
-| Agent Card capabilities 声明真实性 | `FEAT-001.agent-card-capabilities` | DA-01 部分覆盖 | runnable | 评审 §3 交叉 | pushNotifications 声明真实性依赖 receiver 定义 |
-| Agent Card skills 声明真实性 | `FEAT-001.agent-card-skills` | DA-01 部分覆盖 | runnable | — | 新增字段完整性断言 |
-| `/a2a` 与 `/a2a/` 尾斜杠等价 | `FEAT-001.jsonrpc-endpoint-slash` | 未覆盖 | runnable | — | 用底层 HTTP client |
-| JSON-RPC parse error | `FEAT-001.jsonrpc-parse-error` | 未覆盖 | runnable | — | 通用 `-32700` |
-| JSON-RPC invalid request | `FEAT-001.jsonrpc-invalid-request` | 未覆盖 | runnable | — | 通用 `-32600` |
-| JSON-RPC method-not-found | `FEAT-001.jsonrpc-method-not-found` | 未覆盖 | runnable | — | 通用 `-32601` |
-| JSON-RPC error 保留 request id | `FEAT-001.jsonrpc-id-preserved` | 未覆盖 | runnable | — | 并入上面三条断言 |
+| Agent Card 双入口发现 | `FEAT-001.agent-card` | 已覆盖（[AgentCardDiscoveryTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java)） | runnable | — | 三入口等价性硬断言（agent.json / agent-card.json / /a2a/.well-known/agent-card.json 三份 body 完全等价 + 200 + application/json） |
+| Agent Card 公开 base URL 解析 | `FEAT-001.agent-card-public-base-url` | 已覆盖（[AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java)） | partial | — | 落"可拨性"约束，不依赖 SUT env |
+| Agent Card capabilities 声明真实性 | `FEAT-001.agent-card-capabilities` | 已覆盖（[AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java)） | runnable | 评审 §3 交叉 | streaming=true 硬断言；pushNotifications 与 push-config-crud 联动 |
+| Agent Card skills 声明真实性 | `FEAT-001.agent-card-skills` | 已覆盖（[AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java)） | runnable | — | id/name/description 非空 + id 唯一 + 主 skill 存在 |
+| `/a2a` 与 `/a2a/` 尾斜杠等价 | `FEAT-001.jsonrpc-endpoint-slash` | 已覆盖（[JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java)） | runnable | — | 用底层 HTTP client + `GetTask` payload 避免真实 LLM |
+| JSON-RPC parse error | `FEAT-001.jsonrpc-parse-error` | 已覆盖（[JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java)） | runnable | — | 硬断言 `-32700`（L2 §5.3） |
+| JSON-RPC invalid request | `FEAT-001.jsonrpc-invalid-request` | 已覆盖（[JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java)） | runnable | — | 硬断言 `-32600`（L2 §5.3）+ id 回显 |
+| JSON-RPC method-not-found | `FEAT-001.jsonrpc-method-not-found` | 已覆盖（[JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java)） | runnable | — | 硬断言 `-32601`（L2 §5.3）+ id 回显 |
+| JSON-RPC error 保留 request id | `FEAT-001.jsonrpc-id-preserved` | 已覆盖（并入 invalid-request + method-not-found 断言） | runnable | — | invalid-request 断 id=`"1"`；method-not-found 断 id=`"7"`；parse-error 按 JSON-RPC 2.0 §5.1 断 id=null |
 | 阻塞 `SendMessage` | `FEAT-001.send-message-blocking` | DA-02 覆盖 | runnable | — | 已覆盖 |
 | 流式 `SendStreamingMessage` | `FEAT-001.send-streaming-message` | DA-03 覆盖 | runnable | — | 已覆盖 |
-| Stream 中途异常追一帧 error | `FEAT-001.stream-mid-error-frame` | 未覆盖 | partial | 评审 §6 | 触发条件依赖故障注入；code 断言受 §6 影响 |
+| Stream 中途下游 agent 被杀 | `FEAT-001.downstream-agent-killed-mid-stream` | 已覆盖（[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)，watchdog + manual） | partial | 评审 §6 | 用 SutStack.stop() 中途杀 search 触发 handler runtime exception；层 1（终态 ∈ failed/canceled/rejected）+ 层 2（结构化 payload）为硬 MUST，不受 §6 影响；jar 就绪前 @manual |
+| 不存在工具的 LLM 拒答 | `FEAT-001.nonexistent-tool-refusal` | 已覆盖（[NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java)） | runnable | — | §5.1.6 正例：LLM 收到虚构工具请求应 COMPLETED 且回答包含工具名 + 「不存在/不可用」关键词；与 downstream-agent-killed 构成完整错误面覆盖 |
 | `GetTask` 快照 | `FEAT-001.get-task` | DA-04 覆盖 | runnable | — | 已覆盖 |
 | `GetTask` 负路径（TaskNotFound） | `FEAT-001.get-task-not-found` | DA-04.F 覆盖 | runnable | — | 已覆盖 |
-| `CancelTask` 执行中任务 → CANCELED | `FEAT-001.cancel-task-in-flight` | 未覆盖 | partial | 评审 §5 | 到达 CANCELED 时限未定，用宽松窗口 |
-| `CancelTask` 已完成任务的幂等语义 | `FEAT-001.cancel-task-terminal` | 未覆盖 | blocked | 评审 §5 §6 | 期望行为 + error code 均未定 |
-| `ListTasks` 分页 / 过滤 | `FEAT-001.list-tasks` | 未覆盖 | runnable | — | 新增 |
-| `SubscribeToTask` SSE 断线重连 | `FEAT-001.subscribe-to-task` | 未覆盖 | runnable | — | 依赖 SDK API 存在性验证 |
-| Push Notification config CRUD | `FEAT-001.push-config-crud` | 未覆盖 | runnable | — | CRUD 契约本身可测，不触发实际推送 |
+| Push Notification config CRUD | `FEAT-001.push-config-crud` | 已覆盖（[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)） | runnable | — | capabilities.pushNotifications=false 时 assumeTrue skip |
 | Webhook COMPLETED 文本一次性回调 | `FEAT-001.webhook-completed` | 未覆盖 | **deferred** | 评审 §3 | receiver 全栈缺失 |
 | Webhook FAILED 回调 | `FEAT-001.webhook-failed` | 未覆盖 | **deferred** | 评审 §3 | 同上 |
 | Webhook CANCELED 回调 | `FEAT-001.webhook-canceled` | 未覆盖 | **deferred** | 评审 §3 | 同上 |
@@ -67,24 +64,69 @@ related_docs:
 | Webhook 与 streaming 分离 | `FEAT-001.webhook-vs-streaming` | 未覆盖 | **deferred** | 评审 §3 | 需 receiver 侧观察 |
 | `X-Tenant-Id` 头传递 | `FEAT-001.tenant-id-propagation` | 未覆盖 | partial | 评审 §7 | 缺 header 落点未定 |
 | Tenant 跨租户记忆隔离 | `FEAT-001.tenant-isolation` | 未覆盖 | partial | 评审 §7 | 间接证据（DA-05/06 记忆链路衍生） |
-| 空文本输入拒绝 | `FEAT-001.empty-text-input` | 未覆盖 | partial | 评审 §6 | 拒绝语义可测，具体 code 无法断言 |
+| 空文本输入拒绝 | `FEAT-001.empty-text-input` | 已覆盖（[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)） | partial | 评审 §6 | 接受 send 异常 / FAILED / REJECTED / COMPLETED+空 artifact 四种拒绝分支 |
 | Task 生命周期状态序列 | `FEAT-001.task-lifecycle` | DA-03 部分覆盖 | runnable | — | 显式状态序列断言 |
 | Failed Task 携带结构化错误 payload | `FEAT-001.task-failed-payload` | 未覆盖 | blocked | 评审 §6 | 无 code 可断言 + 触发条件依赖故障注入 |
 
 > **待决**：input-required 子用例（`FEAT-001.input-required`）待 deep-research planner 代码检查后决定是否列入（见 §6.3）。
 
-> **不在本档范围**（对齐 FEAT-001 §5.2）：多 Agent 路由、租户认证、gRPC、普通-client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、强制中断 LLM、outbound 远程 Agent 编排、agent-bus 私有入口、认证授权协议。
+> **不在本档范围**（对齐 FEAT-001 §5.2 + version-scope §2 MUST 集）：`CancelTask` / `ListTasks` / `SubscribeToTask`（不在 version-scope §2 MUST 集，method-not-found 返 `-32601` 合规）、多 Agent 路由、租户认证、gRPC、普通-client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、强制中断 LLM、outbound 远程 Agent 编排、agent-bus 私有入口、认证授权协议。
 
 ### 1.1 状态分布快照
 
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| runnable | 14 | 可直接落地，无评审依赖 |
-| partial | 7 | 主路径可测，某维度受评审限制 |
-| blocked | 5 | 断言依据待评审澄清 |
+| runnable | 13 | 可直接落地，无评审依赖 |
+| partial | 6 | 主路径可测，某维度受评审限制 |
+| blocked | 4 | 断言依据待评审澄清 |
 | deferred | 7 | 依赖能力缺失（webhook 家族 6 条 + no-intermediate 归属其中） |
 
 **落地优先级**：runnable → partial → 评审澄清后 → blocked / deferred。
+
+### 1.2 覆盖进度看板
+
+> **用法**：随开发推进直接改 ✅ / ⬜ 状态位；子用例语义已在 §3 展开，此表只做单页进度对照。
+> **图例**：✅ 已落地并 PASS；🟡 已落地但 partial（受评审 / SUT 限制）；⬜ 待落地；🚫 阻塞（评审 / 能力）；⏸ deferred（能力缺失）
+
+| 类别 | ID | 子用例 | 状态 | 落点 |
+|---|---|---|---|---|
+| **A. Agent Card 发现（4）** | A1 | agent-card 双入口 | ✅ | [AgentCardDiscoveryTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java)（三入口等价性硬断言） |
+| | A2 | agent-card-public-base-url | 🟡 | [AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java) |
+| | A3 | agent-card-capabilities | ✅ | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) |
+| | A4 | agent-card-skills | ✅ | [AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java) |
+| **B. JSON-RPC 错误面（5）** | B1 | jsonrpc-endpoint-slash | ✅ | [JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java) |
+| | B2 | jsonrpc-parse-error | ✅ | [JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java) |
+| | B3 | jsonrpc-invalid-request | ✅ | [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java) |
+| | B4 | jsonrpc-method-not-found | ✅ | [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java) |
+| | B5 | jsonrpc-id-preserved | ✅ | 并入 B2 / B3 / B4 |
+| **C. 核心 A2A 方法（5）** | C1 | send-message-blocking | ✅ | SyncSendMessageTest（DA-02） |
+| | C2 | send-streaming-message | ✅ | StreamingSendMessageTest（DA-03） |
+| | C3 | downstream-agent-killed-mid-stream | 🟡 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)（watchdog + @manual；本地拉两 jar，用 SutStack.stop() 中途杀 search） |
+| | C4 | get-task / not-found | ✅ | GetTaskTest（DA-04 + F） |
+| | C5 | nonexistent-tool-refusal | ✅ | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) |
+| **D. Push Config CRUD（1）** | D1 | push-config-crud | ✅ | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)（capabilities=false 时 assumeTrue skip） |
+| **E. Webhook 家族（7）** | E1 | webhook-completed | ⏸ | WebhookCompletedTest |
+| | E2 | webhook-failed/canceled/rejected | ⏸ | WebhookTerminalStateTest |
+| | E3 | webhook-payload-ref | 🚫 | WebhookPayloadRefTest |
+| | E4 | webhook-idempotent | 🚫 | WebhookIdempotencyTest |
+| | E5 | webhook-no-intermediate | ⏸ | 并入 E1 |
+| | E6 | webhook-untrusted-target | ⬜ | WebhookUntrustedTargetTest |
+| | E7 | webhook-vs-streaming | ⏸ | WebhookVsStreamingTest |
+| **F. Tenant / 输入 / 生命周期（5）** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
+| | F2 | tenant-isolation | ⬜ | TenantIsolationTest |
+| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) |
+| | F4 | task-lifecycle | ⬜ | 扩展 StreamingSendMessageTest |
+| | F5 | task-failed-payload | 🚫 | TaskFailedPayloadTest |
+
+**进度**：已落地 15 / 27（其中 ✅ 硬 PASS 12、🟡 partial 3）；⬜ 待落地 4；🚫 blocked 3；⏸ deferred 5。
+
+**下一步优先级**：
+1. **P0** ⬜ F4 task-lifecycle（StreamingSendMessageTest 扩状态序列断言）
+2. **P1** ⬜ E6 webhook-untrusted-target（只测注册拒绝负路径，不依赖 receiver）
+3. **P1** ⬜ F1/F2 tenant 双条（依赖 §7 澄清 X-Tenant-Id 落点）
+4. **P2** 🟡 C3 downstream-agent-killed-mid-stream（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual → 升为常态 PASS）
+5. **Blocked** 🚫 F5 task-failed-payload / E3 payload-ref / E4 idempotent 等评审澄清
+6. **Deferred** ⏸ webhook 家族其余 5 条等 receiver 契约就绪
 
 ---
 
@@ -131,7 +173,7 @@ related_docs:
 - **W**：`GET /.well-known/agent-card.json`；解析 card 的 `url` 与 `additionalInterfaces[*].url`。
 - **T**：所有 URL 要么以 `public-base-url` 开头（配置了），要么与请求地址一致（未配置）。
 - **PASS**：URL 解析规则符合两分支之一。**FAIL**：URL 是本地 hostname / 127.0.0.1 / 与请求 base 不一致且未匹配 public-base。**INCONCLUSIVE**：无法确定 SUT 侧配置。
-- **框架落点**：待新建（`AgentCardPublicBaseUrlTest`）。
+- **框架落点**：[AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java)（新增）。SIT 无法读 SUT env，本用例落"可拨性"最弱约束：URL 是绝对 URL + scheme ∈ {http,https} + host 不是 loopback + supportedInterfaces host 一致。SIT 已 PASS。
 
 #### FEAT-001.agent-card-capabilities — capabilities 声明与部署一致
 - **状态**：runnable（但 `pushNotifications` 声明真实性与评审 §3 交叉）
@@ -141,7 +183,7 @@ related_docs:
 - **W**：`GET /.well-known/agent-card.json`；读 `capabilities`。
 - **T**：`streaming=true`；`pushNotifications` 与本档 §3.5 是否可跑对齐——若声明 true 但 sender 侧无法 POST（受信目标为空），视为声明夸大能力。
 - **PASS**：capabilities 与实际能力口径一致。**FAIL**：声明 pushNotifications=true 但 sender 从不 POST（夸大能力）；或声明 false 但 SUT 实际推送（能力泄漏）。
-- **框架落点**：待新建（`AgentCardCapabilitiesTest`）。
+- **框架落点**：[AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java)（新增）。capabilities.streaming=true 硬断言；pushNotifications 字段只做可读断言（具体值交给 [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) 通过 CRUD 探针间接验证）。SIT 已 PASS。
 
 #### FEAT-001.agent-card-skills — skills 声明真实性
 - **状态**：runnable
@@ -150,7 +192,7 @@ related_docs:
 - **W**：读 card `skills[]`。
 - **T**：skills 非空；每个 skill 有 id / name / description / inputModes / outputModes 完整字段。
 - **PASS**：skills 声明完整。**FAIL**：空 skills 但 SUT 实际有可远程调用工具；或 skills 里含幽灵 id 无法调用。
-- **框架落点**：待新建（`AgentCardSkillsTest`）。
+- **框架落点**：[AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java)（新增）。skills[] 非空 + 每个 skill 的 id/name/description 非空 + id 唯一 + 存在 deep_research 主 skill 带 tags。SIT 已 PASS。
 
 ### 3.2 JSON-RPC 入口分发与错误表面
 
@@ -161,7 +203,7 @@ related_docs:
 - **W**：分别 `POST /a2a` 与 `POST /a2a/`，body 相同。
 - **T**：两次响应均为合法 JSON-RPC response；不出现 404 / 301 / 308；两次响应 shape 等价。
 - **PASS**：两个 URL 都走标准入口。**FAIL**：任一返 404 / 重定向 / 走了不同分发路径。
-- **框架落点**：待新建（`JsonRpcEndpointSlashTest`，用底层 HTTP client 直接发）。
+- **框架落点**：[JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java)（已落）。用底层 `HttpClient` 直接发 `GetTask` payload + 随机 UUID taskId —— 避免真实 LLM 调用，两个 URL 都返 `-32001 TaskNotFound`，尾斜杠等价性不受影响。SIT 已 PASS。
 
 #### FEAT-001.jsonrpc-parse-error — 非法 JSON → parse error
 - **状态**：runnable
@@ -170,7 +212,7 @@ related_docs:
 - **W**：`POST /a2a` body 为 `{not-json`。
 - **T**：HTTP 200；body 是 JSON-RPC error response；`error.code == -32700`（L2 §5.3 当前实现）；`id == null`。
 - **PASS**：满足。**FAIL**：HTTP 4xx/5xx / body 不是标准 JSON-RPC error / code 不匹配。
-- **框架落点**：待新建（`JsonRpcParseErrorTest`）。
+- **框架落点**：[JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java)（已落）。用底层 `HttpClient` 直发非法 JSON body；硬断言 HTTP 200 + `error.code=-32700` + `id=null`。SIT 已 PASS。
 
 #### FEAT-001.jsonrpc-invalid-request — shape 不符 → invalid request
 - **状态**：runnable
@@ -179,7 +221,7 @@ related_docs:
 - **W**：`POST /a2a` body = `{"jsonrpc":"2.0","id":"1"}`。
 - **T**：HTTP 200；error response;`error.code == -32600`（L2 §5.3 当前实现）；`id == "1"`。
 - **PASS**：满足。**FAIL**：code 不匹配 / id 丢失。
-- **框架落点**：待新建（`JsonRpcInvalidRequestTest`）。
+- **框架落点**：[JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java)（已落）。用底层 `HttpClient` 发 `{"jsonrpc":"2.0","id":"1"}`（缺 method）；硬断言 HTTP 200 + `error.code=-32600` + `id="1"` 回显（并覆盖 `jsonrpc-id-preserved`）。SIT 已 PASS。
 
 #### FEAT-001.jsonrpc-method-not-found — 未知 method
 - **状态**：runnable
@@ -188,19 +230,18 @@ related_docs:
 - **W**：`POST /a2a` body method 为 `NoSuchMethodEver`。
 - **T**：HTTP 200；error response；`error.code == -32601`（L2 §5.3 当前实现）；`id == "7"`。
 - **PASS**：满足。**FAIL**：其他 code / HTTP 5xx / id 丢失。
-- **框架落点**：待新建（`JsonRpcMethodNotFoundTest`）。
+- **框架落点**：[JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java)（已落）。用底层 `HttpClient` 发 `method="NoSuchMethodEver"`；硬断言 HTTP 200 + `error.code=-32601` + `id="7"` 回显（并覆盖 `jsonrpc-id-preserved`）。SIT 已 PASS。
 
 #### FEAT-001.jsonrpc-id-preserved — error response 保留 request id
 - **状态**：runnable（并入上面三条断言）
 - **FEAT 依据**：version-scope §5.1.8「错误 response 尽量保留原 request id」；对应 L2 §5.3 表里各错误行的 id 回显要求。
-- **框架落点**：断言并入 `JsonRpcInvalidRequestTest` / `JsonRpcMethodNotFoundTest`。
+- **框架落点**：断言并入 [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java)（id=`"1"`）+ [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java)（id=`"7"`）；parse-error 场景按 JSON-RPC 2.0 §5.1 断 `id=null`（[JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java)）。
 
-### 3.3 核心 A2A 方法（send / get / cancel / list / subscribe）
+### 3.3 核心 A2A 方法（send / get）
 
-> **⚠️ Scope 说明**（对齐新 version-scope §2 能力表 + §3 事实要求列）：
+> **⚠️ Scope 说明**（对齐 version-scope §2 能力表 + §3 事实要求列）：
 > - **MUST 集**：`SendMessage` / `SendStreamingMessage` / `GetTask` / push config CRUD（`Create/Get/List/DeleteTaskPushNotificationConfig`，见 §3.4）。
-> - **不在 MUST 集**：`CancelTask` / `ListTasks` / `SubscribeToTask`。version-scope §5.1.8 明示"method unsupported → method-not-found"，即 SUT 不实现这三个 method 返 `-32601` 是**合规**的。
-> - **本档处理**：这三个子用例保留在框架落点里作为"如 SUT 实现则做实现快照"，但断言口径应加一步 assumeTrue 探针 —— 先探 method 是否可用（返 `-32601` 视为"能力未激活，本用例 INCONCLUSIVE"），可用才继续正路径断言。
+> - `CancelTask` / `ListTasks` / `SubscribeToTask` 已从 version-scope §2 MUST 集中移除，见 §1「不在本档范围」；本档不再列子用例。
 
 #### FEAT-001.send-message-blocking — 阻塞 send
 - **状态**：runnable（DA-02 已覆盖）
@@ -210,54 +251,34 @@ related_docs:
 - **状态**：runnable（DA-03 已覆盖）
 - **框架落点**：[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java)。
 
-#### FEAT-001.stream-mid-error-frame — stream 中途异常追一帧 error
-- **状态**：partial
-- **评审关联**：§6 —— error code 断言受限，只能断言"有 error envelope"而不能断言具体 code
-- **FEAT 依据**：§5.1.4。
-- **G**：deep-research 就绪；能人为触发 handler mid-stream 失败。
-- **W**：`SendStreamingMessage` 后收集所有 SSE frame。
-- **T**：最后一帧是 JSON-RPC error envelope，而不是裸 TCP FIN。
-- **PASS**：满足。**FAIL**：连接静默关闭。**INCONCLUSIVE**：无法人为触发 mid-stream 异常。
-- **框架落点**：待新建（`StreamMidErrorFrameTest`）。
+#### FEAT-001.downstream-agent-killed-mid-stream — 下游 A2A agent 中途被杀
+- **状态**：partial（watchdog 已落；本地拉起两 jar，用 `SutStack.stop()` 中途杀 search 触发；jar 就绪前 @manual）
+- **评审关联**：§6 —— 具体 `error.code` 值断不了；但**层 1 / 层 2 是 spec 明文 MUST**，不受 §6 影响
+- **FEAT 依据**：§5.1.4「stream 必须关闭 + 以 failed 收束」+ §5.1.6「COMPLETED 语义:任务已完成」+ §5.1.8「handler runtime exception → failed Task + 结构化错误 payload」。
+- **G**：deep-research + search 两 jar 本地就绪（`~/.m2/repository/com/openjiuwen/example/`）；框架拉起 search 后再拉起 deep-research 并把 search baseUrl 通过 `SEARCH_AGENT_URL` 环境变量注入。
+- **W**：`SendStreamingMessage` 发一个明确需要 search 的 prompt；等待 deep-research 进入 WORKING 状态 + 一小段 grace period（让 tool call 真正打给 search）后调 `SutStack.stop("search")`；收集所有 SSE frame + terminal Task。
+- **T**：
+  - **层 1**（§5.1.4 + §5.1.6 + §5.1.8）：stream 终态 ∈ {FAILED, CANCELED, REJECTED} —— **COMPLETED 视为 FAIL**（agent 无法完整回答用户却包装成成功，违反 spec）
+  - **层 2**（§5.1.8）：终态 Task 携带结构化错误 payload（`status.message.parts` 非空）
+  - **不断言**：具体 `error.code` / 错误消息措辞
+- **PASS**：层 1 + 层 2 都满足。**FAIL**：终态是 COMPLETED（下游挂了却走成功收束——即 SUT 违反 §5.1.6） / 无结构化 payload / 静默 FIN。
+- **框架落点**：[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)。标 `@Tag("manual")`：需要本地 deep-research + search 两 jar，CI 环境默认不具备；jar 就绪且 SEARCH_AGENT_URL env 注入验证生效后可移除 manual tag。
+
+#### FEAT-001.nonexistent-tool-refusal — 不存在工具的 LLM 拒答
+- **状态**：runnable（COMPLETED 正例，与 downstream-agent-killed 构成完整错误面覆盖）
+- **FEAT 依据**：§5.1.6「COMPLETED 语义:任务已完成、无进一步动作」—— LLM 层的拒答仍属正常业务结论，应走 COMPLETED 路径，不应包装成 FAILED。
+- **G**：deep-research 就绪。
+- **W**：`SendStreamingMessage` 用一个"请调用 `__sit_fault_probe_nonexistent_tool__` 并读取结果"prompt。
+- **T**：
+  - **层 1**：终态 == COMPLETED（业务层拒答不走 failed 家族）
+  - **层 2**：artifact 文本包含目标工具名 `__sit_fault_probe_nonexistent_tool__`（证明 LLM 认知到具体请求）
+  - **层 3**：artifact 文本至少命中一个「工具不存在/不可用」关键词（`不存在` / `not exist` / `unavailable` / ...）—— 证明 LLM 给出了正确业务结论
+- **PASS**：层 1 + 层 2 + 层 3 都满足。**FAIL**：终态非 COMPLETED（handler 把用户级问询误判为异常，违反 §5.1.6） / artifact 无工具名 / 无拒答关键词（可能是幻觉调用成功）。
+- **框架落点**：[NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java)。
 
 #### FEAT-001.get-task / get-task-not-found
 - **状态**：runnable（DA-04 / DA-04.F 已覆盖）
 - **框架落点**：[GetTaskTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/GetTaskTest.java)。
-
-#### FEAT-001.cancel-task-in-flight — 取消执行中任务
-- **状态**：partial（scope 降级：新 version-scope §2 未把 `CancelTask` 列入 MUST；SUT 未实现则合规，返 `-32601` 时本用例走 INCONCLUSIVE）
-- **评审关联**：§5 —— cancel 到 CANCELED 时限未定，本用例用宽松窗口（30s）观察，不断言时限
-- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §5.1.6 曾要求 cancel 语义，新档已收窄。若 SUT 实现了 `CancelTask`，则按下方期望断言；若返 method-not-found，视为"能力未激活"，本条 INCONCLUSIVE。
-- **G**：deep-research 就绪；发起一个足够长的流式任务。
-- **W**：拿到 `taskId` 后立即 `CancelTask(taskId)`。
-- **T**：先探针一次 `CancelTask`，若返 `-32601` 则 INCONCLUSIVE；否则 CancelTask 返回的 Task 状态在宽松窗口内到达 `TASK_STATE_CANCELED`；后续 `GetTask(taskId)` 也是 CANCELED；stream 侧收到 canceled 终态事件。
-- **PASS**：三处一致 CANCELED。**FAIL**：CancelTask 抛异常（非 method-not-found） / 返回 COMPLETED / 状态漂移。**INCONCLUSIVE**：method 未激活。
-- **框架落点**：待新建（`CancelTaskInFlightTest`）。
-
-#### FEAT-001.cancel-task-terminal — cancel 已完成任务的幂等语义
-- **状态**：blocked（+ scope 降级：同上，不在新 version-scope MUST 集）
-- **评审关联**：§5 §6 —— 期望行为未定（幂等 no-op 还是错误）+ 若错误无 code 承载
-- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §5.1.6 边界 + §5.1.8。
-- **备注**：等评审澄清"已 terminal 的 Task 再 cancel 是幂等 200 完整回终态还是返回 A2A 特定错误码"后再落地。当前只能弱断言"不 HTTP 5xx"。
-- **框架落点**：待新建，与 in-flight 用例合并到 `CancelTaskTest`；本条目前只写"不 5xx"最弱断言，等评审。
-
-#### FEAT-001.list-tasks — 任务列表查询
-- **状态**：runnable（scope 降级：不在新 version-scope §2 MUST 集；未实现返 `-32601` 时 INCONCLUSIVE）
-- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §2「任务列表」+ §3「`ListTasks`」。若 SUT 实现则做实现快照。
-- **G**：deep-research 就绪；先跑 2~3 个 `SendMessage` 建 task。
-- **W**：先探针 `ListTasks(pageSize=1)`，若返 `-32601` 则 INCONCLUSIVE；否则调 `ListTasks(pageSize=..., pageToken=...)`。
-- **T**：返回结果集包含刚建的 taskId；分页语义；contextId / tenantId 过滤（若 SDK 支持）能正确缩小结果集。
-- **PASS**：所有断言满足。**FAIL**：taskId 缺失 / 分页 / 过滤不工作。**INCONCLUSIVE**：method 未激活。
-- **框架落点**：待新建（`ListTasksTest`）。
-
-#### FEAT-001.subscribe-to-task — SSE 断线重连
-- **状态**：runnable（scope 降级：不在新 version-scope §2 MUST 集；依赖 SDK API 存在性，未实现返 `-32601` 时 INCONCLUSIVE）
-- **FEAT 依据**：**不在 version-scope §2 MUST 集**；旧 FEAT §2「重新订阅」+ §4「断线重连」。若 SUT 实现则做实现快照。
-- **G**：deep-research 就绪；起一个长任务。
-- **W**：`SendStreamingMessage` 拿到 taskId 后 close SSE；先探针 `SubscribeToTask(taskId)`，若返 `-32601` 则 INCONCLUSIVE；否则调 `SubscribeToTask(taskId)` 重连。
-- **T**：重连成功；后续事件序列包含 working / artifact update / terminal；终态与"不断线"路径一致。
-- **PASS**：满足。**FAIL**：重连 4xx/5xx（非 method-not-found） / 空事件流 / 终态不一致。**INCONCLUSIVE**：method 未激活。
-- **框架落点**：待新建（`SubscribeToTaskTest`；先跑 SDK API smoke 探针确认 `resubscribe` 存在）。
 
 ### 3.4 Push Notification config CRUD
 
@@ -274,7 +295,7 @@ related_docs:
   5. 再 `Get` → not-found 类错误
 - **T**：每步返回 JSON-RPC result；字段等价；删除后再查为 not-found。
 - **PASS**：五步全通。**FAIL**：任一步 5xx / 字段漂移 / delete 后仍能查到。**INCONCLUSIVE**：capabilities.pushNotifications=false 跳过。
-- **框架落点**：待新建（`PushConfigCrudTest`）。
+- **框架落点**：[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)（新增）。走底层 HTTP + JSON-RPC 串接 Set/Get/List/Delete → 再 Get 应 not-found；前置探针 capabilities.pushNotifications=false 时 assumeTrue 跳过。SIT 当前 skip（capabilities.pushNotifications=false，与 DA-01.C 一致）。
 
 ### 3.5 Runtime-to-runtime Webhook 完成回调（受评审 §3 影响，全节 deferred / blocked）
 
@@ -367,7 +388,7 @@ related_docs:
 - **W**：`SendMessage`，parts = `[new TextPart("")]`。
 - **T**：runtime 应返回 JSON-RPC error **或** task 走 FAILED / REJECTED；**不应**把空输入交给 agent 猜。
 - **PASS**：任一拒绝分支。**FAIL**：task COMPLETED 且 agent 生成了任何 artifact。
-- **框架落点**：待新建（`EmptyTextInputTest`）。
+- **框架落点**：[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)（新增）。sync ack + REST 轮询两阶段；接受四种拒绝分支：send 阶段异常 / errorHandler 收到 Throwable / task 终态 FAILED 或 REJECTED / COMPLETED 但 artifact 空。SIT 已 PASS（拒绝分支命中）。
 
 ### 3.7 Task 生命周期
 
@@ -384,7 +405,7 @@ related_docs:
 - **状态**：blocked
 - **评审关联**：§6 —— 无 error code 承载；触发条件亦依赖故障注入
 - **FEAT 依据**：§5.1.6 + §5.1.8。
-- **框架落点**：待新建（`TaskFailedPayloadTest`；触发条件与 §3.3 stream-mid-error-frame 重叠，可复用 fixture），阻塞至评审 §6 定 code。
+- **框架落点**：待新建（`TaskFailedPayloadTest`；触发条件与 §3.3 downstream-agent-killed-mid-stream 重叠，可复用 fixture），阻塞至评审 §6 定 code。
 
 ---
 
@@ -392,23 +413,20 @@ related_docs:
 
 | 子用例 ID | 落点 Java 类 | 状态 | 类状态 |
 |---|---|---|---|
-| agent-card | `AgentCardDiscoveryTest` | runnable | 扩展 |
-| agent-card-public-base-url | `AgentCardPublicBaseUrlTest` | partial | 待新建 |
-| agent-card-capabilities | `AgentCardCapabilitiesTest` | runnable | 待新建 |
-| agent-card-skills | `AgentCardSkillsTest` | runnable | 待新建 |
-| jsonrpc-endpoint-slash | `JsonRpcEndpointSlashTest` | runnable | 待新建 |
-| jsonrpc-parse-error | `JsonRpcParseErrorTest` | runnable | 待新建 |
-| jsonrpc-invalid-request | `JsonRpcInvalidRequestTest` | runnable | 待新建 |
-| jsonrpc-method-not-found | `JsonRpcMethodNotFoundTest` | runnable | 待新建 |
+| agent-card | [AgentCardDiscoveryTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java) | runnable | 已落 |
+| agent-card-public-base-url | [AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java) | partial | 已落 |
+| agent-card-capabilities | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) | runnable | 已落 |
+| agent-card-skills | [AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java) | runnable | 已落 |
+| jsonrpc-endpoint-slash | [JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java) | runnable | 已落 |
+| jsonrpc-parse-error | [JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java) | runnable | 已落 |
+| jsonrpc-invalid-request | [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java) | runnable | 已落 |
+| jsonrpc-method-not-found | [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java) | runnable | 已落 |
 | send-message-blocking | `SyncSendMessageTest` | runnable | 已有（DA-02） |
 | send-streaming-message | `StreamingSendMessageTest` | runnable | 已有（DA-03） |
-| stream-mid-error-frame | `StreamMidErrorFrameTest` | partial | 待新建 |
+| downstream-agent-killed-mid-stream | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) | partial | 已落（watchdog + @manual） |
+| nonexistent-tool-refusal | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) | runnable | 已落 |
 | get-task / get-task-not-found | `GetTaskTest` | runnable | 已有（DA-04 + F） |
-| cancel-task-in-flight | `CancelTaskTest` | partial | 待新建 |
-| cancel-task-terminal | 同上（并入） | blocked | 待新建 |
-| list-tasks | `ListTasksTest` | runnable | 待新建 |
-| subscribe-to-task | `SubscribeToTaskTest` | runnable | 待新建 |
-| push-config-crud | `PushConfigCrudTest` | runnable | 待新建 |
+| push-config-crud | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) | runnable | 已落（capabilities false 时 assumeTrue skip） |
 | webhook-completed | `WebhookCompletedTest` | **deferred** | 阻塞（评审 §3） |
 | webhook-{failed,canceled,rejected} | `WebhookTerminalStateTest` | **deferred** | 阻塞（评审 §3） |
 | webhook-payload-ref | `WebhookPayloadRefTest` | **blocked** | 阻塞（评审 §1 §3） |
@@ -418,7 +436,7 @@ related_docs:
 | webhook-vs-streaming | `WebhookVsStreamingTest` | **deferred** | 阻塞（评审 §3） |
 | tenant-id-propagation | `TenantIdPropagationTest` | partial | 待新建 |
 | tenant-isolation | `TenantIsolationTest` | partial | 待新建 |
-| empty-text-input | `EmptyTextInputTest` | partial | 待新建 |
+| empty-text-input | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) | partial | 已落 |
 | task-lifecycle | 扩展 `StreamingSendMessageTest` | runnable | 扩展 |
 | task-failed-payload | `TaskFailedPayloadTest` | blocked | 阻塞（评审 §6） |
 
@@ -426,38 +444,37 @@ related_docs:
 
 ### 4.1 落地优先级建议
 
+> ✅ = 已落地；⬜ = 待落地。
+
 **P0-A · 扩展现有 test（改口径 / 加断言）**
-- `AgentCardDiscoveryTest`（+ 双入口对比）
-- `StreamingSendMessageTest`（+ 状态序列断言 → task-lifecycle）
+- ✅ `AgentCardDiscoveryTest`（DA-01；三入口等价性已硬断言）
+- ✅ `StreamingSendMessageTest`（DA-03；+ 状态序列断言 → task-lifecycle）
 
 **P0-B · JSON-RPC 错误面（新类，纯正/负路径，用底层 HTTP client）**
-- `JsonRpcEndpointSlashTest`
-- `JsonRpcParseErrorTest`
-- `JsonRpcInvalidRequestTest`
-- `JsonRpcMethodNotFoundTest`
+- ✅ `JsonRpcEndpointSlashTest`
+- ✅ `JsonRpcParseErrorTest`
+- ✅ `JsonRpcInvalidRequestTest`
+- ✅ `JsonRpcMethodNotFoundTest`
 
 **P0-C · SDK 方法扩展（新类，正路径）**
-- `CancelTaskTest`（in-flight 部分，terminal 部分先写 stub）
-- `ListTasksTest`
-- `SubscribeToTaskTest`（先跑 SDK API smoke）
-- `PushConfigCrudTest`
+- ✅ `PushConfigCrudTest`（capabilities.pushNotifications=false 时 assumeTrue skip）
 
 **P1 · Agent Card 完整性 + 场景化**
-- `AgentCardCapabilitiesTest`
-- `AgentCardSkillsTest`
-- `AgentCardPublicBaseUrlTest`（partial）
-- `TenantIdPropagationTest`（partial）
-- `TenantIsolationTest`（partial，复用 DA-05/06 fixture）
-- `EmptyTextInputTest`（partial）
-- `WebhookUntrustedTargetTest`（partial，只测注册拒绝）
+- ✅ `AgentCardCapabilitiesTest`
+- ✅ `AgentCardSkillsTest`
+- ✅ `AgentCardPublicBaseUrlTest`（partial）
+- ⬜ `TenantIdPropagationTest`（partial）
+- ⬜ `TenantIsolationTest`（partial，复用 DA-05/06 fixture）
+- ✅ `EmptyTextInputTest`（partial）
+- ⬜ `WebhookUntrustedTargetTest`（partial，只测注册拒绝）
 
 **P2 · 依赖故障注入**
-- `StreamMidErrorFrameTest`
-- `TaskFailedPayloadTest`
+- 🟡 `DownstreamAgentKilledMidStreamTest`（watchdog + @manual；本地拉两 jar，用 SutStack.stop() 中途杀 search）
+- ✅ `NonexistentToolRefusalTest`（§5.1.6 正例；LLM 拒答不存在工具走 COMPLETED）
+- ⬜ `TaskFailedPayloadTest`
 
 **Deferred · 阻塞至评审澄清 / 能力就绪**
 - webhook 家族其余 6 条：`WebhookCompletedTest` / `WebhookTerminalStateTest` / `WebhookPayloadRefTest` / `WebhookIdempotencyTest` / `WebhookVsStreamingTest`
-- `cancel-task-terminal` 完整断言
 
 ---
 
@@ -468,9 +485,9 @@ related_docs:
 ./mvnw -Dtest.env=SIT -Dgroups=feat-001 test
 
 # 指定单条子用例
-./mvnw -Dtest.env=SIT -Dtest=CancelTaskTest test
+./mvnw -Dtest.env=SIT -Dtest=PushConfigCrudTest test
 
-# 强跑 manual 分支（含长任务 cancel 等）
+# 强跑 manual 分支（含长任务等）
 ./mvnw -Dtest.env=SIT -Dgroups='feat-001 & manual' test
 ```
 
@@ -488,15 +505,14 @@ related_docs:
 | §2 webhook 安全机制被延后 | `webhook-untrusted-target`（partial：只测负路径） |
 | §3 webhook receiver 契约在 SDK/应用/文档三层缺失 | `webhook-{completed,failed,canceled,rejected,no-intermediate,vs-streaming,payload-ref,idempotent}` |
 | §4 notification id 无字段承载 | `webhook-idempotent` |
-| §5 CancelTask 时限/期间行为未定 | `cancel-task-in-flight`（partial，宽松窗口）+ `cancel-task-terminal`（blocked） |
-| §6 错误码未列 | `stream-mid-error-frame` / `empty-text-input` / `task-failed-payload` / `cancel-task-terminal` |
+| §6 错误码未列 | `downstream-agent-killed-mid-stream` / `empty-text-input` / `task-failed-payload` |
 | §7 缺 X-Tenant-Id 落点 | `tenant-id-propagation`（partial）+ `tenant-isolation`（partial） |
 
 ### 6.2 实现层风险（非评审风险）
 
 **SDK 版本能力天花板**
 - A2A SDK `1.0.0.Final` 的 `JSONRPCTransport.unmarshalResponse` 不按 JSON-RPC error code 分流具体子类——见 [DA-04 §9 备注](deepagent/DA-04-get-task.md)。协议错误 code 断言子用例（`jsonrpc-*` / `webhook-untrusted-target` 若拒绝走 error 分支）需要绕过 SDK，用底层 HTTP client 直接发。
-- SDK 是否暴露 `SubscribeToTask` / `ListTasks` / push config CRUD 的 Java API 需要在动工前先反编译 SDK 或跑 smoke 探针；若 SDK 未包裹，用 `HttpClient` 直发 JSON-RPC payload。
+- SDK 是否暴露 push config CRUD 的 Java API 需要在动工前先跑 smoke 探针；若 SDK 未包裹，用 `HttpClient` 直发 JSON-RPC payload（`PushConfigCrudTest` 走此路径）。
 
 **Webhook 占位 endpoint 而非 mock receiver**
 - 由于评审 §3 结论"整栈无 receiver"，本档**不引入 WireMock / MockWebServer** 依赖，避免引入"以 SIT 侧 mock 定义 receiver 契约"的隐性假设。
@@ -512,9 +528,8 @@ FEAT-001 §5.1.6 要求 handler 输出需要用户输入的中断时 Task 进入
   - 若有 → 新增 `FEAT-001.input-required` 子用例（runnable / partial），找到能可靠触发澄清的 prompt
   - 若无 → 本档记录"deep-research SUT 上该状态不可达"，交由其他有 HITL 能力的 SUT 覆盖
 
-### 6.4 Cancel / Failed / Rejected 触发条件
+### 6.4 Failed / Rejected 触发条件
 
-- Cancel 需要制造够长任务。deep-research 沙箱工具场景（DA-07）prompt 长度足够；备选：sandbox 里跑 `time.sleep(60)`。
 - Failed 依赖 handler 层的可控故障；如无法注入，只能利用已知 bug 状态——但那是 variant 1 bug 会污染 artifact 而非规范 FAILED，属"假的 failed"。此项若无法制造真的 failed，报告标 INCONCLUSIVE。
 - Rejected 通常来自协议层拒绝（如空文本输入、no-handler）。`empty-text-input` 天然触发 rejected 路径。
 

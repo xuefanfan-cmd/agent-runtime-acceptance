@@ -65,7 +65,7 @@ related_docs:
 | `X-Tenant-Id` 头传递 | `FEAT-001.tenant-id-propagation` | 未覆盖 | partial | 评审 §7 | 缺 header 落点未定 |
 | Tenant 跨租户记忆隔离 | `FEAT-001.tenant-isolation` | 未覆盖 | partial | 评审 §7 | 间接证据（DA-05/06 记忆链路衍生） |
 | 空文本输入拒绝 | `FEAT-001.empty-text-input` | 已覆盖（[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)） | partial | 评审 §6 | 接受 send 异常 / FAILED / REJECTED / COMPLETED+空 artifact 四种拒绝分支 |
-| Task 生命周期状态序列 | `FEAT-001.task-lifecycle` | DA-03 部分覆盖 | runnable | — | 显式状态序列断言 |
+| Task 生命周期状态序列 | `FEAT-001.task-lifecycle` | 已覆盖（[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java) 已扩显式状态序列 + 严格顺序 + 无回退断言） | runnable | — | 严格顺序 + 无回退硬断言 |
 | Failed Task 携带结构化错误 payload | `FEAT-001.task-failed-payload` | 未覆盖 | blocked | 评审 §6 | 无 code 可断言 + 触发条件依赖故障注入 |
 
 > **待决**：input-required 子用例（`FEAT-001.input-required`）待 deep-research planner 代码检查后决定是否列入（见 §6.3）。
@@ -115,18 +115,17 @@ related_docs:
 | **F. Tenant / 输入 / 生命周期（5）** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
 | | F2 | tenant-isolation | ⬜ | TenantIsolationTest |
 | | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) |
-| | F4 | task-lifecycle | ⬜ | 扩展 StreamingSendMessageTest |
+| | F4 | task-lifecycle | ✅ | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 扩展：严格顺序 + 无回退硬断言，已 PASS） |
 | | F5 | task-failed-payload | 🚫 | TaskFailedPayloadTest |
 
-**进度**：已落地 15 / 27（其中 ✅ 硬 PASS 12、🟡 partial 3）；⬜ 待落地 4；🚫 blocked 3；⏸ deferred 5。
+**进度**：已落地 16 / 27（其中 ✅ 硬 PASS 13、🟡 partial 3）；⬜ 待落地 3；🚫 blocked 3；⏸ deferred 5。
 
 **下一步优先级**：
-1. **P0** ⬜ F4 task-lifecycle（StreamingSendMessageTest 扩状态序列断言）
-2. **P1** ⬜ E6 webhook-untrusted-target（只测注册拒绝负路径，不依赖 receiver）
-3. **P1** ⬜ F1/F2 tenant 双条（依赖 §7 澄清 X-Tenant-Id 落点）
-4. **P2** 🟡 C3 downstream-agent-killed-mid-stream（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual → 升为常态 PASS）
-5. **Blocked** 🚫 F5 task-failed-payload / E3 payload-ref / E4 idempotent 等评审澄清
-6. **Deferred** ⏸ webhook 家族其余 5 条等 receiver 契约就绪
+1. **P1** ⬜ E6 webhook-untrusted-target（只测注册拒绝负路径，不依赖 receiver）
+2. **P1** ⬜ F1/F2 tenant 双条（依赖 §7 澄清 X-Tenant-Id 落点）
+3. **P2** 🟡 C3 downstream-agent-killed-mid-stream（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual → 升为常态 PASS）
+4. **Blocked** 🚫 F5 task-failed-payload / E3 payload-ref / E4 idempotent 等评审澄清
+5. **Deferred** ⏸ webhook 家族其余 5 条等 receiver 契约就绪
 
 ---
 
@@ -393,13 +392,13 @@ related_docs:
 ### 3.7 Task 生命周期
 
 #### FEAT-001.task-lifecycle — 状态序列 submitted → working → terminal
-- **状态**：runnable
+- **状态**：runnable（已落地并 PASS）
 - **FEAT 依据**：§5.1.6。
 - **G**：deep-research 就绪。
 - **W**：`SendStreamingMessage` 并按序记录每个 SSE 事件的 task.status.state。
 - **T**：序列至少包含 `SUBMITTED` → `WORKING` → `COMPLETED`（或其他 terminal）；状态严格单调。
 - **PASS**：序列合法。**FAIL**：跳过 WORKING 直到 COMPLETED / 状态回退。
-- **框架落点**：扩展 [StreamingSendMessageTest.java](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java)。
+- **框架落点**：[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133) 已扩展：在 DA-03 原有 `contains(SUBMITTED/WORKING/COMPLETED)` 三条断言之上，新增 (a) 严格顺序断言 —— SUBMITTED 首现 index < WORKING 首现 index < COMPLETED 首现 index；(b) 无回退断言 —— COMPLETED 首现之后的子序列不再出现 SUBMITTED / WORKING。SIT 已 PASS。
 
 #### FEAT-001.task-failed-payload — Failed Task 携带结构化错误
 - **状态**：blocked
@@ -437,7 +436,7 @@ related_docs:
 | tenant-id-propagation | `TenantIdPropagationTest` | partial | 待新建 |
 | tenant-isolation | `TenantIsolationTest` | partial | 待新建 |
 | empty-text-input | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) | partial | 已落 |
-| task-lifecycle | 扩展 `StreamingSendMessageTest` | runnable | 扩展 |
+| task-lifecycle | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 已扩展） | runnable | 已扩展落地 |
 | task-failed-payload | `TaskFailedPayloadTest` | blocked | 阻塞（评审 §6） |
 
 所有新建类落到 `src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/`，包 `com.huawei.ascend.sit.cases.integration.deepagent_deepresearch`。

@@ -202,7 +202,7 @@ public class InteractionFlow {
                 }
                 observedState = gotInputRequired
                         ? TaskState.TASK_STATE_INPUT_REQUIRED
-                        : collector.awaitAnyTaskState(timeoutMs);
+                        : collector.awaitTerminalState(timeoutMs);
             } else if (round.expectedState.isFinal()) {
                 observedState = collector.awaitTerminalState(timeoutMs);
             } else {

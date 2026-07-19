@@ -1,0 +1,13 @@
+{
+  "_doc": "ConversationIdentity 默认值 —— edpa 网关调用的固定前端身份字段。见 spec §7 #4。",
+  "roleName": "手机银行",
+  "agentId": "fcbcd0ce-73b0-4097-a0cb-6286341f88f6",
+  "roleId": "1",
+  "projectId": "mock_project_id",
+  "workspaceId": 12,
+  "customDataInputs": {
+    "wap_userName": "张三",
+    "clientIP": "127.0.0.1",
+    "userAgent": "XXMobilePhone"
+  }
+}

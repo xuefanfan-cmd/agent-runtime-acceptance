@@ -1,0 +1,440 @@
+package com.huawei.ascend.sit.conversation;
+
+import com.huawei.ascend.sit.client.A2aServiceClient;
+import com.huawei.ascend.sit.client.WireLoggerResolver;
+import com.huawei.ascend.sit.transport.A2aStreamingTransport;
+import com.huawei.ascend.sit.transport.A2aStreamingWire;
+import com.huawei.ascend.sit.transport.InboundEvent;
+import com.huawei.ascend.sit.transport.InboundExchange;
+import com.huawei.ascend.sit.transport.MessageProtocol;
+import com.huawei.ascend.sit.transport.MessageTransport;
+import com.huawei.ascend.sit.transport.OutboundMessage;
+import com.huawei.ascend.sit.transport.RestExchange;
+import com.huawei.ascend.sit.transport.RestQueryTransport;
+import com.huawei.ascend.sit.transport.WireLogger;
+import com.huawei.ascend.sit.transport.WireRequestRenderer;
+import com.huawei.ascend.sit.utils.JsonUtils;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.a2aproject.sdk.spec.TaskState;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * A {@link ConversationTransport} that drives the plan-agent <b>directly</b> — bypassing the
+ * edpa-gateway — over one of the two streaming wire protocols {@code InteractionFlow} already
+ * speaks: {@link MessageProtocol#A2A_STREAM} (JSON-RPC {@code SendStreamingMessage} SSE) or
+ * {@link MessageProtocol#REST_QUERY} ({@code POST /v1/query} {@code stream:true}).
+ *
+ * <p><b>What this is.</b> An <em>adapter</em>, not a transport. {@code Turn}'s driving loop is the
+ * dynamic driver — each round's text is fetched from envexplorer at runtime (a per-step READ), so it
+ * cannot be statically declared the way {@code InteractionFlow.send(text)} declares rounds. This
+ * adapter only plugs {@link ConversationTransport#send(ConversationOutbound, ConversationEventCollector)}
+ * onto {@code InteractionFlow}'s <em>reused</em> wire ({@link A2aStreamingTransport} /
+ * {@link RestQueryTransport}) — it adds no new wire logic. The bridge per {@code send}:
+ * <ol>
+ *   <li>rebuild the EDPA envelope from the rendered body ({@code inputs}/{@code headers}) plus the
+ *       caller identity — the gateway's inbound job, done here because the direct path bypasses the
+ *       gateway — and project it per protocol (A2A: under {@code metadata} + {@code parts[0].text}=
+ *       {@code {"query":...,"intent":...}}; REST: a pre-rendered body),</li>
+ *   <li>resolve continuation — carry the prior {@code taskId} when the prior round did not reach a
+ *       terminal state (A2A contract), and pin the conversation {@code cid} as {@code contextId} on
+ *       every round so the plan-agent threads one conversation (REST continuation is by
+ *       {@code conversation_id} = the same pinned cid),</li>
+ *   <li>fire the reused transport and await the round's resolution ({@code INPUT_REQUIRED} for a
+ *       manual step, a terminal for an auto/final step),</li>
+ *   <li>translate each text-bearing {@link InboundEvent} into a {@link SseEvent} so the collector
+ *       sees the same shape {@link RestVersatileTransport} produces, then mark the stream ended.</li>
+ * </ol>
+ *
+ * <p><b>One instance = one conversation.</b> It remembers {@code prevTaskId}/{@code prevState}
+ * across {@code send} calls exactly as {@code InteractionFlow.execute} does, so a multi-turn
+ * {@code INPUT_REQUIRED} → resume sequence continues the same A2A task. Only the taskId is tracked
+ * from server responses; {@code contextId} is always the pinned cid — the
+ * {@code InteractionFlow.withContextId(cid)} model.
+ *
+ * <p><b>Wire-contract calibration points</b> (cannot be verified without a real plan-agent + LLM
+ * run): (1) the rebuilt envelope matches what the plan-agent's {@code VersatileRequestExtractor}
+ * consumes — verified against the extractor source, pending an end-to-end run;
+ * (2) continuation is by taskId (A2A) / conversation_id (REST); (3) REST {@code user_id}/{@code space_id}
+ * are demo placeholders ("demo-user"/"demo-space") — not carried in {@code ConversationIdentity}, may
+ * need real values; (4) the plan-agent exposes {@code /v1/query} for {@code REST_QUERY} (else it 404s —
+ * the same assumption the gateway REST mode makes), and the endpoint threads {@code workspace_id}/
+ * {@code type} as URL params exactly as the gateway does.
+ */
+public final class ConversationInteractionAdapter implements ConversationTransport {
+
+    private final MessageProtocol protocol;
+    private final A2aServiceClient client;       // null when a transport is injected via using()
+    private MessageTransport transport;          // null on the client path until the first send
+    private final long timeoutMs;
+
+    /**
+     * Query-param keys dropped from the REST {@code /v1/query} URL and the A2A {@code metadata.query}
+     * (both normally carry {@code type=controller} + {@code workspace_id=N}). Empty by default — all params
+     * sent, matching the gateway. Add a key via {@link #disableQueryParam(String)} to drop it for a
+     * downstream that does not expect it (e.g. {@code "type"} for the multi-workflow adapter, whose
+     * workflow endpoints route by {@code intent}, not the controller type).
+     */
+    private final Set<String> disabledQueryParams = new LinkedHashSet<>();
+
+    /** The two routing query params the gateway threads; the only valid args to {@link #disableQueryParam}. */
+    private static final Set<String> KNOWN_QUERY_PARAMS = Set.of("type", "workspace_id");
+
+    // Wire logging — the SAME shared, JVM-cached sink InteractionFlow uses
+    // (WireLoggerResolver.resolved()), so this adapter's rounds land in the SAME per-run directory as
+    // the flow's. NOOP unless sut.wire-log.enabled. Mirrors InteractionFlow.executeRound's post-await
+    // logRound call; without it the Conversation/adapter path logged nothing (the gap that hid
+    // PlanAgentDirectStreamingTest's wire). Null → resolved from config on first send(); test-injected
+    // otherwise (see withWireLogger).
+    private WireLogger wireLogger;
+    private int round = 0;
+
+    // Continuation state across sends — mirrors InteractionFlow.execute's lastTaskId/lastState.
+    // contextId is pinned to the conversation cid (read per-send from out.conversationId()), not tracked here.
+    private String prevTaskId = null;
+    private TaskState prevState = null;
+
+    /**
+     * @param protocol  {@link MessageProtocol#A2A_STREAM} or {@link MessageProtocol#REST_QUERY}
+     * @param client    the plan-agent A2A client — its {@code getBaseUrl()} anchors the REST endpoint
+     *                  and its {@code sendMessage} drives the A2A wire
+     * @param timeoutMs per-round resolution timeout (await {@code INPUT_REQUIRED} or a terminal)
+     */
+    public ConversationInteractionAdapter(MessageProtocol protocol, A2aServiceClient client, long timeoutMs) {
+        this.protocol = protocol;
+        this.client = client;
+        this.transport = null;   // built on first send — REST needs the conversation's workspace_id
+        this.timeoutMs = timeoutMs;
+    }
+
+    /** Private ctor with a pre-built transport — backs the {@link #using} test seam. */
+    private ConversationInteractionAdapter(MessageProtocol protocol, MessageTransport transport, long timeoutMs) {
+        this.protocol = protocol;
+        this.client = null;
+        this.transport = transport;
+        this.timeoutMs = timeoutMs;
+    }
+
+    /**
+     * Test-only: inject a transport directly, bypassing client-based {@code transportFor} (mirrors
+     * {@code InteractionFlow.using(MessageTransport)}). Pair with {@link #withWireLogger} so the
+     * post-await wire-log call is unit-testable with a stub transport and a recording logger.
+     */
+    static ConversationInteractionAdapter using(MessageProtocol protocol, MessageTransport transport, long timeoutMs) {
+        return new ConversationInteractionAdapter(protocol, transport, timeoutMs);
+    }
+
+    /**
+     * Test-only injection of the wire logger. Production resolves it from {@code sut.wire-log.*} via
+     * {@link WireLoggerResolver} on the first {@link #send}. Mirrors {@code InteractionFlow.withWireLogger}.
+     */
+    ConversationInteractionAdapter withWireLogger(WireLogger logger) {
+        this.wireLogger = logger;
+        return this;
+    }
+
+    /**
+     * Drop the named query param from the REST {@code /v1/query} URL and the A2A {@code metadata.query}
+     * (both normally carry {@code type=controller} + {@code workspace_id=N}). Pass {@code "type"} to drop
+     * ONLY the {@code controller} type — {@code workspace_id} stays — for a downstream that routes by
+     * something other than the controller type (e.g. the multi-workflow adapter, whose workflow endpoints
+     * route by {@code intent}). Default: no param disabled (matches the gateway). Repeatable (each call
+     * adds a key). Unknown keys are rejected — only {@code "type"}/{@code "workspace_id"} are recognised.
+     */
+    public ConversationInteractionAdapter disableQueryParam(String key) {
+        if (key == null || !KNOWN_QUERY_PARAMS.contains(key)) {
+            throw new IllegalArgumentException(
+                    "Unknown query param '" + key + "'; recognised: " + KNOWN_QUERY_PARAMS);
+        }
+        disabledQueryParams.add(key);
+        return this;
+    }
+
+    private static MessageTransport transportFor(MessageProtocol protocol, A2aServiceClient client,
+                                                 int workspaceId, Set<String> disabled) {
+        return switch (protocol) {
+            // A2A_STREAM binds the streaming SDK Client (sendMessageStreaming → SSE message/stream);
+            // client::sendMessage is the legacy sync default and would make A2A_STREAM wire-identical
+            // to sync.
+            case A2A_STREAM -> new A2aStreamingTransport(new A2aStreamingWire(client::sendMessageStreaming));
+            case REST_QUERY -> new RestQueryTransport(new RestExchange(),
+                    restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled), true);
+            default -> throw new IllegalArgumentException(
+                    "ConversationInteractionAdapter supports only A2A_STREAM/REST_QUERY, got " + protocol);
+        };
+    }
+
+    /**
+     * The plan-agent REST endpoint, mirroring the gateway's {@code RestPlanAgentClient.restEndpoint}:
+     * {@code <base>/v1/query?type=controller&workspace_id=<N>}. The runtime surfaces URL query params as
+     * {@code ServeRequest.metadata.query}, which threads {@code workspace_id}/{@code type} onward to the
+     * downstream — a bare {@code /v1/query} drops them. The A2A path carries the same pair in
+     * {@code metadata.query}, so the bare REST URL was an A2A/REST asymmetry: the REST body was right
+     * but it threaded no {@code workspace_id}. A trailing slash on the base is tolerated. All params are
+     * sent by default; drop one via {@link #restQueryEndpoint(String, int, Set)}.
+     */
+    static URI restQueryEndpoint(String baseUrl, int workspaceId) {
+        return restQueryEndpoint(baseUrl, workspaceId, Set.of());
+    }
+
+    /**
+     * Same as {@link #restQueryEndpoint(String, int)} but lets the caller drop named query params — pass
+     * e.g. {@code Set.of("type")} to keep only {@code workspace_id} (the workspace is always useful to the
+     * downstream) for a downstream that routes by something other than the controller type (e.g. the
+     * multi-workflow adapter's workflow endpoints, which route by {@code intent}).
+     */
+    static URI restQueryEndpoint(String baseUrl, int workspaceId, Set<String> disabled) {
+        String path = baseUrl.endsWith("/") ? baseUrl + "v1/query" : baseUrl + "/v1/query";
+        List<String> params = new ArrayList<>();
+        if (!disabled.contains("type")) {
+            params.add("type=controller");
+        }
+        if (!disabled.contains("workspace_id")) {
+            params.add("workspace_id=" + workspaceId);
+        }
+        return URI.create(params.isEmpty() ? path : path + "?" + String.join("&", params));
+    }
+
+    @Override
+    public void send(ConversationOutbound out, ConversationEventCollector collector) {
+        try {
+            // The transport is built on the first send, not in the ctor: the REST endpoint must carry
+            // the conversation's workspace_id (mirroring the gateway's RestPlanAgentClient.restEndpoint),
+            // and that id is first available here, in out.workspaceId(). It is constant for one
+            // conversation (= one adapter instance), so a once-only lazy build is correct.
+            if (transport == null) {
+                transport = transportFor(protocol, client, out.workspaceId(), disabledQueryParams);
+            }
+            boolean continuation = prevTaskId != null && !prevTaskId.isEmpty()
+                    && prevState != null && !prevState.isFinal();
+            String taskId = continuation ? prevTaskId : null;
+            String contextId = out.conversationId();   // pin the cid on every round (one conversation)
+            OutboundMessage message = buildOutbound(out, taskId, contextId);
+
+            InboundExchange exchange = transport.send(message);
+
+            // Await the round's resolution. awaitInputRequired returns promptly once INPUT_REQUIRED
+            // (manual step) OR a terminal (auto/final) appears; on timeout it returns false with neither.
+            boolean inputRequired = exchange.awaitInputRequired(timeoutMs);
+            TaskState resolved;
+            if (inputRequired) {
+                resolved = TaskState.TASK_STATE_INPUT_REQUIRED;
+            } else {
+                resolved = lastFinalState(exchange);
+                if (resolved == null) {
+                    throw new AssertionError("Round did not resolve (no INPUT_REQUIRED or terminal) within "
+                            + timeoutMs + "ms; trajectory=" + exchange.stateTrajectory());
+                }
+            }
+
+            // Bridge each text-bearing InboundEvent → SseEvent (text under data.text, the shape
+            // RestVersatileTransport produces). STATE/LLM_USAGE carry no text and have no gateway SSE
+            // equivalent, so they are dropped.
+            for (InboundEvent e : exchange.events()) {
+                if (e.text() != null && !e.text().isEmpty()) {
+                    collector.add(new SseEvent(e.kind().name().toLowerCase(Locale.ROOT),
+                            Map.of("text", e.text())));
+                }
+            }
+
+            // Remember A2A continuation: the server-assigned taskId (blank for REST, which has no taskId).
+            String observedTaskId = exchange.taskId();
+            if (observedTaskId != null && !observedTaskId.isEmpty()) {
+                prevTaskId = observedTaskId;
+            }
+            prevState = resolved;
+
+            // Wire log: record this round now that the exchange has settled (the await above is the
+            // synchronization point) — mirrors InteractionFlow.executeRound. The same A2A async-delivery
+            // race applies here (send returns before events arrive on the callback thread), so the call
+            // must be post-await; logging inside transport.send would capture an empty response list.
+            if (wireLogger == null) {
+                wireLogger = WireLoggerResolver.resolved();
+            }
+            if (wireLogger.enabled()) {
+                String endpoint = client == null ? null : endpointFor(protocol, client, out.workspaceId(), disabledQueryParams);
+                String wireRequest = WireRequestRenderer.render(protocol, message, endpoint);
+                wireLogger.logRound(protocol.name(), ++round, sessionIdOf(message), message,
+                        exchange.events(), wireRequest);
+            }
+        } finally {
+            collector.markStreamEnd();
+        }
+    }
+
+    /** Session id for the wire-log filename: metadata {@code sessionId} → contextId → {@code "nosession"}. */
+    private static String sessionIdOf(OutboundMessage m) {
+        Map<String, Object> md = m.metadata();
+        if (md != null) {
+            Object sid = md.get("sessionId");
+            if (sid != null && !String.valueOf(sid).isBlank()) {
+                return String.valueOf(sid);
+            }
+        }
+        return (m.contextId() == null || m.contextId().isBlank()) ? "nosession" : m.contextId();
+    }
+
+    /**
+     * Wire endpoint for the paste-ready request — the same target {@code transportFor} sends to: A2A →
+     * the agent card URL (base URL fallback); REST → the workspace-scoped {@code /v1/query} URL. Resolved
+     * only when a client is present (the {@code using()} unit-test seam has none → caller passes null).
+     */
+    private static String endpointFor(MessageProtocol protocol, A2aServiceClient client,
+                                      int workspaceId, Set<String> disabled) {
+        return switch (protocol) {
+            case A2A_STREAM -> {
+                String url = client.getAgentCard() == null ? null : client.getAgentCard().url();
+                yield (url == null || url.isBlank()) ? client.getBaseUrl() : url;
+            }
+            case REST_QUERY -> restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
+            default -> null;
+        };
+    }
+
+    /** Last final state in the exchange's trajectory, or {@code null} if none arrived. */
+    private static TaskState lastFinalState(InboundExchange exchange) {
+        TaskState last = null;
+        for (TaskState s : exchange.stateTrajectory()) {
+            if (s != null && s.isFinal()) {
+                last = s;
+            }
+        }
+        return last;
+    }
+
+    /**
+     * Rebuild the EDPA envelope (the gateway's inbound job — the direct path bypasses the gateway) and
+     * project it per protocol: A2A gets {@code text}={@code {query,intent}} JSON + the envelope under
+     * {@code metadata}; REST gets a pre-rendered {@code body}. Continuation hints (taskId/contextId)
+     * are threaded through unchanged.
+     */
+    private OutboundMessage buildOutbound(ConversationOutbound out, String taskId, String contextId) {
+        EdpaEnvelope env = EdpaEnvelope.parse(out.jsonBody());
+        String textPart = queryIntentJson(env.query, env.intent);
+        return switch (protocol) {
+            case A2A_STREAM -> new OutboundMessage(textPart, a2aMetadata(out, env, disabledQueryParams), taskId, contextId, null);
+            case REST_QUERY -> new OutboundMessage(null, null, taskId, contextId, restBody(out, env, textPart));
+            default -> throw new IllegalArgumentException(
+                    "ConversationInteractionAdapter supports only A2A_STREAM/REST_QUERY, got " + protocol);
+        };
+    }
+
+    /**
+     * A2A projection: the EDPA envelope under {@code metadata} ({@code body}/{@code headers}/{@code query}).
+     * {@code metadata.query} mirrors the REST URL: it carries {@code type=controller} + {@code workspace_id}
+     * by default, minus any key in {@code disabled} — so a downstream that routes by something other than
+     * the controller type still gets the workspace.
+     */
+    private static Map<String, Object> a2aMetadata(ConversationOutbound out, EdpaEnvelope env,
+                                                   Set<String> disabled) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("custom_data", Map.of("inputs", env.inputs));
+        body.put("agent_id", out.agentId());
+        body.put("conversation_id", out.conversationId());
+        body.put("stream", true);
+        body.put("timeout", out.timeout());
+        body.put("input", Map.of("query", env.query));
+        body.put("role_name", out.roleName());
+        body.put("role_id", out.roleId());
+
+        Map<String, Object> query = new LinkedHashMap<>();
+        if (!disabled.contains("type")) {
+            query.put("type", "controller");
+        }
+        if (!disabled.contains("workspace_id")) {
+            query.put("workspace_id", String.valueOf(out.workspaceId()));
+        }
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("body", body);
+        meta.put("headers", env.headers);
+        meta.put("query", query);
+        return meta;
+    }
+
+    /** REST projection: the flat EDPA REST body, pre-rendered to a JSON string for verbatim POST. */
+    private static String restBody(ConversationOutbound out, EdpaEnvelope env, String textPart) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("query", env.query);
+        input.put("intent", env.intent);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("conversation_id", out.conversationId());
+        body.put("stream", true);
+        body.put("user_id", REST_USER_ID);     // demo placeholder (not in ConversationIdentity)
+        body.put("space_id", REST_SPACE_ID);   // demo placeholder (not in ConversationIdentity)
+        Map<String, Object> userMessage = new LinkedHashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", textPart);
+        body.put("messages", List.of(userMessage));
+        body.put("agent_id", out.agentId());
+        body.put("input", input);
+        body.put("timeout", out.timeout());
+        body.put("role_id", out.roleId());
+        body.put("role_name", out.roleName());
+        body.put("custom_data", Map.of("inputs", env.inputs));
+        return JsonUtils.toJsonCompact(body);
+    }
+
+    /** The {@code parts[0].text} / {@code messages[0].content} value: {@code {"query":...,"intent":...}}. */
+    private static String queryIntentJson(String query, String intent) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("query", query);
+        m.put("intent", intent);
+        return JsonUtils.toJsonCompact(m);
+    }
+
+    /** REST demo placeholders — {@code user_id}/{@code space_id} are not carried in {@code ConversationIdentity}. */
+    private static final String REST_USER_ID = "demo-user";
+    private static final String REST_SPACE_ID = "demo-space";
+
+    /** Parsed EDPA source body: the {@code inputs}/{@code headers} maps plus this round's query/intent. */
+    private static final class EdpaEnvelope {
+        final Map<String, Object> inputs;
+        final Map<String, Object> headers;
+        final String query;
+        final String intent;
+
+        private EdpaEnvelope(Map<String, Object> inputs, Map<String, Object> headers, String query, String intent) {
+            this.inputs = inputs;
+            this.headers = headers;
+            this.query = query;
+            this.intent = intent;
+        }
+
+        static EdpaEnvelope parse(String jsonBody) {
+            try {
+                JsonNode root = JsonUtils.mapper().readTree(jsonBody);
+                Map<String, Object> inputs = toMap(root.path("inputs"));
+                Map<String, Object> headers = toMap(root.path("headers"));
+                String query = textOf(root.path("inputs").path("query"));
+                String intent = textOf(root.path("inputs").path("intent"));
+                return new EdpaEnvelope(inputs, headers, query, intent);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Failed to parse EDPA body: " + jsonBody, e);
+            }
+        }
+
+        private static Map<String, Object> toMap(JsonNode node) {
+            if (node == null || node.isMissingNode() || !node.isObject()) {
+                return new LinkedHashMap<>();
+            }
+            return JsonUtils.mapper().convertValue(node, new TypeReference<Map<String, Object>>() {});
+        }
+
+        private static String textOf(JsonNode node) {
+            if (node == null || node.isNull() || node.isMissingNode()) {
+                return "";
+            }
+            return node.isTextual() ? node.asText() : node.toString();
+        }
+    }
+}

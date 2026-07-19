@@ -370,7 +370,9 @@ public final class SutStack implements AutoCloseable {
     public A2aServiceClient client(String name) {
         String baseUrl = requireInstance(name).baseUrl();
         AgentCard card = A2A.getAgentCard(baseUrl);
-        // streaming (message/stream) by default; streaming(false) opts down to message/send.
+        // Legacy default client. InteractionFlow-driven sends ignore this flag's wire mode — the
+        // flow's .protocol() builds its own streaming/sync client via sdkClient(boolean). This
+        // default client serves the no-suffix sendMessage / getTask / cancelTask paths.
         ClientConfig clientConfig = new ClientConfig.Builder()
                 .setAcceptedOutputModes(List.of("text"))
                 .setStreaming(streaming)
@@ -475,9 +477,16 @@ public final class SutStack implements AutoCloseable {
         }
 
         /**
-         * Whether clients built by {@link #client(String)} use streaming ({@code message/stream},
-         * {@code true}) or synchronous ({@code message/send}, {@code false}). Defaults to streaming
-         * ({@code true}); pass {@code false} to force the synchronous {@code message/send} path.
+         * Wire mode of the <em>legacy default</em> client built by {@link #client(String)}:
+         * {@code true} → streaming {@code message/stream}, {@code false} → synchronous
+         * {@code message/send}. Defaults to {@code true}.
+         *
+         * <p>Note: {@link com.huawei.ascend.sit.client.InteractionFlow}-driven sends no longer honor
+         * this flag on the wire — the flow's {@code .protocol(A2A_STREAM/A2A_SYNC)} is authoritative
+         * and builds its own streaming/sync SDK client per protocol (see
+         * {@link com.huawei.ascend.sit.client.A2aServiceClient#sdkClient(boolean)}). This flag now
+         * governs only the default client's mode for non-flow callers (the no-suffix
+         * {@code sendMessage}, {@code getTask}, {@code cancelTask}).
          */
         public Builder streaming(boolean streaming) {
             this.streaming = streaming;
@@ -560,6 +569,7 @@ public final class SutStack implements AutoCloseable {
             for (Entry entry : specs.values()) {
                 if (!entry.agent().isRemote()) {
                     refs.addAll(config.getKeys("sut.agents." + entry.agent().name() + ".service-bindings"));
+                    entry.config().serviceBindings().forEach(b -> refs.add(b.serviceName()));
                 }
             }
             return refs;
@@ -571,9 +581,19 @@ public final class SutStack implements AutoCloseable {
                 if (entry.agent().isRemote()) {
                     continue;
                 }
-                for (ServiceBinding b : readBindings(entry.agent().name())) {
-                    String composed = EnvPlaceholders.resolve(
-                            b.urlTemplate().replace("{{url}}", services.url(b.serviceName())));
+                List<ServiceBinding> all = new java.util.ArrayList<>(readBindings(entry.agent().name()));
+                all.addAll(entry.config().serviceBindings());
+                for (ServiceBinding b : all) {
+                    // {{url}} = full host:mappedPort (managed) or remote url; {{host}}/{{port}} split the
+                    // managed address so a binding can feed separate keys (e.g. REDIS_HOST + REDIS_PORT).
+                    String addr = services.url(b.serviceName());
+                    int colon = addr.lastIndexOf(':');
+                    String host = colon >= 0 ? addr.substring(0, colon) : addr;
+                    String port = colon >= 0 ? addr.substring(colon + 1) : "";
+                    String composed = EnvPlaceholders.resolve(b.urlTemplate()
+                            .replace("{{url}}", addr)
+                            .replace("{{host}}", host)
+                            .replace("{{port}}", port));
                     entry.config().property(b.urlKey(), composed);
                 }
             }
@@ -680,6 +700,24 @@ public final class SutStack implements AutoCloseable {
         /** Spring Boot property override ({@code --key=value}). */
         public AgentBuilder property(String key, String value) {
             this.configOverrides.property(key, value);
+            return this;
+        }
+
+        /**
+         * Bind a backing service's resolved {@code host:mappedPort} into a Spring property on this agent,
+         * <b>programmatically</b> — the same deferred injection as YAML {@code service-bindings}, but
+         * declarable in Java. Unlike the YAML form (which is 1:1 by service name), multiple programmatic
+         * bindings MAY target the same service with different {@code urlKey}/{@code urlTemplate} pairs —
+         * e.g. one envexplorer container feeding two workflow-URL placeholders.
+         *
+         * <p>At {@code start()} the framework (1) collects each binding's {@code serviceName} (deduped, so
+         * one container serves many bindings), (2) resolves {@code {{url}}}/{@code {{host}}}/{@code {{port}}}
+         * in {@code urlTemplate} against that service's {@code host:mappedPort} AFTER the container is up
+         * but BEFORE this agent's jar launches, and (3) injects the result as {@code --<urlKey>=<composed>}
+         * (Spring command-line arg — resolves the agent's {@code ${urlKey:default}} placeholder).
+         */
+        public AgentBuilder serviceBinding(String serviceName, String urlKey, String urlTemplate) {
+            this.configOverrides.serviceBinding(serviceName, urlKey, urlTemplate);
             return this;
         }
 

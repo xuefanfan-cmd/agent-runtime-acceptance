@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.protocol;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
@@ -40,7 +39,7 @@ class OpenjiuwenSyncSendTest extends BaseManagedStackTest {
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertAnswer(text -> assertThat(text)
                             .as("OJ-01.B response text")
                             .isNotBlank())
                 .execute();

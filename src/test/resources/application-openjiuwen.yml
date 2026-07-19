@@ -10,6 +10,8 @@ sut:
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
     startup-seconds: 60
+  wire-log:
+    enabled: true
   services:
     redis:
       image: redis:7-alpine
@@ -45,55 +47,52 @@ sut:
       version: 0.1.0
       ready-mode: tcp
 
-    # Travel scenario
+    # react scenario
     mainplan:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-mainplan
+      group: com.openjiuwen.example
+      artifact: travel-demo-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          # MUST match RemoteTripRail agentName / jar default (not a short alias).
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
-          # Standalone mainplan (no managed trip): discovery needs a URL or startup NPEs.
-          # Full-chain tests override this via SutStack.downstream("trip").
-          openjiuwen.service.a2a.remote-agents[0].url: "http://127.0.0.1:8092/a2a/"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
     mainplan-redis:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-mainplan
+      group: com.openjiuwen.example
+      artifact: travel-demo-mainplan
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-trip"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
       service-bindings:
         redis:
           url-key: main-plan-agent.redis-url
           url-template: "redis://{{url}}"
     trip:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-trip
+      group: com.openjiuwen.example
+      artifact: travel-demo-trip
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
           # MUST match RemoteHotelRail agentName / jar default.
-          openjiuwen.service.a2a.remote-agents[0].name: "agent-openjiuwen-travel-hotel"
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-hotel"
     hotel:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-hotel
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
     hotel-sandbox:
-      group: com.huawei.ascend.examples
-      artifact: agent-openjiuwen-travel-hotel
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
       version: 0.1.0
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       service-bindings:
         jiuwenbox:
           url-key: openjiuwen.service.external.sandbox.servers[0].service-url
           url-template: "http://{{url}}"
-    # —— Expense Review（单 jar 双 profile；main profile 经 remote-agents[0] 调 workflow）——
+    # deepresearch secnario
+    # workflow scenario
     expense-review-workflow:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-expense-review
@@ -128,16 +127,28 @@ sut:
         envexplorer:
           url-key: openjiuwen.service.versatile.url-template
           url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
-#  java:
-#    system-properties:
+    # multi-workflow 变体：同 jar，激活 application-multi-workflow.yml（按 intent 路由到 workflow 端点）。
+    # 两条 workflow URL 占位符（VERSATILE_BALANCE_WORKFLOW_URL / VERSATILE_TRANSFER_WORKFLOW_URL）由
+    # MultiWorkflowDirectStreamingTest 编程式 serviceBinding 注入（同一 envexplorer，多绑定）。
+    # 此处只保留 fallback 绑定（agents 格式，未匹配 intent 兜底），并让 envexplorer 被 YAML 收集。
+    edpa-adapter-multi-workflow:
+      group: com.openjiuwen.example
+      artifact: versatile-orch-demo-adapter
+      version: 0.2.0-SNAPSHOT
+      profile: multi-workflow
+      service-bindings:
+        envexplorer:
+          url-key: openjiuwen.service.versatile.url-template
+          url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+  java:
+    system-properties:
+#      LLM_API_BASE:
+#      LLM_MODEL:
+#      LLM_API_KEY:
+#      LLM_SSL_VERIFY:
 #      # —— HTTP proxy + no-proxy (standard JVM proxy properties) ——
 #      http.proxyHost:
 #      http.proxyPort:
 #      https.proxyHost:
 #      https.proxyPort:
 #      http.nonProxyHosts:
-#      # —— LLM (optional; overrides/aligns the agents' ${LLM_*}) ——
-#      LLM_API_BASE:
-#      LLM_MODEL:
-#      LLM_API_KEY:
-#      LLM_SSL_VERIFY:

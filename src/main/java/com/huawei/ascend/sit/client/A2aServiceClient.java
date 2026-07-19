@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 /**
  * API client encapsulating all A2A protocol interactions via the official A2A Java SDK.
@@ -40,9 +41,22 @@ import java.util.function.Consumer;
  */
 public class A2aServiceClient {
 
+    private static final Logger LOG = Logger.getLogger(A2aServiceClient.class.getName());
+
     private final Client a2aClient;
     private final String baseUrl;
     private final AgentCard agentCard;
+
+    // Protocol-specific SDK clients, built lazily and cached per wire mode. The A2A SDK bakes the
+    // wire mode (message/stream SSE vs message/send blocking) into a Client at build time via
+    // ClientConfig.setStreaming — it exposes no public sendStreamingMessage, and its sendMessage
+    // branches internally on config + card capabilities. So serving BOTH A2A_STREAM and A2A_SYNC
+    // from one service client requires two underlying SDK Clients. Built flags track built-ness
+    // independently of the cached value so a null-returning test override still caches exactly once.
+    private Client streamingClient;
+    private Client syncClient;
+    private boolean streamingBuilt;
+    private boolean syncBuilt;
 
     public A2aServiceClient(TestConfig config) {
         this.baseUrl = config.getBaseUrl();
@@ -50,8 +64,9 @@ public class A2aServiceClient {
         // Resolve the agent card via A2A.getAgentCard()
         this.agentCard = A2A.getAgentCard(baseUrl);
 
-        // Build the A2A client with JSON-RPC transport. streaming=false ⇒ synchronous
-        // message/send: the call blocks until the server returns the terminal task.
+        // Legacy default client: streaming=false ⇒ synchronous message/send (the call blocks until
+        // the server returns the terminal task). Used by the no-suffix sendMessage(...) overloads;
+        // the protocol-specific sendMessageStreaming/sendMessageSync build their own clients.
         ClientConfig clientConfig = new ClientConfig.Builder()
                 .setAcceptedOutputModes(List.of("text"))
                 .setStreaming(false)
@@ -165,11 +180,94 @@ public class A2aServiceClient {
                             Map<String, Object> metadata,
                             List<BiConsumer<ClientEvent, AgentCard>> consumers,
                             Consumer<Throwable> errorHandler) {
+        sendWith(a2aClient, message, metadata, consumers, errorHandler);
+    }
+
+    /**
+     * Send over the A2A-streaming wire: a streaming=true SDK Client, which dispatches to the SDK's
+     * internal {@code sendStreamingMessage} (SSE / {@code message/stream}) when the agent card also
+     * advertises streaming. For {@link com.huawei.ascend.sit.client.InteractionFlow} protocol
+     * {@code A2A_STREAM}.
+     */
+    public void sendMessageStreaming(Message message,
+                                     Map<String, Object> metadata,
+                                     List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                                     Consumer<Throwable> errorHandler) {
+        sendWith(sdkClient(true), message, metadata, consumers, errorHandler);
+    }
+
+    /**
+     * Send over the A2A-sync wire: a streaming=false SDK Client, which dispatches to the SDK's
+     * blocking {@code message/send} (the call returns the terminal task). For
+     * {@link com.huawei.ascend.sit.client.InteractionFlow} protocol {@code A2A_SYNC}.
+     */
+    public void sendMessageSync(Message message,
+                                Map<String, Object> metadata,
+                                List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                                Consumer<Throwable> errorHandler) {
+        sendWith(sdkClient(false), message, metadata, consumers, errorHandler);
+    }
+
+    private void sendWith(Client client,
+                          Message message,
+                          Map<String, Object> metadata,
+                          List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                          Consumer<Throwable> errorHandler) {
         MessageSendParams params = MessageSendParams.builder()
                 .message(message)
                 .metadata(metadata)
                 .build();
-        a2aClient.sendMessage(params, consumers, errorHandler, null);
+        client.sendMessage(params, consumers, errorHandler, null);
+    }
+
+    /**
+     * The cached SDK Client for the requested wire mode, built on first use. Package-private: the
+     * transports bind {@code sendMessageStreaming}/{@code sendMessageSync} to it, and tests observe
+     * the streaming flag by overriding {@link #buildSdkClient(boolean)}.
+     */
+    Client sdkClient(boolean streaming) {
+        if (streaming) {
+            if (!streamingBuilt) {
+                streamingClient = buildSdkClient(true);
+                streamingBuilt = true;
+            }
+            return streamingClient;
+        }
+        if (!syncBuilt) {
+            syncClient = buildSdkClient(false);
+            syncBuilt = true;
+        }
+        return syncClient;
+    }
+
+    /**
+     * Build a fresh SDK {@link Client} for the given wire mode. Protected so tests can observe the
+     * streaming flag without standing up a server. Warns when building a streaming client against a
+     * card that does not advertise streaming — the SDK would otherwise silently fall back to
+     * message/send, making A2A_STREAM wire-identical to A2A_SYNC (the very failure this dual-path
+     * design exists to prevent).
+     */
+    protected Client buildSdkClient(boolean streaming) {
+        if (streaming && !cardAdvertisesStreaming()) {
+            LOG.warning("Building a streaming A2A client for agent '"
+                    + (agentCard == null ? "?" : agentCard.name())
+                    + "' but its capabilities do not advertise streaming=true; the SDK will fall back"
+                    + " to message/send on the wire — A2A_STREAM will not actually stream.");
+        }
+        ClientConfig clientConfig = new ClientConfig.Builder()
+                .setAcceptedOutputModes(List.of("text"))
+                .setStreaming(streaming)
+                .build();
+        return Client.builder(agentCard)
+                .clientConfig(clientConfig)
+                .withTransport(JSONRPCTransport.class, new JSONRPCTransportConfig())
+                .build();
+    }
+
+    private boolean cardAdvertisesStreaming() {
+        return agentCard != null
+                && agentCard.capabilities() != null
+                && agentCard.capabilities().streaming();
     }
 
     // ===== Get Task =====

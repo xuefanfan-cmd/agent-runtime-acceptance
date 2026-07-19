@@ -1,6 +1,7 @@
 package com.huawei.ascend.sit.lifecycle;
 
 import com.huawei.ascend.sit.config.TestConfig;
+import com.huawei.ascend.sit.transport.HttpClients;
 
 import java.io.IOException;
 import java.net.URI;
@@ -44,11 +45,27 @@ public final class ProcessLauncher implements SutLauncher {
 
     private static final String WELL_KNOWN = "/.well-known/agent.json";
 
+    /**
+     * Placeholder remote-agent URL injected by {@link #fillMissingRemoteAgentUrls} for a downstream that
+     * is named in YAML ({@code <remoteAgentsPrefix>[i].name}) but has no resolved address — i.e. a
+     * standalone agent with no managed {@code .downstream(...)} topology link, so {@code SutStack.start()}'s
+     * URL-injection loop never runs and the url stays null. Loopback on a near-certain-closed port ⇒
+     * connection refused fast (no startup hang); discovery logs a warning and moves on.
+     *
+     * <p>TEMPORARY — mirrors the per-test {@code OpenjiuwenStackSupport.STANDALONE_TRIP_URL} workaround.
+     * Remove once the SUT tolerates a null remote-agent url instead of NPE-ing in
+     * {@code A2AAgentCardDiscovery.fetchCard}. Tracked by {@code AgentCardDiscoveryTest}.
+     */
+    private static final String PLACEHOLDER_REMOTE_AGENT_URL = "http://127.0.0.1:12345/a2a/";
+
     private final String m2RepoRoot;
     private final int startupTimeoutSeconds;
     private final String javaBin;
     private final Map<String, String> jvmSystemProperties;
-    private final HttpClient http = HttpClient.newHttpClient();
+    // HTTP/1.1 (not the JDK HTTP_2 default): the readiness probe hits a cleartext SUT agent-card URL,
+    // and the h2c upgrade headers a default client emits can make a strict server reject the probe (and
+    // stall startup). See transport.HttpClients.
+    private final HttpClient http = HttpClients.newHttp1Client();
     /** Per-agent log root, from {@code sut.logging.dir} (default {@code ${basedir}/target/sit-logs}). */
     private final Path logDir;
 
@@ -66,6 +83,36 @@ public final class ProcessLauncher implements SutLauncher {
         Map<String, String> merged = new LinkedHashMap<>(global);
         merged.putAll(perAgent);
         return merged;
+    }
+
+    /**
+     * TEMPORARY workaround for standalone agents that name a downstream in YAML
+     * ({@code <remoteAgentsPrefix>[i].name}) without a managed {@code .downstream(...)} link.
+     * {@code SutStack.start()} injects {@code <prefix>[i].url} only for declared downstreams, so a
+     * named-but-unlinked downstream leaves the url null — and the openjiuwen
+     * {@code A2AAgentCardDiscovery.fetchCard} NPEs on {@code baseUrl.replaceAll(...)} before it even
+     * tries to fetch. This scans the agent's properties for any {@code <prefix>[i].name} whose matching
+     * {@code <prefix>[i].url} is absent and fills {@link #PLACEHOLDER_REMOTE_AGENT_URL}, so discovery
+     * warns on the unreachable address and moves on instead of crashing startup.
+     *
+     * <p>Idempotent: a url already present — injected by the topology loop, set in YAML, or filled by a
+     * prior call (e.g. a {@code SutStack.start(name)} revival reusing the same config) — is left as-is.
+     * Package-private and static so the rule is unit-testable without launching a process.
+     *
+     * <p>Remove once the mainplan jar tolerates a null remote-agent url. Tracked by AgentCardDiscoveryTest.
+     */
+    static void fillMissingRemoteAgentUrls(AgentConfig config, String placeholderUrl) {
+        String prefix = config.remoteAgentsPrefix();
+        Map<String, String> props = config.properties();
+        for (String key : new ArrayList<>(props.keySet())) {
+            if (!key.startsWith(prefix + "[") || !key.endsWith("].name")) {
+                continue;
+            }
+            String urlKey = key.substring(0, key.length() - ".name".length()) + ".url";
+            if (!props.containsKey(urlKey)) {
+                config.property(urlKey, placeholderUrl);
+            }
+        }
     }
 
     public ProcessLauncher(TestConfig config) {
@@ -108,6 +155,11 @@ public final class ProcessLauncher implements SutLauncher {
         mergedJvm.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
+        // TEMPORARY: for a standalone agent that names a downstream in YAML (<prefix>[i].name) but has no
+        // managed .downstream(...) link, SutStack.start() never injects the matching <prefix>[i].url — the
+        // SUT's A2AAgentCardDiscovery then NPEs on the null url at startup. Fill a placeholder url so
+        // discovery warns and continues. Remove once mainplan tolerates a null url (AgentCardDiscoveryTest).
+        fillMissingRemoteAgentUrls(config, PLACEHOLDER_REMOTE_AGENT_URL);
         // config.port() drives --server.port (0 = OS-assigned random port).
         command.addAll(config.toProgramArgs());
 

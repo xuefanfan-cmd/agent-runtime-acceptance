@@ -3,9 +3,14 @@ package com.huawei.ascend.sit.base;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Allure;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInstance;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Base class for tests that bring up their own managed SUT stack.
@@ -34,6 +39,20 @@ public abstract class BaseManagedStackTest {
     void initManagedStack() {
         config = TestConfig.load();
         stack = buildStack(config).start();
+    }
+
+    /**
+     * Record each test invocation's start time as a human-readable {@link Allure#parameter} so the Allure
+     * report shows when each case ran — useful for correlating a case with its per-run wire-log directory
+     * ({@code target/sit-logs/wire/run-<yyyyMMdd-HHmmss>/}) and for ordering fast back-to-back cases.
+     * Fires per invocation (including each parameter-set of a {@code @ParameterizedTest}), matching the
+     * "each execution" granularity.
+     */
+    @BeforeEach
+    void recordStartTimestamp() {
+        String startTimestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+        Allure.parameter("startTimestamp", startTimestamp);
     }
 
     /**

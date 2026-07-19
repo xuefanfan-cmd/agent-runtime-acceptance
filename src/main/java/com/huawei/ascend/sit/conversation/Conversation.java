@@ -14,12 +14,16 @@ import java.util.List;
  */
 public final class Conversation implements AutoCloseable {
 
+    /** Default safety cap on SUT interactions per turn (kick-off + driven rounds). See {@link Turn}. */
+    public static final int DEFAULT_MAX_INTERACTIONS = 100;
+
     private final String gatewayBaseUrl;
     private final MidConversationSupport mid;
     private final ConversationIdentity identity;
     private final ConversationIdMapper mapper;
     private final Duration timeout;
-    private final ConversationClient gatewayClient;
+    private final int maxInteractions;
+    private final ConversationTransport transport;
     private final String cid;
     private final List<TurnResult> turns = new ArrayList<>();
 
@@ -29,7 +33,8 @@ public final class Conversation implements AutoCloseable {
         this.identity = b.identity;
         this.mapper = b.mapper;
         this.timeout = b.timeout;
-        this.gatewayClient = new ConversationClient();
+        this.maxInteractions = b.maxInteractions;
+        this.transport = b.transport != null ? b.transport : new RestVersatileTransport();
         this.cid = mapper.open(b.requestedCid);
     }
 
@@ -43,8 +48,10 @@ public final class Conversation implements AutoCloseable {
     String gatewayBaseUrl() { return gatewayBaseUrl; }
     ConversationIdentity identity() { return identity; }
     Duration timeout() { return timeout; }
+    /** Safety cap on SUT POSTs per turn (kick-off + driven rounds); default {@link #DEFAULT_MAX_INTERACTIONS}. */
+    int maxInteractions() { return maxInteractions; }
     String cidValue() { return cid; }
-    ConversationClient gatewayClient() { return gatewayClient; }
+    ConversationTransport transport() { return transport; }
     MidConversationSupport mid() { return mid; }
 
     @Override public void close() {}
@@ -68,13 +75,29 @@ public final class Conversation implements AutoCloseable {
         private ConversationIdentity identity;
         private ConversationIdMapper mapper = ConversationIdMapper.direct();
         private Duration timeout = Duration.ofSeconds(300);
+        private int maxInteractions = DEFAULT_MAX_INTERACTIONS;
         private String requestedCid;
+        private ConversationTransport transport;
 
         private Builder(String g, String m) { this.gatewayBaseUrl = g; this.midBaseUrl = m; }
         public Builder identity(ConversationIdentity i) { this.identity = i; return this; }
         public Builder mapper(ConversationIdMapper m) { this.mapper = m; return this; }
         public Builder timeout(Duration t) { this.timeout = t; return this; }
+        /**
+         * Safety cap on how many SUT POSTs a single turn may make (kick-off + driven rounds). Default
+         * {@link #DEFAULT_MAX_INTERACTIONS} (100). A fault in the called business that stops the driving
+         * loop from ever reaching a natural terminal (step-ui never complete <em>and</em> next-request
+         * never null) would otherwise loop forever; at the cap the turn stops and {@link TurnResult#capped()}
+         * is set so a test can detect it instead of hanging. Must be ≥ 1.
+         */
+        public Builder maxInteractions(int n) {
+            if (n < 1) throw new IllegalArgumentException("maxInteractions must be >= 1, got " + n);
+            this.maxInteractions = n;
+            return this;
+        }
         public Builder conversationId(String c) { this.requestedCid = c; return this; }
+        /** Override the outbound transport (default: {@link RestVersatileTransport}). Test/future use. */
+        public Builder transport(ConversationTransport t) { this.transport = t; return this; }
         public Conversation open() {
             if (identity == null) throw new IllegalStateException("identity required");
             return new Conversation(this);

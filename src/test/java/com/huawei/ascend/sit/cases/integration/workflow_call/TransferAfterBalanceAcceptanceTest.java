@@ -50,6 +50,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * REST 模式 E2E 依赖 plan-agent 运行时暴露 {@code /v1/query}（同源 runtime 的 QueryMvcController）——网关侧
  * REST 客户端已单测覆盖，真机确认待 LLM keys 实跑。
  *
+ * <p><b>为何不像 ExpenseReviewAcceptanceTest 那样参数化 A2A/REST 流式。</b>本用例走 {@link Conversation} 客户端，
+ * 其出站 transport 目前只有 {@code RestVersatileTransport}（{@link com.huawei.ascend.sit.transport.MessageProtocol#REST_VERSATILE}），
+ * <b>没有 A2A 流式 ConversationTransport</b>——故无法像 {@link InteractionFlow} 那样以 {@code .protocol(A2A_STREAM/REST_QUERY)}
+ * 参数化。这里的"两模式"维度是<b>网关下行协议</b>（gateway→plan-agent 的 a2a/rest，见上），且为 stack 级属性（{@code @BeforeAll}
+ * 构栈一次），靠 {@code -DGATEWAY_PROTOCOL} 跑两遍覆盖，而非 JUnit 参数化。待新增 A2A 版 ConversationTransport 后方可同型参数化。
+ *
  * <p><b>profile 门</b>：{@code buildStack} 第一行 {@code assumeTrue(openjiuwen)} —— 非 openjiuwen 在基类
  * {@code .start()} 之前就 abort，不拉任何容器；{@code stack} 留 null，{@code tearDownStack} null-safe。
  *

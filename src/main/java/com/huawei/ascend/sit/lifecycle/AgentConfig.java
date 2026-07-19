@@ -56,6 +56,14 @@ public final class AgentConfig {
     private final Map<String, String> downstreamPropertyKeys = new LinkedHashMap<>();
 
     /**
+     * Programmatic service-bindings declared via {@code SutStack.AgentBuilder.serviceBinding(...)},
+     * merged with YAML {@code service-bindings} at injection time. Allows multiple bindings to the
+     * SAME backing service (different url-key + url-template each) — the YAML map form is 1:1 because
+     * its key is both the binding id and the service-lookup name.
+     */
+    private final List<ServiceBinding> serviceBindings = new ArrayList<>();
+
+    /**
      * Property-key prefix used to inject a downstream agent's base URL: the i-th downstream goes to
      * {@code <prefix>[i].url}. Defaults to {@link #REMOTE_AGENTS_URL_PREFIX}; overridden per agent
      * from {@code sut.agents.<name>.remote-agents-prefix} for agents built on a different runtime
@@ -110,6 +118,22 @@ public final class AgentConfig {
 
     public Map<String, String> properties() {
         return properties;
+    }
+
+    /**
+     * Register a service-binding programmatically — equivalent to a YAML {@code service-bindings} entry,
+     * but declarable in Java. Multiple calls MAY target the same {@code serviceName} with different
+     * {@code urlKey}/{@code urlTemplate} pairs; the framework starts the named backing service once and
+     * injects each binding's resolved url at launch. Seeded by {@code SutStack.AgentBuilder.serviceBinding}.
+     */
+    public AgentConfig serviceBinding(String serviceName, String urlKey, String urlTemplate) {
+        serviceBindings.add(new ServiceBinding(serviceName, urlKey, urlTemplate));
+        return this;
+    }
+
+    /** Programmatic service-bindings (read-only view); merged with YAML bindings at injection time. */
+    public List<ServiceBinding> serviceBindings() {
+        return Collections.unmodifiableList(serviceBindings);
     }
 
     /** Add an environment variable for the launched process (e.g. LLM API keys). */

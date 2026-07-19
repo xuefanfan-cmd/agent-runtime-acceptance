@@ -34,6 +34,17 @@ public final class JsonUtils {
         }
     }
 
+    /** Serialize an object to a compact (single-line) JSON string — for wire bodies where the
+     *  default {@link SerializationFeature#INDENT_OUTPUT} is undesirable. Escaping is identical to
+     *  {@link #toJson(Object)}; only the inter-token whitespace differs. */
+    public static String toJsonCompact(Object value) {
+        try {
+            return MAPPER.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON serialization failed", e);
+        }
+    }
+
     /** Serialize an object to a pretty-printed JSON string. */
     public static String toPrettyJson(Object value) {
         try {

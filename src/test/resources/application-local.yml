@@ -20,6 +20,14 @@ sut:
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
     startup-seconds: 60
+  # Per-round wire log: records each round's request (OutboundMessage) + response (every InboundEvent,
+  # decoded + raw frame) for all 4 modes (A2A stream/sync, REST stream/sync). One file per round under
+  # <sut.logging.dir>/wire/<run-id>/<sessionId>-r<round>-<protocol>.log — the run-id subdir groups one
+  # mvnw test run. Enable here (or via -Dsut-wire-log-enabled=true). Default is off (no files written).
+  # wire-log:
+  #   enabled: true
+  #   run-id: manual-2026-07-12     # optional; default run-<yyyyMMdd-HHmmss> (one subdir per JVM run)
+  #   dir: target/sit-logs/wire     # optional; default <sut.logging.dir>/wire
   services:
     redis:
       image: redis:7-alpine

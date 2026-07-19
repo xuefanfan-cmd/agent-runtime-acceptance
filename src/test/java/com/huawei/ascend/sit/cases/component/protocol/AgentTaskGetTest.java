@@ -53,8 +53,7 @@ class AgentTaskGetTest extends BaseManagedStackTest {
                 .withTimeoutMs(SEND_TIMEOUT_MS)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String sendText = TaskTextExtractor.textOf(task);
+                    .assertAnswer(sendText -> {
                         assertThat(sendText).as("send response text").isNotBlank();
                         sendTextRef.set(sendText);
                     })

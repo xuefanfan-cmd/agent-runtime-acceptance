@@ -1,7 +1,6 @@
 package com.huawei.ascend.sit.cases.component.boundary;
 
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.ManagedContainer;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
@@ -125,7 +124,7 @@ class OpenjiuwenSandboxErrorTest {
                     // Wait for any terminal; do not require COMPLETED.
                     .mayReachState(TaskState.TASK_STATE_COMPLETED)
                     .assertThat(ctx -> {
-                        String text = TaskTextExtractor.textOf(ctx.task());
+                        String text = ctx.generatedText();
                         LOG.info("OJ-10.T terminal=" + ctx.taskState() + " text="
                                 + (text.length() > 200 ? text.substring(0, 200) + "..." : text));
                         assertTimeoutOrFailureVisible(
@@ -146,7 +145,7 @@ class OpenjiuwenSandboxErrorTest {
                 .send(ERROR_PROMPT)
                     .mayReachState(TaskState.TASK_STATE_COMPLETED)
                     .assertThat(ctx -> {
-                        String text = TaskTextExtractor.textOf(ctx.task());
+                        String text = ctx.generatedText();
                         LOG.info("OJ-10.E terminal=" + ctx.taskState() + " text="
                                 + (text.length() > 200 ? text.substring(0, 200) + "..." : text));
                         assertErrorVisible(

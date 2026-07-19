@@ -114,6 +114,20 @@ public class TestConfig {
     }
 
     /**
+     * Get a boolean property. {@code true} (case-insensitive) maps to {@code true}; anything else
+     * (including absent) maps to {@code defaultValue}. YAML booleans load through {@link #getString}
+     * as the string {@code "true"}/{@code "false"}.
+     */
+    public boolean getBoolean(String key, boolean defaultValue) {
+        String value = getString(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        String trimmed = value.trim();
+        return defaultValue ? !"false".equalsIgnoreCase(trimmed) : "true".equalsIgnoreCase(trimmed);
+    }
+
+    /**
      * Get a nested YAML block as a string map (leaf values stringified, insertion-ordered).
      *
      * <p>Used for blocks like {@code sut.java.system-properties}: each entry becomes a

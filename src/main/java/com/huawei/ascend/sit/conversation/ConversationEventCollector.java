@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 一个 Step 的 SSE 事件采集器（ConcurrentLinkedQueue + Awaitility）。镜像 {@code A2aEventCollector} 模式。
- * {@link #add(SseEvent)} 由 {@code ConversationClient} 在 SSE 流消费时调用；
+ * {@link #add(SseEvent)} 由 {@code ConversationTransport} 在 SSE 流消费时调用；
  * {@link #markStreamEnd()} 在该次 POST 的流结束后调用；{@link #awaitStreamEnd(long)} 阻塞等待流结束。
  */
 public final class ConversationEventCollector {

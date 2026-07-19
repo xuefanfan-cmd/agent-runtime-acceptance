@@ -25,6 +25,11 @@
         <awaitility.version>4.2.2</awaitility.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <allure.version>2.35.3</allure.version>
+        <!-- agent-runtime-java (com.openjiuwen) — white-box contract tests (e.g. Feat003) reach into
+             SUT middleware classes. The aggregator `agent-runtime-java` is pom-only (no classes);
+             `agent-service-app` is the jar that transitively brings spec + adapters-common +
+             adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY. -->
+        <agent-runtime-java.version>0.1.0</agent-runtime-java.version>
     </properties>
 
     <dependencyManagement>
@@ -106,6 +111,25 @@
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-toxiproxy</artifactId>
             <version>${testcontainers.version}</version>
+        </dependency>
+
+        <!-- agent-runtime-java SUT classes — white-box contract tests (Feat003 Redis middleware
+             configuration/diagnostics) reach into com.openjiuwen.service.* middleware internals.
+             LOCAL-ONLY dependency (not for commit): resolves the 5 missing-package compile errors.
+             See <agent-runtime-java.version> note above on why agent-service-app, not the aggregator.
+             agent-service-adapters-agentcore is declared explicitly: it reaches the tree only via the
+             pom-packaging agent-service hop, which Maven drops without <type>pom</type>. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-app</artifactId>
+            <version>${agent-runtime-java.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-adapters-agentcore</artifactId>
+            <version>${agent-runtime-java.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

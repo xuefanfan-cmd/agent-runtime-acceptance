@@ -1,7 +1,6 @@
 package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
 import com.huawei.ascend.sit.lifecycle.SutStack;
@@ -93,8 +92,7 @@ class OpenjiuwenSkillHubTest {
                 .withTimeoutMs(timeoutMs)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertAnswer(text -> {
                         LOG.info("OJ-11 reply (truncated): "
                                 + (text.length() > 300 ? text.substring(0, 300) + "..." : text));
                         assertSkillWorkflowTemplate(

@@ -106,7 +106,7 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
         AgentCard card = client("mainplan").getAgentCard();
 
         assertThat(card).as("SDK getAgentCard()").isNotNull();
-        assertThat(card.name()).isEqualTo("main-plan-agent");
+        assertThat(card.name()).isEqualTo("travel-mainplan");
     }
 
     // ---- A-01.C — capability declarations ----
@@ -118,7 +118,7 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
 
         assertThat(card.capabilities()).as("capabilities").isNotNull();
         assertThat(card.capabilities().streaming()).as("capabilities.streaming").isTrue();
-        assertThat(card.capabilities().pushNotifications()).as("capabilities.pushNotifications").isTrue();
+        assertThat(card.capabilities().pushNotifications()).as("capabilities.pushNotifications").isFalse();
     }
 
     // ---- A-01.D — interface contract (transport, url, modes) ----
@@ -142,7 +142,7 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
 
         assertThat(card.defaultInputModes()).as("defaultInputModes").containsExactly("text");
         assertThat(card.defaultOutputModes())
-                .as("defaultOutputModes").containsExactly("text", "artifact");
+                .as("defaultOutputModes").containsExactly("text");
 
         // Raw-JSON: the JSONRPC interface endpoint is rewritten to the serving origin (/a2a).
         JsonNode cardNode = parseJson(httpGet(DISCOVERY).body());
@@ -209,7 +209,7 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
      * <p>注：SDK 的 {@code AgentCard.url()} 返回 null、{@code preferredTransport()} 在缺省时默认 "JSONRPC"。
      */
     @Test
-    @DisplayName("A-02.E: top-level $.url and preferredTransport are absent per A2A v1.0 (DISABLED: SUT emits them)")
+    @DisplayName("A-02.E: top-level $.url should be absent per A2A v1.0 (DISABLED: SUT emits them)")
     void topLevelUrlAndPreferredTransportAreAbsent() throws Exception {
         JsonNode cardNode = parseJson(httpGet(DISCOVERY).body());
         assertThat(cardNode.hasNonNull("url"))
@@ -226,10 +226,6 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
      * {@code "text"} 等 MIME？当前临时禁用，保持 mvn test 全绿。
      */
     @Test
-    @Disabled("待与开发对齐：defaultOutputModes 含非标准 mode \"artifact\"（既非 \"text\" 也非 MIME）。"
-            + "A2A 规范要求 mode 为 MIME 类型（见 a2a-java-sdk spec AgentCard.defaultOutputModes 语义）。"
-            + "实测 card.defaultOutputModes=[text, artifact]。"
-            + "需确认 \"artifact\" 是自定义合法 token 还是应修正为 MIME 类型。")
     @DisplayName("A-02.F: every input/output mode is 'text' or a valid MIME type (DISABLED: SUT emits 'artifact')")
     void everyModeIsValidA2aMode() {
         AgentCard card = client("mainplan").getAgentCard();
@@ -247,9 +243,6 @@ class AgentCardDiscoveryTest extends BaseManagedStackTest {
      * <p>待与开发对齐：应填真实组织 URL，还是维持现状？当前实测为 localhost:8080，临时禁用。
      */
     @Test
-    @Disabled("待与开发对齐：provider.url 硬编码为 http://localhost:8080（运行时默认端口），"
-            + "既非组织官网也未按实际端口改写。provider 为可选字段，但 url 语义应为组织 URL。"
-            + "需确认预期取值（真实组织 URL / 按来源改写 / 维持现状）。")
     @DisplayName("A-02.G: provider.url is not a localhost:8080 placeholder (DISABLED: SUT uses localhost:8080)")
     void providerUrlIsNotLoopbackPlaceholder() {
         AgentCard card = client("mainplan").getAgentCard();

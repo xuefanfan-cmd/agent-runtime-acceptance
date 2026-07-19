@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
@@ -55,7 +54,7 @@ class OpenjiuwenShortTermMemoryTwoTurnTest extends BaseManagedStackTest {
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 .send(TURN1_TEXT)
                     .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertGenerated(reply -> assertThat(reply)
                             .as("OJ-03 Turn1 clarifying reply")
                             .isNotBlank())
                 .send(TURN2_TEXT)
@@ -65,8 +64,7 @@ class OpenjiuwenShortTermMemoryTwoTurnTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("OJ-03.A Turn2 state (COMPLETED or INPUT_REQUIRED on single mainplan)")
                             .isIn(TURN2_ALLOWED_STATES))
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertGenerated(text -> {
                         assertThat(text).as("OJ-03.A Turn2 text").isNotBlank();
                         assertThat(TURN2_MUST_MATCH_ANY.stream().anyMatch(text::contains))
                                 .as("OJ-03.B turn2MustMatchAny — text should reflect Turn1 travel intent")

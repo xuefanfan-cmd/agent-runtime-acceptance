@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
@@ -90,8 +89,7 @@ class OpenjiuwenSessionIsolationTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("%s turn1 state", contextId)
                             .isIn(TURN_ALLOWED_STATES))
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertGenerated(text -> {
                         turn1Text.set(text);
                         assertThat(text).as("%s turn1 reply", contextId).isNotBlank();
                     })
@@ -100,8 +98,7 @@ class OpenjiuwenSessionIsolationTest extends BaseManagedStackTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("%s turn2 state", contextId)
                             .isIn(TURN_ALLOWED_STATES))
-                    .assertTask(task -> {
-                        String turn2Text = TaskTextExtractor.textOf(task);
+                    .assertGenerated(turn2Text -> {
                         String dialogue = turn1Text.get() + "\n" + turn2Text;
                         assertCityIsolation(turn2Text, dialogue, expectedCity, forbiddenCity, contextId);
                     })

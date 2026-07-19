@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.BackingServices;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
@@ -112,13 +111,12 @@ class OpenjiuwenRedisCheckpointerMultiTurnTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("OJ-06.A turn1 state")
                             .isIn(TURN1_ALLOWED_STATES))
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertGenerated(text -> assertThat(text)
                             .as("OJ-06.A turn1 reply")
                             .isNotBlank())
                 .send(TURN2_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertAnswer(text -> {
                         assertThat(text).as("OJ-06.A turn2 text").isNotBlank();
                         assertThat(TURN2_MUST_MATCH_ANY.stream().anyMatch(text::contains))
                                 .as("OJ-06.B turn2MustMatchAny — reflect Turn1 travel intent")

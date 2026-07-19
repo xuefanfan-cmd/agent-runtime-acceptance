@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.integration.react_travel;
 
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
@@ -67,18 +66,17 @@ class OpenjiuwenThreeTurnInputRequiredTest extends BaseManagedStackTest {
                 .withTimeoutMs(timeoutMs)
                 .send(TURN1)
                     .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertGenerated(reply -> assertThat(reply)
                             .as("OJ-05.A turn1 clarifying reply")
                             .isNotBlank())
                 .send(TURN2)
                     .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertGenerated(reply -> assertThat(reply)
                             .as("OJ-05.B turn2 clarifying reply")
                             .isNotBlank())
                 .send(TURN3)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertAnswer(text -> {
                         assertThat(text).as("OJ-05.C turn3 text").isNotBlank();
                         assertThat(text.length())
                                 .as("OJ-05.C turn3 substantive length")

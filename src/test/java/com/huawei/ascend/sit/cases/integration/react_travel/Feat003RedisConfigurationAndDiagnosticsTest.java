@@ -453,7 +453,7 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
                 .withContextId("ctx-" + marker)
                 .send("我要出差，标志是" + marker)
                     .mayReachState(TaskState.TASK_STATE_INPUT_REQUIRED)
-                    .assertTask(task -> assertThat(task.status().state())
+                    .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("authenticated Redis journey state")
                             .isIn(TaskState.TASK_STATE_INPUT_REQUIRED, TaskState.TASK_STATE_COMPLETED))
                 .execute();

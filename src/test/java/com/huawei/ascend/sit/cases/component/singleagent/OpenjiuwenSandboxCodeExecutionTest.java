@@ -1,7 +1,6 @@
 package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.ManagedContainer;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
@@ -120,8 +119,7 @@ class OpenjiuwenSandboxCodeExecutionTest {
                 .withTimeoutMs(timeoutMs)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertAnswer(text -> {
                         assertThat(text).as("OJ-09 response text").isNotBlank();
                         LOG.info("OJ-09 reply (truncated): "
                                 + (text.length() > 200 ? text.substring(0, 200) + "..." : text));

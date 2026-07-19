@@ -2,7 +2,6 @@ package com.huawei.ascend.sit.cases.component.singleagent;
 
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.BackingServices;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
@@ -120,7 +119,7 @@ class OpenjiuwenCheckpointerConfigSwitchTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("%s turn1 state", label)
                             .isIn(TURN_ALLOWED_STATES))
-                    .assertTask(task -> assertThat(TaskTextExtractor.textOf(task))
+                    .assertGenerated(text -> assertThat(text)
                             .as("%s turn1 reply", label)
                             .isNotBlank())
                 .send(TURN2_TEXT)
@@ -130,8 +129,7 @@ class OpenjiuwenCheckpointerConfigSwitchTest {
                     .assertThat(ctx -> assertThat(ctx.taskState())
                             .as("%s turn2 state (COMPLETED or INPUT_REQUIRED on single mainplan)", label)
                             .isIn(TURN_ALLOWED_STATES))
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertGenerated(text -> {
                         assertThat(text).as("%s turn2 text", label).isNotBlank();
                         assertThat(TURN2_MUST_MATCH_ANY.stream().anyMatch(text::contains))
                                 .as("%s turn2MustMatchAny — reflect Turn1 travel intent", label)

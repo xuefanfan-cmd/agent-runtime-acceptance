@@ -3,7 +3,6 @@ package com.huawei.ascend.sit.cases.component.singleagent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.client.InteractionFlow;
-import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
 import com.huawei.ascend.sit.lifecycle.SutStack;
@@ -99,8 +98,7 @@ class OpenjiuwenMcpToolCallTest {
                 .withTimeoutMs(timeoutMs)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
-                    .assertTask(task -> {
-                        String text = TaskTextExtractor.textOf(task);
+                    .assertAnswer(text -> {
                         assertThat(text).as("OJ-08 response text").isNotBlank();
                         LOG.info("OJ-08 reply (truncated): "
                                 + (text.length() > 200 ? text.substring(0, 200) + "..." : text));

@@ -2,6 +2,7 @@ package com.huawei.ascend.sit.conversation.mid;
 
 import com.huawei.ascend.sit.conversation.mid.dto.NextRequest;
 import com.huawei.ascend.sit.conversation.mid.dto.StepUI;
+import com.huawei.ascend.sit.transport.HttpClients;
 import com.huawei.ascend.sit.utils.JsonUtils;
 
 import java.net.URI;
@@ -31,7 +32,9 @@ public final class MidConversationSupport {
     private final String midBase;
     private final int retries;
     private final long retryDelayMs;
-    private final HttpClient http = HttpClient.newHttpClient();
+    // HTTP/1.1 (not the JDK HTTP_2 default): GETs hit the cleartext envmock mid-platform, whose strict
+    // server could reject the h2c upgrade headers a default client emits. See transport.HttpClients.
+    private final HttpClient http = HttpClients.newHttp1Client();
 
     public MidConversationSupport(String midBaseUrl) {
         this(midBaseUrl, DEFAULT_RETRIES, DEFAULT_RETRY_DELAY_MS);

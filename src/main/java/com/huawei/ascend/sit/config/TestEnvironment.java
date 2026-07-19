@@ -22,11 +22,11 @@ public enum TestEnvironment {
 
     /**
      * Resolve from environment variable or system property.
-     * Falls back to {@code LOCAL} if not set.
+     * Falls back to {@code OPENJIUWEN} if not set.
      */
     public static TestEnvironment current() {
         String env = System.getProperty("test.env",
-                System.getenv().getOrDefault("TEST_ENV", "LOCAL"));
+                System.getenv().getOrDefault("TEST_ENV", "OPENJIUWEN"));
         return valueOf(env.toUpperCase());
     }
 }

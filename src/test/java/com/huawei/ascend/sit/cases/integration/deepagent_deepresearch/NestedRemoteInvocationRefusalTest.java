@@ -39,20 +39,20 @@ import static org.assertj.core.api.Assertions.fail;
  *
  * <p><b>Spec 依据</b>(primary source 已 verbatim 核对):
  * <ul>
- *   <li><b>L2 §3 能力汇总表</b>(spring-ai-ascend/architecture/docs/L2/agent-runtime/
- *       remote-agent-orchestration-design.md line 53):「嵌套远程调用 ⬜ resume 后再次请求远程
+ *   <li><b>L2 §2.1 能力清单</b>(architecture/L2-Low-Level-Design/agent-runtime/
+ *       Feat-Func-004-remote-agent-orchestration.md line 73):「嵌套远程调用 ⬜ resume 后再次请求远程
  *       → 返回错误 NESTED_REMOTE_INVOCATION_UNSUPPORTED」。<b>注意:L2 明标 ⬜ 未实现</b>。</li>
- *   <li><b>L2 §4.2 结束条件</b>(同档 line 267-270):「parent task 的最终结束由本地 OpenJiuwen resume
+ *   <li><b>L2 §3.4 结果回灌 · 结束条件</b>(同档 line 209-212):「parent task 的最终结束由本地 OpenJiuwen resume
  *       后的结果决定:{@code result_type=interrupt (REMOTE_AGENT_INVOCATION)} → 嵌套调用 →
  *       FAILED (NESTED_REMOTE_INVOCATION_UNSUPPORTED)」。</li>
- *   <li><b>L2 §4 显式禁止</b>(同档 line 99):「禁止:嵌套远程调用(resume 后再次请求远程 →
+ *   <li><b>L2 §2.3 行为承诺 · 显式禁止</b>(同档 line 89):「禁止:嵌套远程调用(resume 后再次请求远程 →
  *       返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED)」。</li>
- *   <li><b>L2 §5.3 错误分支</b>(同档 line 388):「嵌套远程调用 | resume 后 LLM 再次请求远程 |
+ *   <li><b>L2 §5.3 错误、取消、降级处理</b>(同档 line 284):「嵌套远程调用 | resume 后 LLM 再次请求远程 |
  *       返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED | parent task FAILED |」。</li>
  * </ul>
  *
  * <p><b>本用例定性</b>:<b>spec-⬜ watchdog</b>(<em>非 bug 报告</em>)。
- * L2 line 53 能力总表内 「嵌套远程调用」明标 ⬜ (未实现) —— 与 REMOTE_TIMEOUT(L2 line 52 ✅ 已实现,
+ * L2 §2.1 line 73 能力总表内 「嵌套远程调用」明标 ⬜ (未实现) —— 与 REMOTE_TIMEOUT(L2 §2.1 line 72 ✅ 已实现,
  * 未落等价于 SUT bug,见 BUG-004)在**根本上不同**:嵌套禁止是 spec 自己承认尚未落地的能力,
  * 全代码库 grep {@code NESTED_REMOTE_INVOCATION_UNSUPPORTED} 常量<b>零命中</b>
  * (spring-ai-ascend agent-runtime 也没有,openjiuwen SUT 也没有)。因此本用例首次跑必然
@@ -83,7 +83,7 @@ import static org.assertj.core.api.Assertions.fail;
  *   <li><b>层 1(核心 spec)</b>:任一 client event(status message parts / artifact text)内
  *       出现字面串 {@code "NESTED_REMOTE_INVOCATION_UNSUPPORTED"} —— 直接证据 SUT 按 L2 落
  *       该稳定码。<b>预期首次红</b>(spec-⬜ 定性)。</li>
- *   <li><b>层 3(终态类型)</b>:终态应为 {@code FAILED}(spec §5.3 明确「parent task FAILED」)。
+ *   <li><b>层 3(终态类型)</b>:终态应为 {@code FAILED}(spec §5.3 line 284 明确「parent task FAILED」)。
  *       <b>预期首次红</b>(当前 SUT 会走 COMPLETED —— LLM 静默完成两次搜索,spec 未实现)。</li>
  * </ol>
  *
@@ -114,12 +114,12 @@ class NestedRemoteInvocationRefusalTest {
     /** 用例整体超时:两次真远程搜索 + 中间 LLM 决策 + 收束。 */
     private static final long SEND_TIMEOUT_MS = 240_000;
 
-    /** L2 §4.2/§5.3 定义的稳定码;观察点核心字面串。 */
+    /** L2 §3.4/§5.3 定义的稳定码;观察点核心字面串。 */
     private static final String EXPECTED_ERROR_CODE = "NESTED_REMOTE_INVOCATION_UNSUPPORTED";
 
     /**
      * 强 prompt —— 明确要求"分两次调用 web_search",并禁止合并、禁止用记忆回答。目的是最大化
-     * LLM 产出"两次连续远程 tool call"的概率,从而触发 L2 §4.2 line 269 的嵌套判定路径。
+     * LLM 产出"两次连续远程 tool call"的概率,从而触发 L2 §3.4 line 210 的嵌套判定路径。
      * INCONCLUSIVE 情形(LLM 仍然合并 / 只调一次)由诊断消息暴露,不作机器分支。
      */
     private static final String USER_INPUT =
@@ -208,7 +208,7 @@ class NestedRemoteInvocationRefusalTest {
         //   C. 终态 FAILED + 无 NESTED 常量 → SUT 收束到 FAILED 但缺常量(信息面丢失,
         //      spec ✅ 未来若实现但缺常量应告警)
         assertThat(haystack)
-                .as("FEAT-004.nested-remote-invocation-refused [层1 核心 spec L2 §4.2 line 269 / §5.3 line 388]: "
+                .as("FEAT-004.nested-remote-invocation-refused [层1 核心 spec L2 §3.4 line 210 / §5.3 line 284]: "
                         + "同一父 Task 生命周期内 LLM 发起第二次远程 tool call 时,SUT 应按 spec 落 "
                         + "%s 稳定码并把父 Task 收束为 FAILED。观察面:任一 client event 的 "
                         + "status.message.parts / artifact TextPart 文本内应出现字面串 \"%s\"。\n"
@@ -220,9 +220,9 @@ class NestedRemoteInvocationRefusalTest {
                         truncate(haystack, 1200))
                 .contains(EXPECTED_ERROR_CODE);
 
-        // 层 3(终态类型):spec §5.3 明确 parent FAILED;当前 SUT 大概率走 COMPLETED
+        // 层 3(终态类型):spec §5.3 line 284 明确 parent FAILED;当前 SUT 大概率走 COMPLETED
         assertThat(terminalState)
-                .as("FEAT-004.nested-remote-invocation-refused [层3 spec §5.3 line 388]: "
+                .as("FEAT-004.nested-remote-invocation-refused [层3 spec §5.3 line 284]: "
                         + "父 Task 终态应为 FAILED(嵌套调用被拒)。当前 spec-⬜,SUT 大概率静默走 COMPLETED。\n"
                         + "  contextId=%s\n  terminalState=%s\n  haystack(head)=%s",
                         contextId, terminalState, truncate(haystack, 800))

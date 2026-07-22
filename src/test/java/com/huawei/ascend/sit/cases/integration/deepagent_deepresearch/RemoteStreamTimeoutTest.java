@@ -42,11 +42,11 @@ import static org.assertj.core.api.Assertions.fail;
  *
  * <p><b>Spec 依据</b>(primary source 已 verbatim 核对):
  * <ul>
- *   <li><b>L2 §3 能力汇总表</b>(spring-ai-ascend/architecture/docs/L2/agent-runtime/
- *       remote-agent-orchestration-design.md line 52):「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」。</li>
- *   <li><b>L2 §3.2 结果映射</b>(同档 line 221):「超时 | 超过 stream-timeout |
+ *   <li><b>L2 §2.1 能力清单</b>(architecture/L2-Low-Level-Design/agent-runtime/
+ *       Feat-Func-004-remote-agent-orchestration.md line 72):「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」。</li>
+ *   <li><b>L2 §3.2 远程调用管道 · 远端结果映射</b>(同档 line 163):「超时 | 超过 stream-timeout |
  *       {@code {"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}} |」。</li>
- *   <li><b>L2 §5.3 错误分支</b>(同档 line 384):「远程超时 | 超过 stream-timeout |
+ *   <li><b>L2 §5.3 错误、取消、降级处理</b>(同档 line 280):「远程超时 | 超过 stream-timeout |
  *       REMOTE_TIMEOUT → child error | toolResult = {@code {"error":"REMOTE_TIMEOUT"}} |」。</li>
  *   <li><b>agent-runtime README</b>(line 121):「{@code stream-timeout} caps one streaming invocation
  *       of that remote agent. On expiry the runtime keeps the results already received, appends a
@@ -83,7 +83,7 @@ import static org.assertj.core.api.Assertions.fail;
  *       —— 证明 SUT 走到了 Card Cache + 远端 tool 装配 + SendStreamingMessage;若不成立,
  *       层 1 的红/绿无意义(可能连 tool 都没装配上)。</li>
  *   <li><b>层 1(核心 spec)</b>:任一 client event(status message parts / artifact text)
- *       内出现字面串 {@code "REMOTE_TIMEOUT"} —— 证明 SUT 按 L2 §3.2 把超时投射为结构化错误。
+ *       内出现字面串 {@code "REMOTE_TIMEOUT"} —— 证明 SUT 按 L2 §3.2 line 163 把超时投射为结构化错误。
  *       <b>预期首次红</b>(BUG-004 未修)。</li>
  *   <li><b>层 3(健康度)</b>:任务应在 {@code SEND_TIMEOUT_MS} 内到达某终态(不卡 SSE 死等)。
  *       若纯超时 → BUG-004 表现:SSE close 未被感知,父 Task 永久卡 {@code requires-interaction}。</li>
@@ -92,7 +92,7 @@ import static org.assertj.core.api.Assertions.fail;
  * <p><b>不断言</b>:
  * <ul>
  *   <li>具体终态类型 —— 允许 FAILED(超时视作调用失败)或 COMPLETED(LLM 拿到 error toolResult 后
- *       兜底汇总),spec §3.2 只规定 toolResult 内容不规定父终态。</li>
+ *       兜底汇总),spec §3.2 line 163 只规定 toolResult 内容不规定父终态。</li>
  *   <li>mock 侧是否收到 {@code CancelTask} POST —— best-effort cancel 属实现细节,spec 未硬约束
  *       落到 mock 时序内可观测,不作为核心断言。</li>
  * </ul>
@@ -119,7 +119,7 @@ class RemoteStreamTimeoutTest {
     /** 用例整体超时:mock stall + SUT 收束 + LLM 兜底 + margin。 */
     private static final long SEND_TIMEOUT_MS = 180_000;
 
-    /** L2 §3.2 定义的稳定码:观测点核心字面串。 */
+    /** L2 §3.2 line 163 定义的稳定码:观测点核心字面串。 */
     private static final String EXPECTED_ERROR_CODE = "REMOTE_TIMEOUT";
 
     /**
@@ -228,7 +228,7 @@ class RemoteStreamTimeoutTest {
         // 层 1(核心 spec):任一 client event 内含 REMOTE_TIMEOUT 字面串
         String haystack = collectAllTextForTimeoutScan(collector);
         assertThat(haystack)
-                .as("FEAT-004.remote-stream-timeout [层1 核心 spec L2 §3.2]: SUT 应按 spec 把远端 SSE"
+                .as("FEAT-004.remote-stream-timeout [层1 核心 spec L2 §3.2 line 163]: SUT 应按 spec 把远端 SSE"
                         + " 超时投射为结构化错误(toolResult 含 code=%s)。观察面:任一 client event 的"
                         + " status.message.parts / artifact TextPart 文本内应出现字面串 \"%s\"。\n"
                         + "  未命中 → BUG-004:SUT 未落 REMOTE_TIMEOUT 稳定码(基础错误路径缺失;首次预期红)\n"

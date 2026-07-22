@@ -34,13 +34,14 @@ import static org.assertj.core.api.Assertions.fail;
  *
  * <p><b>Spec 依据</b>(primary source 已 verbatim 核对):
  * <ul>
- *   <li><b>L2 §4.1</b>({@code architecture/docs/L2/agent-runtime/remote-agent-orchestration-design.md}
- *       line 178)明标 <b>⚠️ 关键约束</b>:「没有 skills 的 Agent Card 不会被 LLM 作为 Tool 调用。
+ *   <li><b>L2 §3.1 远程 Agent 配置接入</b>({@code architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md}
+ *       line 120)明标 <b>⚠️ 关键约束</b>:「没有 skills 的 Agent Card 不会被 LLM 作为 Tool 调用。
  *       如果远端 Agent Card 的 skills 字段为空或不存在,Card Cache 不会为其生成
  *       {@code RemoteAgentToolSpec},该 Agent 对 LLM 不可见。」</li>
- *   <li><b>L2 §3 能力汇总表</b>(同档 line 44):「RemoteAgentToolSpec 生成 —— 从 Card skills 生成,
+ *   <li><b>L2 §2.1 能力清单</b>(同档 line 64):「RemoteAgentToolSpec 生成 —— 从 Card skills 生成,
  *       <b>无 skills 的 Agent Card 不会被注入为 Tool</b>。」</li>
- *   <li>version-scope FEAT-004 header 同款转述(primary 不在本 checkout,但 L2 已足够权威)。</li>
+ *   <li><b>version-scope §2.1 能力清单</b>({@code version-scope/FEAT-004-remote-agent-orchestration.md}
+ *       line 30):同款转述。</li>
  * </ul>
  *
  * <p><b>拓扑</b>:
@@ -52,7 +53,7 @@ import static org.assertj.core.api.Assertions.fail;
  * <p><b>断言层次</b>(严格按 spec §3.1 关键约束):
  * <ol>
  *   <li><b>层 1(核心,确定性)</b>:{@code mock.a2aPostCount() == 0} —— SUT 从未 route 到远端,
- *       证明 tool <b>未</b>被注入 LLM。这是 L2 §4.1 ⚠️ 关键约束的直接可观测硬信号。</li>
+ *       证明 tool <b>未</b>被注入 LLM。这是 L2 §3.1 ⚠️ 关键约束的直接可观测硬信号。</li>
  *   <li><b>层 2(前置一致性)</b>:{@code mock.cardGetCount() >= 1} —— SUT 至少拉过一次 card,
  *       证明 mock 的 URL 生效、SUT 走到了 Card Cache 分支;若为 0,说明 {@code SEARCH_AGENT_URL}
  *       没被 SUT 消费(触发前提不满足,层 1 无效)。</li>
@@ -170,10 +171,10 @@ class SkillsEmptyRemoteAgentTest {
                         + "  contextId=%s\n  mock.baseUrl=%s", contextId, mock.baseUrl())
                 .isGreaterThanOrEqualTo(1);
 
-        // 层 1(核心 L2 §4.1 ⚠️ 关键约束):mock /a2a 零 POST —— tool 未被注入 LLM 的硬信号
+        // 层 1(核心 L2 §3.1 ⚠️ 关键约束):mock /a2a 零 POST —— tool 未被注入 LLM 的硬信号
         assertThat(mock.a2aPostCount())
                 .as("FEAT-004.remote-agent-no-skills-not-installed [层1 核心]: skills=[] 远端 tool 不应被"
-                        + "注入 LLM (L2 §4.1 ⚠️ 关键约束);mock /a2a 观测到 POST → SUT 违反约束\n"
+                        + "注入 LLM (L2 §3.1 ⚠️ 关键约束);mock /a2a 观测到 POST → SUT 违反约束\n"
                         + "  contextId=%s\n  mock.baseUrl=%s\n  mock.cardGetCount=%d\n"
                         + "  mock.a2aPostBodies(head)=%s\n  terminalState=%s\n  stream.error=%s",
                         contextId, mock.baseUrl(), mock.cardGetCount(),

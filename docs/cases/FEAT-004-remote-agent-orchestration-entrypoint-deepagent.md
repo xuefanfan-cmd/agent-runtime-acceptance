@@ -56,7 +56,7 @@ related_docs:
 | 10 | 父 Task 进度投射（远程 artifact → 父 Task artifact） | 🟡 隐式 | StreamingTravelPlanningTest（父 stream 收到中间 progress） | 无专用断言"父 artifact 来源于远端 ArtifactUpdate"。 |
 | 11 | 取消级联传播 | ⬜ 未覆盖 | — | 无用例做父 Task CancelTask → 断远端 CancelTask 触达。 |
 | 12 | 超时检测（REMOTE_TIMEOUT + 孤儿 cancel） | 🟡 已落地 · **当前 expected-red · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)** | [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) | Mock SSE stall 30s 后主动 close；期待父 Task 载荷含 `REMOTE_TIMEOUT` 字面串。首跑证据：mock 30s close 后 openjiuwen `A2ARemoteAgentClient` 3 分钟零日志、父 Task 永久卡 `requires-interaction` → SUT bug（基础错误路径缺失）。详见 §5.2 / BUG-004。 |
-| 13 | 嵌套远程调用禁止（NESTED_REMOTE_INVOCATION_UNSUPPORTED） | 🟡 已落地 · **expected-red · spec-⬜ watchdog** | [NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) | L2 line 53 明标该能力 ⬜ 未实现；本用例作为未来 spec ✅ 后的自动 flip-green watchdog（详见 §5.3）。 |
+| 13 | 嵌套远程调用禁止（NESTED_REMOTE_INVOCATION_UNSUPPORTED） | 🟡 已落地 · **expected-red · spec-⬜ watchdog** | [NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) | L2 §2.1 line 73 明标该能力 ⬜ 未实现；本用例作为未来 spec ✅ 后的自动 flip-green watchdog（详见 §5.3）。 |
 | 14 | Graph/Parallel 编排 | ⬜ 未覆盖（当前限制） | — | version-scope 明标"⬜ 仅支持单层"，非 MUST。 |
 
 ---
@@ -92,10 +92,10 @@ related_docs:
 
 ### 5.1 无 skills Agent Card 不注入 Tool（SUT 违反 · 已归 [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md)）
 
-**Spec 依据（已 verbatim 核对 primary source）**：
-- **L2 §4.1**（`architecture/docs/L2/agent-runtime/remote-agent-orchestration-design.md` line 178）明标 **⚠️ 关键约束**：「没有 skills 的 Agent Card 不会被 LLM 作为 Tool 调用。如果远端 Agent Card 的 skills 字段为空或不存在，Card Cache 不会为其生成 `RemoteAgentToolSpec`，该 Agent 对 LLM 不可见。」
-- **L2 §3 能力汇总表**（同档 line 44）：「RemoteAgentToolSpec 生成 —— 从 Card skills 生成，**无 skills 的 Agent Card 不会被注入为 Tool**。」
-- version-scope 层 FEAT-004 header 同款转述（primary 不在本 checkout，但 L2 已足够权威）。
+**Spec 依据（已 verbatim 核对 primary source `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md`）**：
+- **L2 §3.1 远程 Agent 配置接入**（line 120）明标 **⚠️ 关键约束**：「没有 skills 的 Agent Card 不会被 LLM 作为 Tool 调用。如果远端 Agent Card 的 skills 字段为空或不存在，Card Cache 不会为其生成 `RemoteAgentToolSpec`，该 Agent 对 LLM 不可见。」
+- **L2 §2.1 能力清单**（同档 line 64）：「RemoteAgentToolSpec 生成 —— 从 Card skills 生成，**无 skills 的 Agent Card 不会被注入为 Tool**。」
+- **version-scope §2.1 能力清单**（`version-scope/FEAT-004-remote-agent-orchestration.md` line 30）同款转述。
 
 **覆盖状态**：🟡 已落地 · **当前 expected-red**（SUT 违反关键约束）
 
@@ -106,14 +106,15 @@ related_docs:
 - `mock.a2aPostCount=1` —— SUT **依然对 skills=[] 的远端发起了 `SendStreamingMessage` 调用** ❌
 - POST body 含用户 prompt 完整文本 —— 证明 SUT 把 mock 装配成了合法 tool，planner 真的 route
 - `terminalState=TASK_STATE_COMPLETED` —— SUT 走成功终态，无 stream 异常
-- **结论**：SUT 违反 L2 §4.1 ⚠️ 关键约束。用例作为 spec 卫兵**正确红**；SUT 侧修复后自动绿。
+- **结论**：SUT 违反 L2 §3.1 ⚠️ 关键约束。用例作为 spec 卫兵**正确红**；SUT 侧修复后自动绿。
 
 ### 5.2 远端 SSE 超时投射 REMOTE_TIMEOUT（[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md) watchdog）
 
-**Spec 依据（已 verbatim 核对 primary source）**：
-- **L2 §3 能力汇总表**（`architecture/docs/L2/agent-runtime/remote-agent-orchestration-design.md` line 52）：「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」。
-- **L2 §3.2 结果映射**（同档 line 221）：「超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` |」。
-- **L2 §5.3 错误分支**（同档 line 384）：「远程超时 | 超过 stream-timeout | REMOTE_TIMEOUT → child error | toolResult = `{"error":"REMOTE_TIMEOUT"}` |」。
+**Spec 依据（已 verbatim 核对 primary source `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md`）**：
+- **L2 §2.1 能力清单**（同档 line 72）：「超时检测 | ✅ | REMOTE_TIMEOUT + 孤儿 Task cancel」。
+- **L2 §3.2 远程调用管道 · 远端结果映射**（同档 line 163）：「超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` |」。
+- **L2 §5.3 错误、取消、降级处理**（同档 line 280）：「远程超时 | 超过 stream-timeout | REMOTE_TIMEOUT → child error | toolResult = `{"error":"REMOTE_TIMEOUT"}` |」。
+- **version-scope §2.1 能力清单**（`version-scope/FEAT-004-remote-agent-orchestration.md`）同款转述。
 - **agent-runtime README** line 121：「`stream-timeout` caps one streaming invocation of that remote agent. On expiry the runtime keeps the results already received, appends a failed result carrying the stable code `REMOTE_TIMEOUT` (retryable), and best-effort cancels the remote task.」
 - **SUT 源常量**：`A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE = "REMOTE_TIMEOUT"`（`spring-ai-ascend/agent-runtime/src/main/.../a2a/A2aRemoteAgentOutboundAdapter.java` line 47）。
 
@@ -144,24 +145,24 @@ close/EOF,不发失败 tool result,父 Task 不 un-suspend。这不是"实现了
 
 ### 5.3 嵌套远程调用禁止(spec-⬜ watchdog · 非 bug)
 
-**Spec 依据(已 verbatim 核对 primary source)**:
-- **L2 §3 能力汇总表**(`architecture/docs/L2/agent-runtime/remote-agent-orchestration-design.md` line 53):「嵌套远程调用 | **⬜** | resume 后再次请求远程 → 返回错误 NESTED_REMOTE_INVOCATION_UNSUPPORTED」。**注意 ⬜ = 未实现**(同表其他 12 条能力均为 ✅)。
-- **L2 §4 显式禁止**(同档 line 99):「禁止:嵌套远程调用(resume 后再次请求远程 → 返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED)」。
-- **L2 §4.2 结束条件**(同档 line 267-270):「parent task 的最终结束由本地 OpenJiuwen resume 后的结果决定:`result_type=answer` → parent COMPLETED;`result_type=interrupt (REMOTE_AGENT_INVOCATION)` → 嵌套调用 → **FAILED (NESTED_REMOTE_INVOCATION_UNSUPPORTED)**;`result_type=interrupt (其他)` → parent INPUT_REQUIRED」。
-- **L2 §5.3 错误分支**(同档 line 388):「嵌套远程调用 | resume 后 LLM 再次请求远程 | 返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED | parent task FAILED」。
+**Spec 依据(已 verbatim 核对 primary source `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md`)**:
+- **L2 §2.1 能力清单**(同档 line 73):「嵌套远程调用 | **⬜** | resume 后再次请求远程 → 返回错误 NESTED_REMOTE_INVOCATION_UNSUPPORTED」。**注意 ⬜ = 未实现**(同表其他 12 条能力均为 ✅)。
+- **L2 §2.3 行为承诺 · 显式禁止**(同档 line 89):「禁止:嵌套远程调用(resume 后再次请求远程 → 返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED)」。
+- **L2 §3.4 结果回灌 · 结束条件**(同档 line 209-212):「parent task 的最终结束由本地 OpenJiuwen resume 后的结果决定:`result_type=answer` → parent COMPLETED;`result_type=interrupt (REMOTE_AGENT_INVOCATION)` → 嵌套调用 → **FAILED (NESTED_REMOTE_INVOCATION_UNSUPPORTED)**;`result_type=interrupt (其他)` → parent INPUT_REQUIRED」。
+- **L2 §5.3 错误、取消、降级处理**(同档 line 284):「嵌套远程调用 | resume 后 LLM 再次请求远程 | 返回 NESTED_REMOTE_INVOCATION_UNSUPPORTED | parent task FAILED」。
 
 **为何定性为 "spec-⬜" 而非 SUT bug**:
 
-L2 能力总表(§3)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEOUT([BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md);L2 line 52 是 ✅)**根本不同**:后者是"spec ✅ 说要实现,SUT 实际实现有缺陷"→ bug;本条是"spec 自己都承认还没实现" → **特性未落地**。全代码库 `grep NESTED_REMOTE_INVOCATION_UNSUPPORTED` 也**零命中**(spring-ai-ascend agent-runtime 侧和 openjiuwen SUT 侧均无常量定义),与 L2 ⬜ 状态自洽。
+L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEOUT([BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md);L2 §2.1 line 72 是 ✅)**根本不同**:后者是"spec ✅ 说要实现,SUT 实际实现有缺陷"→ bug;本条是"spec 自己都承认还没实现" → **特性未落地**。全代码库 `grep NESTED_REMOTE_INVOCATION_UNSUPPORTED` 也**零命中**(spring-ai-ascend agent-runtime 侧和 openjiuwen SUT 侧均无常量定义),与 L2 ⬜ 状态自洽。
 
 **覆盖状态**:🟡 已落地 · **当前 expected-red** · **spec-⬜ watchdog**(<em>非 bug 报告</em>)
 
-**落点**:[NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) —— 复用 [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) 同款双 SutStack 启动序(先启 search 拿 baseUrl,再 build deep-research 并注 `SEARCH_AGENT_URL` env);单轮发一条强 prompt 要求 planner 在同一父 Task 内**严格分两次**调用 `web_search`(不允许合并、不允许凭记忆),从而最大化触发 L2 §4.2 line 269 的嵌套判定路径。
+**落点**:[NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) —— 复用 [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) 同款双 SutStack 启动序(先启 search 拿 baseUrl,再 build deep-research 并注 `SEARCH_AGENT_URL` env);单轮发一条强 prompt 要求 planner 在同一父 Task 内**严格分两次**调用 `web_search`(不允许合并、不允许凭记忆),从而最大化触发 L2 §3.4 line 210 的嵌套判定路径。
 
 **断言层次**:
 - 层 2(前置):任务在 240s 内到达终态。
 - 层 1(核心 spec):任一 client event 的 status/artifact 文本含字面串 `NESTED_REMOTE_INVOCATION_UNSUPPORTED` —— 首次预期红。
-- 层 3(spec 终态):`terminalState == FAILED`(spec §5.3 line 388)—— 首次预期红。
+- 层 3(spec 终态):`terminalState == FAILED`(spec §5.3 line 284)—— 首次预期红。
 
 **处置**:作为**特性未落地**的活体观察点,待:
 1. L2 能力总表把「嵌套远程调用」从 ⬜ 升级到 ✅;
@@ -188,8 +189,8 @@ L2 能力总表(§3)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEO
 
 ## 7. 补齐优先级（收益 vs 故障注入成本）
 
-1. **P1 · 无 skills Agent Card 反例** —— ✅ **已落地**（[SkillsEmptyRemoteAgentTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SkillsEmptyRemoteAgentTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java)）· 当前 expected-red · SUT 违反 §4.1 关键约束 · 详见 [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md) / §5.1。
-2. **P1 · 嵌套远程调用禁止** —— ✅ **已落地**([NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java))· 当前 expected-red · **spec-⬜ watchdog**(L2 line 53 明标 ⬜,全代码库 `NESTED_REMOTE_INVOCATION_UNSUPPORTED` 常量零命中,非 SUT bug)· 详见 §5.3 / §9.2。
+1. **P1 · 无 skills Agent Card 反例** —— ✅ **已落地**（[SkillsEmptyRemoteAgentTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SkillsEmptyRemoteAgentTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java)）· 当前 expected-red · SUT 违反 §3.1 关键约束 · 详见 [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md) / §5.1。
+2. **P1 · 嵌套远程调用禁止** —— ✅ **已落地**([NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java))· 当前 expected-red · **spec-⬜ watchdog**(L2 §2.1 line 73 明标 ⬜,全代码库 `NESTED_REMOTE_INVOCATION_UNSUPPORTED` 常量零命中,非 SUT bug)· 详见 §5.3 / §9.2。
 3. **P2 · REMOTE_TIMEOUT** —— ✅ **已落地**（[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) `STALL_SSE` 模式)· 当前 expected-red · **SUT bug([BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md))**:openjiuwen `A2ARemoteAgentClient` 完全未感知 SSE close/EOF,父 Task 永久卡 `requires-interaction` · 详见 §5.2。
 4. **P2 · 取消级联** —— 父 Task CancelTask → 断远端 SUT 侧也收到 CancelTask 或最终状态。需要在远端 SUT 侧观察 cancel 触达。
 5. **P3 · Card 刷新失败保留上次 Card** —— 启动后 kill 远端 → 断主 Agent tool 仍可见。与 downstream-agent-killed 有部分重叠。
@@ -213,7 +214,7 @@ L2 能力总表(§3)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEO
 ### 9.1 FEAT-004.remote-agent-no-skills-not-installed — 无 skills Agent Card 不注入 Tool
 
 - **状态**：✅ **已落地** · 当前 expected-red（首次执行观测:mock `/a2a` 收到 1 个 `SendStreamingMessage` POST,SUT 违反 §3.1）
-- **FEAT 依据**：version-scope §3.1 头部关键约束「如果远端 Agent Card 的 `skills` 字段为空或不存在，Card Cache 不会为其生成 `RemoteAgentToolSpec`，该 Agent 对 LLM 不可见」；L2 §3.1 Card Cache 装配路径。
+- **FEAT 依据**：L2 §3.1 line 120 ⚠️ 关键约束「如果远端 Agent Card 的 `skills` 字段为空或不存在，Card Cache 不会为其生成 `RemoteAgentToolSpec`，该 Agent 对 LLM 不可见」；L2 §2.1 line 64 能力清单（RemoteAgentToolSpec 生成）；version-scope §2.1 line 30 同款转述。
 - **G**：SIT 侧起 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java)（JDK 内置 `com.sun.net.httpserver.HttpServer`），其 `GET /.well-known/agent-card.json` 返回合法 AgentCard 但 `skills=[]`，`POST /a2a` 计数+返 JSON-RPC internal error；主 Agent（deep-research）通过 `SEARCH_AGENT_URL` env 指向该 mock。
 - **W**：拉起主 Agent，发一个明确的 search 类型 prompt。
 - **T**：mock `/a2a` 入口零 POST（远端从未被 route）—— 层 1 核心；`cardGetCount>=1`（触发前置）—— 层 2。
@@ -222,8 +223,8 @@ L2 能力总表(§3)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEO
 
 ### 9.2 FEAT-004.nested-remote-invocation-refused — 嵌套远程调用禁止
 
-- **状态**:✅ **已落地** · 当前 expected-red · **spec-⬜ watchdog**(L2 line 53 「嵌套远程调用 ⬜」;非 bug,详见 §5.3)
-- **FEAT 依据**:L2 §3 line 53「嵌套远程调用 ⬜ resume 后再次请求远程 → 返回错误 NESTED_REMOTE_INVOCATION_UNSUPPORTED」;L2 §4 line 99 显式禁止;L2 §4.2 line 267-270 结束条件(`result_type=interrupt (REMOTE_AGENT_INVOCATION)` → 嵌套调用 → FAILED);L2 §5.3 line 388 错误分支(parent task FAILED)。
+- **状态**:✅ **已落地** · 当前 expected-red · **spec-⬜ watchdog**(L2 §2.1 line 73 「嵌套远程调用 ⬜」;非 bug,详见 §5.3)
+- **FEAT 依据**:L2 §2.1 line 73「嵌套远程调用 ⬜ resume 后再次请求远程 → 返回错误 NESTED_REMOTE_INVOCATION_UNSUPPORTED」;L2 §2.3 line 89 显式禁止;L2 §3.4 line 209-212 结束条件(`result_type=interrupt (REMOTE_AGENT_INVOCATION)` → 嵌套调用 → FAILED);L2 §5.3 line 284 错误分支(parent task FAILED)。
 - **G**:SIT 侧启动 deep-research + search 双 SutStack(同 [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) 启动序:先启 search 拿 baseUrl,再 build deep-research 并注 `SEARCH_AGENT_URL` env)。
 - **W**:单轮发一条强 prompt 明确要求 planner 分两次调用 `web_search`("第一次搜 DeepSeek-R1 官方定价,第二次搜 DeepSeek-V3 官方定价,不允许合并、不允许凭记忆")。
 - **T**:层 2(前置):任务在 240s 内到达终态。层 1(核心 spec):任一 client event 的 status/artifact 文本含字面串 `NESTED_REMOTE_INVOCATION_UNSUPPORTED`。层 3(spec §5.3):`terminalState == FAILED`。
@@ -234,7 +235,7 @@ L2 能力总表(§3)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIMEO
 ### 9.3 FEAT-004.remote-stream-timeout — 远端 SSE 超时投射 REMOTE_TIMEOUT
 
 - **状态**：✅ **已落地** · 当前 expected-red · **[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md) watchdog**(openjiuwen `A2ARemoteAgentClient` 未感知 SSE close;详见 §5.2)
-- **FEAT 依据**：L2 §3 line 52「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」;L2 §3.2 line 221 结果映射;L2 §5.3 line 384 错误分支;agent-runtime README line 121 stream-timeout 描述;SUT 源常量 `A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE`。
+- **FEAT 依据**：L2 §2.1 line 72「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」;L2 §3.2 line 163 远端结果映射;L2 §5.3 line 280 错误、取消、降级处理;agent-runtime README line 121 stream-timeout 描述;SUT 源常量 `A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE`。
 - **G**:SIT 侧起 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) 的 `STALL_SSE` 模式;`GET /.well-known/agent-card.json` 返合法 card(含非空 `web_search` skill,让 tool spec 正常装配);`POST /a2a` 设 `Content-Type: text/event-stream` 打开 SSE 流,不发任何事件,连接保持 30s;主 Agent(deep-research)通过 `SEARCH_AGENT_URL` env 指向该 mock。
 - **W**:拉起主 Agent,发一个明确的 search 类型 prompt("帮我搜索 2026 年 7 月 15 日全球黄金价格盘中最高价...")。
 - **T**:任一 client event 的 `status.message.parts` 中 TextPart / artifact 文本内含字面串 `REMOTE_TIMEOUT` —— 层 1 核心;`mock.cardGetCount >= 1` AND `mock.a2aPostCount >= 1` —— 层 2 前置(证明 tool 装配 + planner 路由到远端);终态非空 —— 层 3 健康度。

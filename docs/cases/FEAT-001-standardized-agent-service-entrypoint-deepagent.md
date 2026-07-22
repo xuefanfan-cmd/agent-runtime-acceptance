@@ -64,9 +64,9 @@ related_docs:
 | Webhook 与 streaming 分离 | `FEAT-001.webhook-vs-streaming` | 未覆盖 | **deferred** | 评审 §3 | 需 receiver 侧观察 |
 | `X-Tenant-Id` 头传递 | `FEAT-001.tenant-id-propagation` | 未覆盖 | partial | 评审 §7 | 缺 header 落点未定 |
 | Tenant 跨租户记忆隔离 | `FEAT-001.tenant-isolation` | 未覆盖 | partial | 评审 §7 | 间接证据（DA-05/06 记忆链路衍生） |
-| 空文本输入拒绝 | `FEAT-001.empty-text-input` | 已覆盖（[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)） | partial | 评审 §6 | 接受 send 异常 / FAILED / REJECTED / COMPLETED+空 artifact 四种拒绝分支 |
+| 空文本输入拒绝 | `FEAT-001.empty-text-input` | 已覆盖（[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)，本地 2026-07-20 PASS） | partial | — | §5.1.6 反推：断"不得伪装 completed"下限；A/B/C/D 任一拒绝分支合规，唯一 FAIL 分支是 D-COMPLETED+artifact 非空 |
 | Task 生命周期状态序列 | `FEAT-001.task-lifecycle` | 已覆盖（[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java) 已扩显式状态序列 + 严格顺序 + 无回退断言） | runnable | — | 严格顺序 + 无回退硬断言 |
-| Failed Task 携带结构化错误 payload | `FEAT-001.task-failed-payload` | 未覆盖 | blocked | 评审 §6 | 无 code 可断言 + 触发条件依赖故障注入 |
+| Failed Task 携带结构化错误 payload | `FEAT-001.task-failed-payload` | 已覆盖（[TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)，watchdog + manual；当前 SUT 阶段预期红） | partial | 评审 §6 | §5.1.6「**可供客户端程序化判断**」+ §5.1.8「结构化错误 payload」；本用例层 3 断"DataPart / JSON TextPart / metadata 约定 key 三选一"作为程序化判断信号；开发组尚未落实结构化 shape 前预期红 —— 红即证明 SUT 与 spec 存在 gap，评审 §6 定字段后 SUT 补齐即绿 |
 
 > **待决**：input-required 子用例（`FEAT-001.input-required`）待 deep-research planner 代码检查后决定是否列入（见 §6.3）。
 
@@ -77,8 +77,8 @@ related_docs:
 | 状态 | 数量 | 说明 |
 |---|---|---|
 | runnable | 13 | 可直接落地，无评审依赖 |
-| partial | 6 | 主路径可测，某维度受评审限制 |
-| blocked | 4 | 断言依据待评审澄清 |
+| partial | 8 | 主路径可测，某维度受评审限制（含 F5 层 3 预期红） |
+| blocked | 2 | 断言依据待评审澄清 |
 | deferred | 7 | 依赖能力缺失（webhook 家族 6 条 + no-intermediate 归属其中） |
 
 **落地优先级**：runnable → partial → 评审澄清后 → blocked / deferred。
@@ -114,17 +114,17 @@ related_docs:
 | | E7 | webhook-vs-streaming | ⏸ | WebhookVsStreamingTest |
 | **F. Tenant / 输入 / 生命周期（5）** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
 | | F2 | tenant-isolation | ⬜ | TenantIsolationTest |
-| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) |
+| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)（§5.1.6 反推：任一拒绝分支合规，仅 FAIL 于 COMPLETED+artifact 非空） |
 | | F4 | task-lifecycle | ✅ | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 扩展：严格顺序 + 无回退硬断言，已 PASS） |
-| | F5 | task-failed-payload | 🚫 | TaskFailedPayloadTest |
+| | F5 | task-failed-payload | 🟡 | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)（watchdog + @manual；层 1/2 硬 MUST，层 3「程序化判断」当前 SUT 阶段**预期红**） |
 
-**进度**：已落地 16 / 27（其中 ✅ 硬 PASS 13、🟡 partial 3）；⬜ 待落地 3；🚫 blocked 3；⏸ deferred 5。
+**进度**：已落地 17 / 27（其中 ✅ 硬 PASS 13、🟡 partial 4）；⬜ 待落地 3；🚫 blocked 2；⏸ deferred 5。
 
 **下一步优先级**：
 1. **P1** ⬜ E6 webhook-untrusted-target（只测注册拒绝负路径，不依赖 receiver）
 2. **P1** ⬜ F1/F2 tenant 双条（依赖 §7 澄清 X-Tenant-Id 落点）
-3. **P2** 🟡 C3 downstream-agent-killed-mid-stream（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual → 升为常态 PASS）
-4. **Blocked** 🚫 F5 task-failed-payload / E3 payload-ref / E4 idempotent 等评审澄清
+3. **P2** 🟡 C3 downstream-agent-killed-mid-stream / F5 task-failed-payload（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual）—— F5 层 3 预期红，等 SUT 补齐结构化 payload
+4. **Blocked** 🚫 E3 payload-ref / E4 idempotent 等评审澄清
 5. **Deferred** ⏸ webhook 家族其余 5 条等 receiver 契约就绪
 
 ---
@@ -379,15 +379,17 @@ related_docs:
 - **PASS**：跨租户隔离生效。**FAIL**：tenant=B 召回到 tenant=A 的内容（隔离失守）。**INCONCLUSIVE**：deep-research 记忆链路本身不 work（回退到 DA-05/DA-06 排障） / 多租户未启用。
 - **框架落点**：待新建（`TenantIsolationTest`；复用 DA-05/DA-06 的 fixture）。
 
-#### FEAT-001.empty-text-input — 空文本输入拒绝
-- **状态**：partial
-- **评审关联**：§6 —— 拒绝语义能测（走 JSON-RPC error / 或 Task REJECTED），但具体 error code 无法断言
-- **FEAT 依据**：§5.1.7。
+#### FEAT-001.empty-text-input — 空文本输入拒绝（§5.1.6 反推）
+- **状态**：partial（spec 只承诺"不得伪装 completed"下限，任何拒绝分支合规）
+- **评审关联**：— （§5.1.7 不管空输入，§5.1.8 表无 empty-input 条目；本条不受 §6 影响）
+- **FEAT 依据**：§5.1.6「handler 输出需要用户输入的中断时，Task 必须进入 input-required 类语义，而不是伪装成 completed」—— 空 TextPart 属"没有用户输入实质"边界情况，从该精神反推：空输入不得被处理成 COMPLETED+agent 猜答案。§5.1.7 只谈 metadata，未提空输入；§5.1.8 表无 empty-input / no-content 条目；§5.1.2 只覆盖 A2A wire shape 校验（空 TextPart 是合法 shape，不落 invalid-request）。
 - **G**：deep-research 就绪。
 - **W**：`SendMessage`，parts = `[new TextPart("")]`。
-- **T**：runtime 应返回 JSON-RPC error **或** task 走 FAILED / REJECTED；**不应**把空输入交给 agent 猜。
-- **PASS**：任一拒绝分支。**FAIL**：task COMPLETED 且 agent 生成了任何 artifact。
-- **框架落点**：[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)（新增）。sync ack + REST 轮询两阶段；接受四种拒绝分支：send 阶段异常 / errorHandler 收到 Throwable / task 终态 FAILED 或 REJECTED / COMPLETED 但 artifact 空。SIT 已 PASS（拒绝分支命中）。
+- **T**：runtime 落进任一拒绝分支（A/B/C/D）：A—SDK 客户端 shape 校验同步抛异常；B—服务端 JSON-RPC 拒绝走异步 errorHandler；C—无 sync ack / 无 taskId；D—task 终态 FAILED/REJECTED/CANCELED **或** COMPLETED+空 artifact。
+- **PASS**：任一拒绝分支。**FAIL**：D-COMPLETED 且 artifact 非空（§5.1.6 明文禁止的"伪装 completed"）。**INCONCLUSIVE**：SUT 不可达。
+- **不断言**：具体 HTTP status（400 vs 200+error body）/ 具体 error code / 具体异常类的全限定名 / 具体分支值 —— 这些都是 spec 未承诺项，钉具体分支等价于把 SUT 现状当契约。
+- **本地事实备忘**（不作为断言，仅供 SUT 侧调查）：本机 2026-07-20 观察 SUT 走分支 A（`A2AClientException: HTTP 400`）；spec 允许，但 SUT 内部若把校验从 send 挪到 handler 层也合规，SIT 不应因此漂移。
+- **框架落点**：[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)。本地 2026-07-20 PASS。
 
 ### 3.7 Task 生命周期
 
@@ -400,11 +402,17 @@ related_docs:
 - **PASS**：序列合法。**FAIL**：跳过 WORKING 直到 COMPLETED / 状态回退。
 - **框架落点**：[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133) 已扩展：在 DA-03 原有 `contains(SUBMITTED/WORKING/COMPLETED)` 三条断言之上，新增 (a) 严格顺序断言 —— SUBMITTED 首现 index < WORKING 首现 index < COMPLETED 首现 index；(b) 无回退断言 —— COMPLETED 首现之后的子序列不再出现 SUBMITTED / WORKING。SIT 已 PASS。
 
-#### FEAT-001.task-failed-payload — Failed Task 携带结构化错误
-- **状态**：blocked
-- **评审关联**：§6 —— 无 error code 承载；触发条件亦依赖故障注入
-- **FEAT 依据**：§5.1.6 + §5.1.8。
-- **框架落点**：待新建（`TaskFailedPayloadTest`；触发条件与 §3.3 downstream-agent-killed-mid-stream 重叠，可复用 fixture），阻塞至评审 §6 定 code。
+#### FEAT-001.task-failed-payload — Failed Task 携带可程序化判断的结构化错误
+- **状态**：partial（已落地 [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)，watchdog + `@manual`；**当前 SUT 阶段层 3 预期红**）
+- **评审关联**：§6 —— 具体 error code / 字段命名（`error.code` vs `type` 等）由评审 §6 定；本用例故意不硬钉字段名
+- **FEAT 依据**：§5.1.6「handler 输出 `FAILED` 或执行异常时必须形成 failed Task 表面，并携带**可供客户端程序化判断**的错误信息」+ §5.1.8 表「handler/runtime exception → failed Task + **结构化错误 payload**」。
+- **与 C3 的判定差异**：C3 层 2 只断 `status.message.parts` **非空**；F5 层 3 断 payload 至少有一种「程序化判断」信号 —— `DataPart` / TextPart 内是 JSON 对象 / `status.message.metadata` 里有 `error/errorCode/code/type/reason` 等约定 key。三者皆无 → 客户端只能靠自然语言启发式解析 → 违反 §5.1.6。
+- **触发机制**：与 C3 downstream-agent-killed 复用 —— deep-research + search 双 agent，WORKING 后 `SutStack.stop(SEARCH)` 触发下游 A2A connection refused → handler runtime exception → failed 家族终态。
+- **断言层次**：
+  - **层 1**（§5.1.4 + §5.1.6 + §5.1.8）：终态 ∈ {FAILED, CANCELED, REJECTED}
+  - **层 2**（§5.1.8）：`status.message.parts` 非空
+  - **层 3**（§5.1.6「程序化判断」）：至少满足 DataPart / JSON-shape TextPart / metadata 约定 key 之一
+- **当下预期**：**层 3 大概率红** —— 开发组尚未落实结构化 shape，failed Task 当前多以自然语言 TextPart 承载。**这是 spec-first 写法的价值**：SUT 违约就红、SUT 补齐就绿；断言不 relax 到 SUT 现状。评审 §6 落地后可把层 3 收紧为具体字段名。
 
 ---
 
@@ -435,9 +443,9 @@ related_docs:
 | webhook-vs-streaming | `WebhookVsStreamingTest` | **deferred** | 阻塞（评审 §3） |
 | tenant-id-propagation | `TenantIdPropagationTest` | partial | 待新建 |
 | tenant-isolation | `TenantIsolationTest` | partial | 待新建 |
-| empty-text-input | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) | partial | 已落 |
+| empty-text-input | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) | partial | 已落（§5.1.6 反推） |
 | task-lifecycle | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 已扩展） | runnable | 已扩展落地 |
-| task-failed-payload | `TaskFailedPayloadTest` | blocked | 阻塞（评审 §6） |
+| task-failed-payload | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java) | partial | 已落（watchdog + @manual；层 3 预期红） |
 
 所有新建类落到 `src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/`，包 `com.huawei.ascend.sit.cases.integration.deepagent_deepresearch`。
 
@@ -464,13 +472,13 @@ related_docs:
 - ✅ `AgentCardPublicBaseUrlTest`（partial）
 - ⬜ `TenantIdPropagationTest`（partial）
 - ⬜ `TenantIsolationTest`（partial，复用 DA-05/06 fixture）
-- ✅ `EmptyTextInputTest`（partial）
+- ✅ `EmptyTextInputTest`（partial；§5.1.6 反推）
 - ⬜ `WebhookUntrustedTargetTest`（partial，只测注册拒绝）
 
 **P2 · 依赖故障注入**
 - 🟡 `DownstreamAgentKilledMidStreamTest`（watchdog + @manual；本地拉两 jar，用 SutStack.stop() 中途杀 search）
 - ✅ `NonexistentToolRefusalTest`（§5.1.6 正例；LLM 拒答不存在工具走 COMPLETED）
-- ⬜ `TaskFailedPayloadTest`
+- 🟡 `TaskFailedPayloadTest`（watchdog + @manual；复用 downstream-killed fixture；层 3「程序化判断」当前 SUT 阶段**预期红**，等 SUT 补齐结构化 payload 后自动绿）
 
 **Deferred · 阻塞至评审澄清 / 能力就绪**
 - webhook 家族其余 6 条：`WebhookCompletedTest` / `WebhookTerminalStateTest` / `WebhookPayloadRefTest` / `WebhookIdempotencyTest` / `WebhookVsStreamingTest`
@@ -504,7 +512,7 @@ related_docs:
 | §2 webhook 安全机制被延后 | `webhook-untrusted-target`（partial：只测负路径） |
 | §3 webhook receiver 契约在 SDK/应用/文档三层缺失 | `webhook-{completed,failed,canceled,rejected,no-intermediate,vs-streaming,payload-ref,idempotent}` |
 | §4 notification id 无字段承载 | `webhook-idempotent` |
-| §6 错误码未列 | `downstream-agent-killed-mid-stream` / `empty-text-input` / `task-failed-payload` |
+| §6 错误码未列 | `downstream-agent-killed-mid-stream`（不受影响，层 1/2 硬 MUST） / `task-failed-payload`（层 3「程序化判断」当前 SUT 阶段预期红，评审 §6 定字段后可收紧断言）；`empty-text-input` 走 §5.1.6 反推，不依赖 §6 |
 | §7 缺 X-Tenant-Id 落点 | `tenant-id-propagation`（partial）+ `tenant-isolation`（partial） |
 
 ### 6.2 实现层风险（非评审风险）

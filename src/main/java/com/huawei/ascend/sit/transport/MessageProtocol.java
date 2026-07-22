@@ -16,9 +16,11 @@ import java.util.Set;
  *   <li>{@link #REST_QUERY_SYNC} — REST {@code POST /v1/query} with {@code stream:false} (JSON).</li>
  *   <li>{@link #REST_VERSATILE} — low-code gateway
  *       {@code /v1/{pid}/agents/{aid}/conversations/{cid}} (Conversation default).</li>
+ *   <li>{@link #REST_REACTIVE} — REST {@code POST /v1/query/reactive} with {@code stream:true} (SSE, WebFlux).</li>
+ *   <li>{@link #REST_REACTIVE_SYNC} — REST {@code POST /v1/query/reactive} with {@code stream:false} (JSON, WebFlux).</li>
  * </ul>
- * Placeholders (selectable once their transport adapter lands): {@link #REST_REACTIVE},
- * {@link #DIRECT_A2A}, {@link #DIRECT_REST}.
+ * Placeholders (selectable once their transport adapter lands): {@link #DIRECT_A2A},
+ * {@link #DIRECT_REST}.
  */
 public enum MessageProtocol {
     A2A_STREAM,
@@ -27,11 +29,13 @@ public enum MessageProtocol {
     REST_QUERY_SYNC,
     REST_VERSATILE,
     REST_REACTIVE,
+    REST_REACTIVE_SYNC,
     DIRECT_A2A,
     DIRECT_REST;
 
     private static final Set<MessageProtocol> IMPLEMENTED = Set.of(
-            A2A_STREAM, A2A_SYNC, REST_QUERY, REST_QUERY_SYNC, REST_VERSATILE);
+            A2A_STREAM, A2A_SYNC, REST_QUERY, REST_QUERY_SYNC, REST_VERSATILE,
+            REST_REACTIVE, REST_REACTIVE_SYNC);
 
     /** True once the transport adapter for this protocol exists. */
     public boolean isImplemented() {

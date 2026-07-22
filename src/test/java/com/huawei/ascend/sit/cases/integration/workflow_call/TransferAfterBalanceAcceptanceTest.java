@@ -10,8 +10,8 @@ import com.huawei.ascend.sit.conversation.SseEvent;
 import com.huawei.ascend.sit.conversation.TurnResult;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import io.qameta.allure.Feature;
-import io.qameta.allure.Features;
 import io.qameta.allure.Stories;
+import io.qameta.allure.Story;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -77,6 +77,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 转账完成态首轮作证据采集（写日志），确认后提升为硬断言。
  */
 @Tag("integration")
+@Feature("FEAT-002: 异构智能体框架兼容")
+@Stories({
+        @Story("wf.verpkt-gateway-rest: ReAct 智能体经 gateway 入口远程编排REST"),
+        @Story("wf.verpkt-gateway-a2a: ReAct 智能体经 gateway 入口远程编排A2A")
+})
 class TransferAfterBalanceAcceptanceTest extends BaseManagedStackTest {
 
     private static final String SENTENCE = "先查下余额，再给李四和王五各转50元";

@@ -20,6 +20,15 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public final class RestEventMapping {
 
+    /**
+     * The gateway/workflow input-required sentinel — a bare {@code {"message":"Remote agent requires
+     * input"}} frame (streaming — no {@code result}/{@code type} wrapper) or the same text nested under
+     * {@code result._interrupt.message} (non-stream) — recognised when no typed {@code __interaction__}
+     * envelope is present. Matched exactly (see {@link #remoteInputRequiredMessage}) so other
+     * {@code message} values don't falsely synthesise INPUT_REQUIRED.
+     */
+    private static final String REMOTE_INPUT_REQUIRED_MESSAGE = "Remote agent requires input";
+
     private RestEventMapping() {}
 
     /** Parse one SSE line; {@code null} for non-{@code data:} lines. */
@@ -56,11 +65,11 @@ public final class RestEventMapping {
     }
 
     /**
-     * Classify one REST payload. Typed envelopes win; then the non-stream {@code {result:{content}}}
-     * body becomes an ANSWER — unless it embeds a {@code __interaction__} under
-     * {@code result._interrupt}, in which case that interaction wins (INPUT_REQUIRED); legacy
-     * {@code {data:{text}}} and other non-typed JSON fall back to a CONTENT event carrying the
-     * (legacy) text or the raw payload.
+     * Classify one REST payload. Typed envelopes win; then a bare {@code {"message":"Remote agent
+     * requires input"}} frame (streaming) or the same under {@code result._interrupt.message}
+     * (non-stream) becomes an INTERACTION (INPUT_REQUIRED); then the non-stream
+     * {@code {result:{content}}} body becomes an ANSWER; legacy {@code {data:{text}}} and other
+     * non-typed JSON fall back to a CONTENT event carrying the (legacy) text or the raw payload.
      */
     private static InboundEvent classifyPayload(String payload) {
         JsonNode root;
@@ -85,6 +94,14 @@ public final class RestEventMapping {
                 return typed;
             }
         }
+        // The gateway/workflow input-required sentinel: a bare {"message":"Remote agent requires
+        // input"} frame (streaming — no result/type wrapper) or the same message nested under
+        // result._interrupt.message (non-stream). Matched EXACTLY so other messages don't falsely
+        // synthesise INPUT_REQUIRED.
+        String sentinel = remoteInputRequiredMessage(root);
+        if (sentinel != null) {
+            return InboundEvent.interaction(sentinel, payload);
+        }
         // Non-stream REST body: {"result":{"role":"assistant","content":"…"},"conversation_id":"…"}.
         String answer = resultContent(root);
         if (answer != null) {
@@ -108,9 +125,11 @@ public final class RestEventMapping {
     }
 
     /**
-     * The {@code __interaction__} envelope nested under {@code result._interrupt} in a non-stream
+     * The typed {@code __interaction__} envelope nested under {@code result._interrupt} in a non-stream
      * REST body (the gateway carries the mid-turn interrupt there alongside {@code result.content});
-     * {@code null} when the body has no such embedded interrupt.
+     * {@code null} when the body has no such embedded interrupt. Returns the {@code _interrupt} node
+     * only when it is a typed envelope (has {@code type}); a bare message-only {@code _interrupt} is
+     * handled by {@link #remoteInputRequiredMessage} (the exact-sentinel contract), not here.
      */
     private static JsonNode resultInterrupt(JsonNode root) {
         JsonNode result = root.has("result") ? root.get("result") : null;
@@ -118,7 +137,44 @@ public final class RestEventMapping {
             return null;
         }
         JsonNode interrupt = result.get("_interrupt");
-        return (interrupt != null && interrupt.isObject() && interrupt.has("type")) ? interrupt : null;
+        if (interrupt == null || !interrupt.isObject() || !interrupt.has("type")) {
+            return null;
+        }
+        return interrupt;
+    }
+
+    /**
+     * The exact {@link #REMOTE_INPUT_REQUIRED_MESSAGE} sentinel if this frame carries it — either as a
+     * bare top-level {@code {"message":"…"}} (streaming — no {@code result}/{@code type} wrapper) or
+     * nested under {@code result._interrupt.message} (non-stream); otherwise {@code null}. Any other
+     * {@code message} value does not match, so it falls through to {@code result.content} / the legacy
+     * CONTENT fallback instead of falsely synthesising INPUT_REQUIRED.
+     */
+    private static String remoteInputRequiredMessage(JsonNode root) {
+        String message = messageText(root);
+        if (REMOTE_INPUT_REQUIRED_MESSAGE.equals(message)) {
+            return message;
+        }
+        JsonNode result = root.has("result") ? root.get("result") : null;
+        if (result != null && result.isObject() && result.has("_interrupt")) {
+            message = messageText(result.get("_interrupt"));
+            if (REMOTE_INPUT_REQUIRED_MESSAGE.equals(message)) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    /** The {@code message} text of a JSON object, or {@code null} when absent/null/non-textual. */
+    private static String messageText(JsonNode node) {
+        if (node == null || !node.isObject() || !node.has("message")) {
+            return null;
+        }
+        JsonNode message = node.get("message");
+        if (message == null || message.isNull() || !message.isTextual()) {
+            return null;
+        }
+        return message.asText();
     }
 
     /**

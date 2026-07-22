@@ -164,6 +164,10 @@ public class InteractionFlow {
                     URI.create(client.getBaseUrl() + "/v1/query"), true);
             case REST_QUERY_SYNC -> new RestQueryTransport(new RestExchange(),
                     URI.create(client.getBaseUrl() + "/v1/query"), false);
+            case REST_REACTIVE -> new RestQueryTransport(new RestExchange(),
+                    URI.create(client.getBaseUrl() + "/v1/query/reactive"), true);
+            case REST_REACTIVE_SYNC -> new RestQueryTransport(new RestExchange(),
+                    URI.create(client.getBaseUrl() + "/v1/query/reactive"), false);
             default -> throw new IllegalStateException(
                     "Protocol not supported on InteractionFlow: " + resolvedProtocol());
         };
@@ -409,7 +413,9 @@ public class InteractionFlow {
     /**
      * Wire endpoint for the paste-ready request — the same target {@code transportFor} sends to: A2A →
      * the agent card URL (falling back to the base URL when the card advertises none); REST →
-     * {@code <base>/v1/query} (bare, as {@code transportFor} builds it for the flow path). Resolved only
+     * {@code <base>/v1/query} for {@code REST_QUERY}/{@code REST_QUERY_SYNC},
+     * {@code <base>/v1/query/reactive} for {@code REST_REACTIVE}/{@code REST_REACTIVE_SYNC}
+     * (bare, as {@code transportFor} builds it for the flow path). Resolved only
      * when a client is present (the {@code using(transport)} unit-test seam has none → caller passes null).
      */
     private static String endpointFor(MessageProtocol protocol, A2aServiceClient client) {
@@ -419,6 +425,7 @@ public class InteractionFlow {
                 yield (url == null || url.isBlank()) ? client.getBaseUrl() : url;
             }
             case REST_QUERY, REST_QUERY_SYNC -> client.getBaseUrl() + "/v1/query";
+            case REST_REACTIVE, REST_REACTIVE_SYNC -> client.getBaseUrl() + "/v1/query/reactive";
             default -> null;
         };
     }

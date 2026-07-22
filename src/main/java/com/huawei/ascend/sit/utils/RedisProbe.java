@@ -28,10 +28,23 @@ public final class RedisProbe implements AutoCloseable {
 
     private final String host;
     private final int port;
+    private final String password;
 
+    /** Unauthenticated probe (for open Redis). */
     public RedisProbe(String host, int port) {
+        this(host, port, null);
+    }
+
+    /**
+     * Authenticated probe: AUTHs with {@code password} before each command (for {@code --requirepass} Redis).
+     * A wrong password surfaces as an {@link IllegalStateException} from the first command — AUTH returns an
+     * error reply, which {@link #readReply} raises. {@code null} password skips AUTH (open Redis, equivalent
+     * to the 2-arg constructor).
+     */
+    public RedisProbe(String host, int port, String password) {
         this.host = host;
         this.port = port;
+        this.password = password;
     }
 
     /** Current database key count (DBSIZE). */
@@ -78,25 +91,40 @@ public final class RedisProbe implements AutoCloseable {
             socket.setSoTimeout(3000);
             ByteArrayOutputStream req = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(req);
-            out.write('*');
-            out.write(Integer.toString(args.length).getBytes(StandardCharsets.US_ASCII));
-            out.write(CRLF);
-            for (String a : args) {
-                byte[] b = a.getBytes(StandardCharsets.UTF_8);
-                out.write('$');
-                out.write(Integer.toString(b.length).getBytes(StandardCharsets.US_ASCII));
-                out.write(CRLF);
-                out.write(b);
-                out.write(CRLF);
+            if (password != null) {
+                writeCommand(out, "AUTH", password);
             }
+            writeCommand(out, args);
             socket.getOutputStream().write(req.toByteArray());
             socket.getOutputStream().flush();
             DataInputStream in = new DataInputStream(
                     new BufferedInputStream(socket.getInputStream()));
+            if (password != null) {
+                Object authReply = readReply(in); // consume AUTH reply before the command reply
+                // readReply strips the RESP '+' prefix, so a successful AUTH is the bare "OK" simple string.
+                if (!"OK".equals(authReply)) {
+                    throw new IOException("Redis AUTH rejected: " + authReply);
+                }
+            }
             return readReply(in);
         } catch (IOException | RuntimeException e) {
             throw new IllegalStateException(
                     "Redis probe failed (" + host + ":" + port + "): " + e.getMessage(), e);
+        }
+    }
+
+    /** Encode one RESP command (array of bulk strings) onto {@code out}. */
+    private static void writeCommand(DataOutputStream out, String... args) throws IOException {
+        out.write('*');
+        out.write(Integer.toString(args.length).getBytes(StandardCharsets.US_ASCII));
+        out.write(CRLF);
+        for (String a : args) {
+            byte[] b = a.getBytes(StandardCharsets.UTF_8);
+            out.write('$');
+            out.write(Integer.toString(b.length).getBytes(StandardCharsets.US_ASCII));
+            out.write(CRLF);
+            out.write(b);
+            out.write(CRLF);
         }
     }
 

@@ -8,10 +8,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * The REST {@code /v1/query} {@code MessageTransport}. One class branches on stream mode:
- * streaming ({@code stream:true}) POSTs and consumes the SSE reply line-by-line into CONTENT events,
- * then synthesises a terminal STATE via {@link SseStateClassifier}; non-streaming ({@code stream:false})
- * POSTs and decodes the single JSON into a CONTENT + COMPLETED pair.
+ * The REST {@code MessageTransport} for the plan-agent's query endpoints — the MVC
+ * {@code /v1/query} and the byte-identical WebFlux {@code /v1/query/reactive} — selected by the
+ * endpoint URI passed at construction (both share {@code QuerySseSupport} server-side). One class
+ * branches on stream mode: streaming ({@code stream:true}) POSTs and consumes the SSE reply
+ * line-by-line into CONTENT events, then synthesises a terminal STATE via
+ * {@link SseStateClassifier}; non-streaming ({@code stream:false}) POSTs and decodes the single
+ * JSON into a CONTENT + COMPLETED pair. Serves {@code REST_QUERY}/{@code REST_REACTIVE} (stream)
+ * and {@code REST_QUERY_SYNC}/{@code REST_REACTIVE_SYNC} (sync).
  */
 public final class RestQueryTransport implements MessageTransport {
 
@@ -28,12 +32,12 @@ public final class RestQueryTransport implements MessageTransport {
      */
     private String conversationId;
 
-    /** Streaming transport (REST_QUERY). */
+    /** Streaming transport — defaults {@code stream:true} ({@code REST_QUERY}/{@code REST_REACTIVE}). */
     public RestQueryTransport(RestIo io, URI endpoint) {
         this(io, endpoint, true);
     }
 
-    /** Full constructor: {@code stream=false} ⇒ REST_QUERY_SYNC. */
+    /** Full constructor; {@code stream=false} selects the sync variants ({@code REST_QUERY_SYNC}/{@code REST_REACTIVE_SYNC}). */
     public RestQueryTransport(RestIo io, URI endpoint, boolean stream) {
         this.io = io;
         this.endpoint = endpoint;

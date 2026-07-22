@@ -33,11 +33,20 @@ set +e
 rc=$?
 set -e
 
-# Stage 4 (optional Allure — generates a Markdown report for AI consumption.
-# Uses `allure agent inspect` which reads existing allure-results and writes
-# index.md + per-test .md files + machine-readable JSONL manifests.
-# If it's also desirable to generate an HTML report in the same location, you
-# can also run `allure generate target/allure-results -o target/allure-report-html`.)
+# Stage 4 (optional Allure — produces two complementary artifacts from allure-results:
+#   1) target/allure-report-md  — `allure agent inspect` Markdown for AI consumption
+#                                 (index.md + per-test .md + JSONL manifests);
+#   2) target/allure-report     — multi-instance Awesome HTML report driven by allurerc.mjs. Each
+#                                 plugins.<key> that imports plugin-awesome is its own namespaced
+#                                 subreport under target/allure-report/<key>/ + a root index.html
+#                                 multi-report switcher. Two instances: awesome-behaviors (groupBy
+#                                 epic/feature/story — our @Feature/@Story labels render FEAT-001..004
+#                                 → stories, the primary view) and awesome-packages (a per-class
+#                                 index). historyPath seeds target/allure-history.jsonl so trend/flaky
+#                                 charts populate across pipeline runs. Verified NOT to disturb the
+#                                 agent-inspect Markdown above (inspect runs only the agent plugin),
+#                                 so the two coexist without juggling the config file.
+# )
 if grep -q 'allure-maven' pom.xml 2>/dev/null; then
   if ! command -v allure &>/dev/null && [ -s "$HOME/.nvm/nvm.sh" ]; then
     export NVM_DIR="$HOME/.nvm"
@@ -46,6 +55,13 @@ if grep -q 'allure-maven' pom.xml 2>/dev/null; then
   if command -v allure &>/dev/null; then
     allure agent inspect target/allure-results -o target/allure-report-md --report off \
       || echo "[pipeline] allure agent inspect failed (non-fatal)"
+
+    # Human-facing HTML report. allurerc.mjs at the repo root is auto-discovered by the allure CLI
+    # (no -c needed), so a bare `allure serve target/allure-results` one-shots the same multi-view
+    # Awesome report (behaviors feature→story + packages). -o keeps the pipeline output location
+    # stable.
+    allure generate -o target/allure-report target/allure-results \
+      || echo "[pipeline] allure generate failed (non-fatal)"
   else
     echo "[pipeline] allure CLI not found (not in PATH and nvm not available), skipping report"
   fi

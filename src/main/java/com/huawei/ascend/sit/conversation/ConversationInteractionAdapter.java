@@ -30,9 +30,11 @@ import java.util.Set;
 
 /**
  * A {@link ConversationTransport} that drives the plan-agent <b>directly</b> — bypassing the
- * edpa-gateway — over one of the two streaming wire protocols {@code InteractionFlow} already
- * speaks: {@link MessageProtocol#A2A_STREAM} (JSON-RPC {@code SendStreamingMessage} SSE) or
- * {@link MessageProtocol#REST_QUERY} ({@code POST /v1/query} {@code stream:true}).
+ * edpa-gateway — over {@code InteractionFlow}'s reused wire. Carries {@link MessageProtocol#A2A_STREAM}
+ * (JSON-RPC {@code SendStreamingMessage} SSE) or the REST family:
+ * {@link MessageProtocol#REST_QUERY}/{@link MessageProtocol#REST_QUERY_SYNC} on {@code POST /v1/query}
+ * and {@link MessageProtocol#REST_REACTIVE}/{@link MessageProtocol#REST_REACTIVE_SYNC} on the byte-identical
+ * {@code POST /v1/query/reactive}; the {@code stream} flag and endpoint path are derived per protocol.
  *
  * <p><b>What this is.</b> An <em>adapter</em>, not a transport. {@code Turn}'s driving loop is the
  * dynamic driver — each round's text is fetched from envexplorer at runtime (a per-step READ), so it
@@ -104,7 +106,9 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
     private TaskState prevState = null;
 
     /**
-     * @param protocol  {@link MessageProtocol#A2A_STREAM} or {@link MessageProtocol#REST_QUERY}
+     * @param protocol  {@link MessageProtocol#A2A_STREAM} or one of the REST family
+     *                  ({@link MessageProtocol#REST_QUERY}/{@code _SYNC} on {@code /v1/query},
+     *                  {@link MessageProtocol#REST_REACTIVE}/{@code _SYNC} on {@code /v1/query/reactive})
      * @param client    the plan-agent A2A client — its {@code getBaseUrl()} anchors the REST endpoint
      *                  and its {@code sendMessage} drives the A2A wire
      * @param timeoutMs per-round resolution timeout (await {@code INPUT_REQUIRED} or a terminal)
@@ -166,10 +170,14 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             // client::sendMessage is the legacy sync default and would make A2A_STREAM wire-identical
             // to sync.
             case A2A_STREAM -> new A2aStreamingTransport(new A2aStreamingWire(client::sendMessageStreaming));
-            case REST_QUERY -> new RestQueryTransport(new RestExchange(),
-                    restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled), true);
+            case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC -> {
+                URI ep = isReactive(protocol)
+                        ? restReactiveEndpoint(client.getBaseUrl(), workspaceId, disabled)
+                        : restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled);
+                yield new RestQueryTransport(new RestExchange(), ep, isStreaming(protocol));
+            }
             default -> throw new IllegalArgumentException(
-                    "ConversationInteractionAdapter supports only A2A_STREAM/REST_QUERY, got " + protocol);
+                    "ConversationInteractionAdapter supports A2A_STREAM + REST family, got " + protocol);
         };
     }
 
@@ -193,7 +201,18 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
      * multi-workflow adapter's workflow endpoints, which route by {@code intent}).
      */
     static URI restQueryEndpoint(String baseUrl, int workspaceId, Set<String> disabled) {
-        String path = baseUrl.endsWith("/") ? baseUrl + "v1/query" : baseUrl + "/v1/query";
+        return restEndpoint(baseUrl, "v1/query", workspaceId, disabled);
+    }
+
+    /**
+     * Shared builder for the REST-family endpoints — both the servlet {@code /v1/query} and the WebFlux
+     * {@code /v1/query/reactive} controllers take the same {@code type}/{@code workspace_id} routing pair
+     * as query params, with the same trailing-slash tolerance and the same disable semantics. Callers
+     * pass the path segment ({@code "v1/query"} / {@code "v1/query/reactive"}); the leading slash is
+     * added here.
+     */
+    static URI restEndpoint(String baseUrl, String pathSeg, int workspaceId, Set<String> disabled) {
+        String path = baseUrl.endsWith("/") ? baseUrl + pathSeg : baseUrl + "/" + pathSeg;
         List<String> params = new ArrayList<>();
         if (!disabled.contains("type")) {
             params.add("type=controller");
@@ -202,6 +221,30 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             params.add("workspace_id=" + workspaceId);
         }
         return URI.create(params.isEmpty() ? path : path + "?" + String.join("&", params));
+    }
+
+    /**
+     * The plan-agent WebFlux reactive endpoint: {@code <base>/v1/query/reactive?type=controller&workspace_id=<N>}
+     * — same shape as {@link #restQueryEndpoint(String, int, Set)} but on the reactive controller path.
+     * Used by {@code REST_REACTIVE}/{@code REST_REACTIVE_SYNC}; same trailing-slash tolerance and disable
+     * semantics as the servlet variant.
+     */
+    static URI restReactiveEndpoint(String baseUrl, int workspaceId, Set<String> disabled) {
+        return restEndpoint(baseUrl, "v1/query/reactive", workspaceId, disabled);
+    }
+
+    /** True for the streaming REST-family protocols ({@code stream:true} → SSE). */
+    static boolean isStreaming(MessageProtocol p) {
+        return switch (p) {
+            case REST_QUERY, REST_REACTIVE -> true;
+            case REST_QUERY_SYNC, REST_REACTIVE_SYNC -> false;
+            default -> throw new IllegalArgumentException("non-REST protocol passed to isStreaming: " + p);
+        };
+    }
+
+    /** True for the reactive-path REST protocols (endpoint {@code /v1/query/reactive}). */
+    static boolean isReactive(MessageProtocol p) {
+        return p == MessageProtocol.REST_REACTIVE || p == MessageProtocol.REST_REACTIVE_SYNC;
     }
 
     @Override
@@ -295,7 +338,10 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
                 String url = client.getAgentCard() == null ? null : client.getAgentCard().url();
                 yield (url == null || url.isBlank()) ? client.getBaseUrl() : url;
             }
-            case REST_QUERY -> restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
+            case REST_QUERY, REST_QUERY_SYNC ->
+                    restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
+            case REST_REACTIVE, REST_REACTIVE_SYNC ->
+                    restReactiveEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
             default -> null;
         };
     }
@@ -322,9 +368,11 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         String textPart = queryIntentJson(env.query, env.intent);
         return switch (protocol) {
             case A2A_STREAM -> new OutboundMessage(textPart, a2aMetadata(out, env, disabledQueryParams), taskId, contextId, null);
-            case REST_QUERY -> new OutboundMessage(null, null, taskId, contextId, restBody(out, env, textPart));
+            case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC ->
+                    new OutboundMessage(null, null, taskId, contextId,
+                            restBody(out, env, textPart, isStreaming(protocol)));
             default -> throw new IllegalArgumentException(
-                    "ConversationInteractionAdapter supports only A2A_STREAM/REST_QUERY, got " + protocol);
+                    "ConversationInteractionAdapter supports A2A_STREAM + REST family, got " + protocol);
         };
     }
 
@@ -340,6 +388,8 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         body.put("custom_data", Map.of("inputs", env.inputs));
         body.put("agent_id", out.agentId());
         body.put("conversation_id", out.conversationId());
+        // Always streaming: this adapter only carries A2A_STREAM (A2A_SYNC does not route here), so the
+        // flag is unconditional — unlike restBody's parameterized stream flag for the REST family.
         body.put("stream", true);
         body.put("timeout", out.timeout());
         body.put("input", Map.of("query", env.query));
@@ -361,14 +411,14 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
     }
 
     /** REST projection: the flat EDPA REST body, pre-rendered to a JSON string for verbatim POST. */
-    private static String restBody(ConversationOutbound out, EdpaEnvelope env, String textPart) {
+    private static String restBody(ConversationOutbound out, EdpaEnvelope env, String textPart, boolean stream) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("query", env.query);
         input.put("intent", env.intent);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("conversation_id", out.conversationId());
-        body.put("stream", true);
+        body.put("stream", stream);
         body.put("user_id", REST_USER_ID);     // demo placeholder (not in ConversationIdentity)
         body.put("space_id", REST_SPACE_ID);   // demo placeholder (not in ConversationIdentity)
         Map<String, Object> userMessage = new LinkedHashMap<>();

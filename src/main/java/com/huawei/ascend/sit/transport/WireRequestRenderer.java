@@ -26,9 +26,9 @@ import java.util.UUID;
  * {@code SendStreamingMessage}/{@code SendMessage}), NOT the pre-1.0 {@code message/stream} slash form.
  * {@code id}/{@code messageId} are freshly-minted UUIDs (representative; the server does not echo them).
  *
- * <p><b>REST</b> ({@code REST_QUERY}/{@code REST_QUERY_SYNC}): {@link OutboundMessage#body()} verbatim
- * when present (the adapter pre-renders the full EDPA envelope), else a minimal
- * {@code {conversation_id,message,stream}} body. The endpoint URL — including query params such as
+ * <p><b>REST</b> ({@code REST_QUERY}/{@code REST_QUERY_SYNC}/{@code REST_REACTIVE}/{@code REST_REACTIVE_SYNC}):
+ * {@link OutboundMessage#body()} verbatim when present (the adapter pre-renders the full EDPA envelope),
+ * else a minimal {@code {conversation_id,message,stream}} body. The endpoint URL — including query params such as
  * {@code ?type=controller&workspace_id=N} — is caller-supplied: it lives on the transport / client, which
  * this transport-package renderer must not depend on (direction invariant). When the caller has none
  * (the {@code using(transport)} unit-test seam, where there is no client to read the agent card URL
@@ -51,7 +51,8 @@ public final class WireRequestRenderer {
     public static String render(MessageProtocol protocol, OutboundMessage message, String endpointUrl) {
         return switch (protocol) {
             case A2A_STREAM, A2A_SYNC -> httpBlock(endpointUrl, a2aBody(protocol, message));
-            case REST_QUERY, REST_QUERY_SYNC -> httpBlock(endpointUrl, restBody(protocol, message));
+            case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC ->
+                    httpBlock(endpointUrl, restBody(protocol, message));
             default -> throw new IllegalArgumentException("Unsupported protocol: " + protocol);
         };
     }
@@ -97,7 +98,8 @@ public final class WireRequestRenderer {
         if (message.body() != null) {
             return prettyJsonOrRaw(message.body());
         }
-        boolean stream = protocol == MessageProtocol.REST_QUERY;
+        boolean stream = protocol == MessageProtocol.REST_QUERY
+                || protocol == MessageProtocol.REST_REACTIVE;
         String conversationId = (message.contextId() != null && !message.contextId().isBlank())
                 ? message.contextId() : UUID.randomUUID().toString();
         Map<String, Object> body = new LinkedHashMap<>();

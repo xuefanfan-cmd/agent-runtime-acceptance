@@ -13,6 +13,7 @@ import com.openjiuwen.service.adapters.common.middleware.redis.RedisMiddlewareAu
 import com.openjiuwen.service.app.controller.a2a.RedisTaskStore;
 import com.openjiuwen.service.spec.spi.RuntimeRedisClient;
 import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
 import io.qameta.allure.Story;
 import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.spec.Message;
@@ -52,13 +53,12 @@ import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** FEAT-003 configuration, diagnostics, authentication and adapter-extension acceptance tests. */
-@Feature("003")
+@Feature("FEAT-003: 智能体任务状态缓存")
 @Tag("feat-003")
 @Tag("integration")
-class Feat003RedisConfigurationAndDiagnosticsTest {
+class RedisConfigurationAndDiagnosticsTest {
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";
     private static final String HOTEL = "hotel";
@@ -67,7 +67,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("standalone 默认配置")
+    @Stories({
+            @Story("FEAT-003.config.standalone-default: standalone 默认配置与诊断")
+    })
     @DisplayName("Feat-003 standalone 默认 TTL 与策略日志正确")
     void feat003StandaloneUsesDefaultTtlAndEmitsDiagnostics() throws Exception {
         TestConfig config = TestConfig.load();
@@ -94,7 +96,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("旧配置兼容")
+    @Stories({
+            @Story("FEAT-003.config.legacy-defaults: 旧配置缺省值兼容")
+    })
     @DisplayName("Feat-003 旧配置缺省 type 与 redis-ref 时回落 standalone/default")
     void feat003LegacyConfigurationDefaultsToStandalone() throws Exception {
         TestConfig config = TestConfig.load();
@@ -112,7 +116,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("in_memory 配置")
+    @Stories({
+            @Story("FEAT-003.config.in-memory: in_memory 不选择 Redis datasource")
+    })
     @DisplayName("Feat-003 in_memory 不选择 Redis datasource")
     void feat003InMemoryDoesNotSelectRedisDatasource() throws Exception {
         TestConfig config = TestConfig.load();
@@ -126,7 +132,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: cluster 缺少 nodes 的错误配置诊断")
+    })
     @DisplayName("Feat-003 cluster 缺少 nodes 时启动失败并给出诊断")
     void feat003ClusterWithoutNodesFails() {
         assertInvalid(Map.of(
@@ -136,7 +144,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: 非法 endpoint type 的错误配置诊断")
+    })
     @DisplayName("Feat-003 非法 endpoint type 明确列出支持范围")
     void feat003UnsupportedEndpointTypeFails() {
         assertInvalid(Map.of(
@@ -147,7 +157,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: 缺失 Redis 引用的错误配置诊断")
+    })
     @DisplayName("Feat-003 缺失 Redis 引用时启动失败")
     void feat003MissingRedisReferenceFails() {
         assertInvalid(Map.of(
@@ -157,7 +169,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: TTL 为零的错误配置诊断")
+    })
     @DisplayName("Feat-003 TTL 为零时启动失败")
     void feat003ZeroTtlFails() {
         assertInvalid(Map.of(
@@ -167,7 +181,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: TTL 为负数的错误配置诊断")
+    })
     @DisplayName("Feat-003 TTL 为负数时启动失败")
     void feat003NegativeTtlFails() {
         assertInvalid(Map.of(
@@ -177,7 +193,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: 非法 checkpointer type 的错误配置诊断")
+    })
     @DisplayName("Feat-003 非法 checkpointer type 明确列出支持范围")
     void feat003UnsupportedCheckpointerTypeFails() {
         assertInvalid(Map.of(PREFIX + "checkpointer.type", "invalid"), "invalid", "in_memory", "redis");
@@ -185,7 +203,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: 非法 cluster node 的错误配置诊断")
+    })
     @DisplayName("Feat-003 非法 cluster node 明确提示 host:port 格式")
     void feat003MalformedClusterNodeFails() {
         assertInvalid(Map.of(
@@ -196,7 +216,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Story("错误配置诊断")
+    @Stories({
+            @Story("FEAT-003.config.invalid: standalone 缺失 host 的错误配置诊断")
+    })
     @DisplayName("Feat-003 standalone 缺失 host 时按 L2 规格启动失败")
     void feat003StandaloneWithoutHostFails() {
         assertInvalid(Map.of(
@@ -207,11 +229,11 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Tag("env-gated")
-    @Story("Redis 认证与日志脱敏")
+    @Stories({
+            @Story("FEAT-003.security.auth-success: Redis 认证成功与日志脱敏")
+    })
     @DisplayName("Feat-003 认证 Redis 成功且日志不泄漏密码")
     void feat003AuthenticatedRedisSucceedsWithoutLeakingPassword() throws Exception {
-        requireSecurityEnvironment();
         TestConfig config = TestConfig.load();
         String canary = "feat003-auth-" + UUID.randomUUID();
         LogOffsets offsets = LogOffsets.capture(config);
@@ -236,11 +258,11 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Tag("env-gated")
-    @Story("Redis 故障不降级")
+    @Stories({
+            @Story("FEAT-003.security.no-fallback: Redis 密码错误时不降级内存")
+    })
     @DisplayName("Feat-003 Redis 密码错误时真实操作失败且不降级内存")
     void feat003WrongPasswordFailsWithoutInMemoryFallback() throws Exception {
-        requireSecurityEnvironment();
         TestConfig config = TestConfig.load();
         String canary = "feat003-wrong-" + UUID.randomUUID();
         LogOffsets offsets = LogOffsets.capture(config);
@@ -260,11 +282,11 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
 
     @Test
     @Tag("blackbox")
-    @Tag("env-gated")
-    @Story("Redis 故障不降级")
+    @Stories({
+            @Story("FEAT-003.security.no-fallback: Redis 不可达时不降级内存")
+    })
     @DisplayName("Feat-003 Redis 不可达时真实操作失败且不降级内存")
     void feat003UnreachableRedisFailsWithoutInMemoryFallback() throws Exception {
-        requireSecurityEnvironment();
         TestConfig config = TestConfig.load();
         Endpoint unreachable = new Endpoint("127.0.0.1", 1);
         LogOffsets offsets = LogOffsets.capture(config);
@@ -283,7 +305,9 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
     @Tag("contract")
     class CustomAdapterContract {
         @Test
-        @Story("自定义 Redis Adapter 装配")
+        @Stories({
+                @Story("FEAT-003.contract.custom-adapter: 自定义 Redis Adapter 装配")
+        })
         @DisplayName("Feat-003 自定义 Adapter 使默认 Bean back-off 并服务内部消费者")
         void feat003CustomAdapterBacksOffDefaultAndServesConsumers() {
             List<String> calls = new CopyOnWriteArrayList<>();
@@ -415,7 +439,7 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
                 .withContextId("ctx-" + marker)
                 .send("我要出差，标志是" + marker)
                     .mayReachState(TaskState.TASK_STATE_INPUT_REQUIRED)
-                .send("去北京，明天出发，3天")
+                .send("去北京，明天出发，3天，差标：无差标限制")
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
                 .execute();
         assertThat(result.round(1).taskState()).isEqualTo(TaskState.TASK_STATE_COMPLETED);
@@ -457,11 +481,6 @@ class Feat003RedisConfigurationAndDiagnosticsTest {
                             .as("authenticated Redis journey state")
                             .isIn(TaskState.TASK_STATE_INPUT_REQUIRED, TaskState.TASK_STATE_COMPLETED))
                 .execute();
-    }
-
-    private static void requireSecurityEnvironment() {
-        assumeTrue(Boolean.getBoolean("feat003.security.enabled"),
-                "enable credential tests with -Dfeat003.security.enabled=true");
     }
 
     private static String throwableText(Throwable throwable) {

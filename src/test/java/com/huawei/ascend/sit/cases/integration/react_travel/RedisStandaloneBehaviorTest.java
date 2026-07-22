@@ -8,6 +8,7 @@ import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.lifecycle.TestContainerFactory;
 import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
 import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
@@ -49,10 +50,10 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** FEAT-003 standalone Task/checkpoint behavior and public RuntimeRedisClient contract tests. */
-@Feature("003")
+@Feature("FEAT-003: 智能体任务状态缓存")
 @Tag("feat-003")
 @Tag("integration")
-class Feat003RedisStandaloneBehaviorTest {
+class RedisStandaloneBehaviorTest {
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";
     private static final String HOTEL = "hotel";
@@ -61,7 +62,9 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("A2A Task TTL")
+    @Stories({
+            @Story("FEAT-003.standalone.task-ttl: A2A Task 按配置 TTL 过期")
+    })
     @DisplayName("Feat-003 Task 可立即读取并按配置 TTL 过期")
     void feat003TaskIsReadableAndExpiresWithConfiguredTtl() throws Exception {
         TestConfig config = TestConfig.load();
@@ -93,7 +96,49 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("命名 Redis 引用")
+    @Stories({
+            @Story("FEAT-003.standalone.task-ttl: completed Task 按配置 TTL 过期")
+    })
+    @DisplayName("Feat-003 completed Task 可立即读取并按配置 TTL 过期")
+    void feat003CompletedTaskIsReadableAndExpiresWithConfiguredTtl() throws Exception {
+        TestConfig config = TestConfig.load();
+        int ttlSeconds = Integer.getInteger("feat003.short-ttl-seconds", 12);
+        try (RedisFixture redis = RedisFixture.start(config);
+             SutStack stack = startFullChain(config, redis, Map.of(
+                     PREFIX + "checkpointer.ttl-seconds", Integer.toString(ttlSeconds)))) {
+            String marker = "completed-ttl-" + shortId();
+            InteractionFlow.FlowResult sent = InteractionFlow.of(stack.client(MAINPLAN))
+                    .withTimeoutMs(FLOW_TIMEOUT_MS)
+                    .withContextId("ctx-feat003-" + marker)
+                    .send("我要从深圳去北京出差，明天出发，3天，住宿2晚，差标：无差标限制。"
+                            + "请直接生成完整行程，不要继续追问。标志：" + marker)
+                        .awaitState(TaskState.TASK_STATE_COMPLETED)
+                    .execute();
+
+            String taskId = sent.lastTaskId();
+            assertThat(sent.round(0).taskState()).isEqualTo(TaskState.TASK_STATE_COMPLETED);
+            Task immediate = stack.client(MAINPLAN).getTask(taskId);
+            assertThat(immediate).isNotNull();
+            assertThat(immediate.id()).isEqualTo(taskId);
+            assertThat(immediate.status().state()).isEqualTo(TaskState.TASK_STATE_COMPLETED);
+
+            String taskKey = "a2a:task:" + taskId;
+            assertThat(redis.client(0).scan(taskKey)).contains(taskKey);
+            assertThat(redis.client(0).integer("TTL", taskKey)).isBetween(1L, (long) ttlSeconds);
+
+            await().atMost(Duration.ofSeconds(ttlSeconds + 10L)).pollInterval(Duration.ofMillis(300))
+                    .untilAsserted(() -> {
+                        assertThat(redis.client(0).scan(taskKey)).doesNotContain(taskKey);
+                        assertTaskUnavailable(stack, taskId);
+                    });
+        }
+    }
+
+    @Test
+    @Tag("blackbox")
+    @Stories({
+            @Story("FEAT-003.standalone.named-ref: 命名 Redis 引用选择指定数据库")
+    })
     @DisplayName("Feat-003 命名 ref 选择 DB2 并承载 TaskStore")
     void feat003NamedReferenceSelectsDatabaseForTaskStore() throws Exception {
         TestConfig config = TestConfig.load();
@@ -126,7 +171,9 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("Task 与 checkpoint 跨 JVM 恢复")
+    @Stories({
+            @Story("FEAT-003.standalone.restart-recovery: Task 与 checkpoint 跨 JVM 恢复")
+    })
     @DisplayName("Feat-003 Agent 重启后 Task 和上下文仍可恢复")
     void feat003TaskAndCheckpointSurviveAgentRestart() throws Exception {
         TestConfig config = TestConfig.load();
@@ -157,7 +204,9 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("reset conversation")
+    @Stories({
+            @Story("FEAT-003.standalone.reset: reset conversation 删除 Task 与 checkpoint 状态")
+    })
     @DisplayName("Feat-003 reset conversation 删除 Task 与 checkpoint 状态")
     void feat003ResetConversationRemovesTaskAndCheckpointState() throws Exception {
         TestConfig config = TestConfig.load();
@@ -192,7 +241,9 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("上下文隔离")
+    @Stories({
+            @Story("FEAT-003.standalone.isolation: 不同上下文的 Task 与 checkpoint 隔离")
+    })
     @DisplayName("Feat-003 两个 context 的 Task 与 checkpoint 不串扰")
     void feat003ContextsRemainIsolatedAcrossSequentialJourneys() throws Exception {
         TestConfig config = TestConfig.load();
@@ -209,7 +260,9 @@ class Feat003RedisStandaloneBehaviorTest {
 
     @Test
     @Tag("blackbox")
-    @Story("Redis 生命周期")
+    @Stories({
+            @Story("FEAT-003.standalone.lifecycle: 重启过程中释放 Redis 连接")
+    })
     @DisplayName("Feat-003 重复重启释放 Redis 连接且端口保持不变")
     void feat003RepeatedRestartReleasesRedisConnections() throws Exception {
         TestConfig config = TestConfig.load();
@@ -238,7 +291,9 @@ class Feat003RedisStandaloneBehaviorTest {
     @Tag("contract")
     class RuntimeRedisContract {
         @Test
-        @Story("standalone Redis SPI 文本与二进制")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI 文本与二进制合同")
+        })
         @DisplayName("Feat-003 standalone 文本与二进制 get/set/setex 合同")
         void feat003StandaloneTextAndBinaryOperationsFollowContract() throws Exception {
             try (StandaloneContract client = StandaloneContract.open()) {
@@ -261,7 +316,9 @@ class Feat003RedisStandaloneBehaviorTest {
         }
 
         @Test
-        @Story("standalone Redis SPI TTL/exists/delete")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI TTL、exists 与 delete 合同")
+        })
         @DisplayName("Feat-003 standalone TTL、exists 与 delete 合同")
         void feat003StandaloneTtlExistsAndDeleteFollowContract() throws Exception {
             try (StandaloneContract client = StandaloneContract.open()) {
@@ -279,7 +336,9 @@ class Feat003RedisStandaloneBehaviorTest {
         }
 
         @Test
-        @Story("standalone Redis SPI setnx")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI setnx 合同")
+        })
         @DisplayName("Feat-003 standalone 文本与二进制 setnx 合同")
         void feat003StandaloneSetnxFollowsContract() throws Exception {
             try (StandaloneContract client = StandaloneContract.open()) {
@@ -295,7 +354,9 @@ class Feat003RedisStandaloneBehaviorTest {
         }
 
         @Test
-        @Story("standalone Redis SPI mget")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI mget 合同")
+        })
         @DisplayName("Feat-003 standalone mget 保序并保留缺失值位置")
         void feat003StandaloneMgetPreservesOrderAndMissingValues() throws Exception {
             try (StandaloneContract client = StandaloneContract.open()) {
@@ -312,7 +373,9 @@ class Feat003RedisStandaloneBehaviorTest {
         }
 
         @Test
-        @Story("standalone Redis SPI scan")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI scan 合同")
+        })
         @DisplayName("Feat-003 standalone scanIter 按模式返回文本 key")
         void feat003StandaloneScanIterReturnsMatchingTextKeys() throws Exception {
             try (StandaloneContract client = StandaloneContract.open()) {
@@ -326,7 +389,9 @@ class Feat003RedisStandaloneBehaviorTest {
         }
 
         @Test
-        @Story("standalone Redis SPI 并发")
+        @Stories({
+                @Story("FEAT-003.contract.standalone: standalone Redis SPI 并发访问合同")
+        })
         @DisplayName("Feat-003 standalone 单例 client 并发访问独立 key 不串扰")
         void feat003StandaloneClientIsThreadSafeForIndependentKeys() throws Exception {
             try (StandaloneContract client = StandaloneContract.open();
@@ -354,7 +419,8 @@ class Feat003RedisStandaloneBehaviorTest {
     private static String isolatedJourney(SutStack stack, String contextId, String destination, String token) {
         InteractionFlow.FlowResult result = InteractionFlow.of(stack.client(MAINPLAN))
                 .withTimeoutMs(FLOW_TIMEOUT_MS).withContextId(contextId)
-                .send("我要去" + destination + "出差，明天出发，3天，请记住校验码：" + token)
+                .send("我要去" + destination
+                        + "出差，明天出发，3天，差标：无差标限制，请记住校验码：" + token)
                 .mayReachState(TaskState.TASK_STATE_COMPLETED)
                 .send("请只复述我之前提供的校验码")
                 .mayReachState(TaskState.TASK_STATE_COMPLETED).execute();

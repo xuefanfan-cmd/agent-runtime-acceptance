@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code ContainerFactory} / {@code serviceBinding} 是<b>单端口单容器</b>模型（给 standalone redis 用），无法表达 cluster
  * 的多节点。故 grokzen 在 {@link #buildStack} 内直接拉起（基类 {@code @BeforeAll} 全类只调一次 buildStack ⇒ 全类共享一个
  * cluster，固定端口亦无并发问题），节点地址经 {@code .property()} 注入（与
- * {@code Feat003RedisClusterAndSwitchTest#startCluster} 同型），子类 {@link #stopCluster()} 停容器。
+ * {@code RedisClusterAndSwitchTest#startCluster} 同型），子类 {@link #stopCluster()} 停容器。
  *
  * <p><b>cluster 可达性 = 容器 bridge IP 直连（Linux）</b>。读 grokzen 的 {@code redis-cluster.tmpl} 可知其<b>无</b>
  * {@code cluster-announce-ip}，节点公告自身 eth0/bridge IP；Linux 宿主对 docker 桥接子网天然可路由 ⇒ SUT（本地进程）与
@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @see ExpenseReviewAcceptanceTest in-memory 变体
  * @see ExpenseReviewRedisAcceptanceTest standalone redis（含密码脱敏）变体
- * @see com.huawei.ascend.sit.cases.integration.react_travel.Feat003RedisClusterAndSwitchTest cluster 注入与断言同型
+ * @see com.huawei.ascend.sit.cases.integration.react_travel.RedisClusterAndSwitchTest cluster 注入与断言同型
  */
 @Tag("integration")
 @Feature("FEAT-003: 智能体任务状态缓存")

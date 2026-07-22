@@ -14,7 +14,7 @@ depends_on:
   - LLM 可用，mainplan → trip → hotel 链路互通
   - Redis Cluster fixture 已验证 WSL 宿主可达的 announce/MOVED 路由，或已配置 external-env 集群
 related_docs:
-  - FEAT-003-agent-task-state-cache.md
+  - FEAT-003-agent-task-state-cache-reactagent.md
   - Feat-Func-003-agent-task-state-cache.md
   - FEAT-003-blackbox-test-design-reviewed-v1.6.md
   - OJ-06-openjiuwen-redis-checkpointer-multi-turn.md
@@ -69,7 +69,7 @@ related_docs:
 - 三 Agent 注入同一组 `openjiuwen.service.middleware.checkpointer.*` 与 `redis.<ref>.*`。
 - 不使用不存在的 `main-plan-agent.redis-url` 转换入口。
 - standalone 使用 `BackingServices` + `TestContainerFactory`。
-- cluster 使用 `Feat003RedisClusterAndSwitchTest` 类内 private custom `ContainerFactory`。
+- cluster 使用 `RedisClusterAndSwitchTest` 类内 private custom `ContainerFactory`。
 
 ### 3.2 main 能力复用
 
@@ -93,7 +93,7 @@ related_docs:
 
 ## 4. 配置与诊断子用例
 
-框架落点：`Feat003RedisConfigurationAndDiagnosticsTest.java`。
+框架落点：`RedisConfigurationAndDiagnosticsTest.java`。
 
 ### FEAT-003.config.standalone-default — standalone 默认值与启动日志
 
@@ -176,7 +176,7 @@ related_docs:
 
 ## 5. standalone 行为子用例
 
-框架落点：`Feat003RedisStandaloneBehaviorTest.java`。
+框架落点：`RedisStandaloneBehaviorTest.java`。
 
 ### FEAT-003.standalone.task-ttl — Task get、TTL 与过期
 
@@ -246,7 +246,7 @@ related_docs:
 
 ## 6. cluster 与切换子用例
 
-框架落点：`Feat003RedisClusterAndSwitchTest.java`。
+框架落点：`RedisClusterAndSwitchTest.java`。
 
 ### FEAT-003.cluster.equivalence — 真实 cluster 等价
 
@@ -306,9 +306,9 @@ related_docs:
 
 | Java 类 | 黑盒子用例 | contract 子用例 | 类内私有 fixture |
 |---|---|---|---|
-| `Feat003RedisConfigurationAndDiagnosticsTest` | config.*、security.* | custom-adapter | 日志切片、认证 Redis、fake client |
-| `Feat003RedisStandaloneBehaviorTest` | standalone.* | standalone SPI | Redis 数据检查、reset、生命周期 |
-| `Feat003RedisClusterAndSwitchTest` | cluster.* | cluster SPI | cluster factory、seed nodes、cluster 检查 |
+| `RedisConfigurationAndDiagnosticsTest` | config.*、security.* | custom-adapter | 日志切片、认证 Redis、fake client |
+| `RedisStandaloneBehaviorTest` | standalone.* | standalone SPI | Redis 数据检查、reset、生命周期 |
+| `RedisClusterAndSwitchTest` | cluster.* | cluster SPI | cluster factory、seed nodes、cluster 检查 |
 
 落点目录：
 
@@ -337,20 +337,22 @@ src/test/java/com/huawei/ascend/sit/cases/integration/react_travel/
 ## 9. 标签与报告
 
 ```java
-@Feature("003")
+@Feature("FEAT-003: 智能体任务状态缓存")
 @Tag("feat-003")
 @Tag("integration")
-class Feat003RedisStandaloneBehaviorTest {
+class RedisStandaloneBehaviorTest {
     @Test
     @Tag("blackbox")
-    @Story("Task 与 checkpoint 跨 JVM 恢复")
+    @Stories({
+            @Story("FEAT-003.standalone.restart-recovery: Task 与 checkpoint 跨 JVM 恢复")
+    })
     @DisplayName("Feat-003 Agent 重启后 Task 和上下文仍可恢复")
     void feat003TaskAndCheckpointSurviveAgentRestart() { }
 
     @Nested
     @Tag("contract")
     class RuntimeRedisContract {
-        // 每个方法同样带 @Test / @Story / Feat-003 DisplayName
+        // 每个方法同样带 @Test / @Stories / Feat-003 DisplayName
     }
 }
 ```
@@ -365,7 +367,7 @@ Allure 报告必须区分 blackbox、contract、customer-site，禁止把直接 
 
 # 指定类
 ./mvnw -Dtest.env=openjiuwen \
-  -Dtest=Feat003RedisStandaloneBehaviorTest test
+  -Dtest=RedisStandaloneBehaviorTest test
 
 # 纯黑盒/合同（groups 表达式以当前 Surefire 配置为准）
 ./mvnw -Dtest.env=openjiuwen -Dgroups=blackbox test
@@ -386,7 +388,7 @@ Allure 报告必须区分 blackbox、contract、customer-site，禁止把直接 
 ## 12. 退出标准
 
 - 三个 Java 类均可由 `feat-003` 标签执行。
-- 所有方法具备 `@Feature("003")`、`@Story`、`@Test` 和 `Feat-003` DisplayName 所要求的归属。
+- 三个类均具备 `@Feature("FEAT-003: 智能体任务状态缓存")`；所有方法具备 `@Stories`、`@Test` 和 `Feat-003` DisplayName 所要求的归属。
 - v1.2 的 35 个 ID 和补充场景均有明确方法或现场证据。
 - standalone、cluster、认证、reset、跨 JVM、不降级和生命周期有真实外部证据。
 - SPI 17 方法在 acceptance contract tests 中覆盖，cluster 包含跨 slot。

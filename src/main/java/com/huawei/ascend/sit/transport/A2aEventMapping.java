@@ -150,10 +150,10 @@ public final class A2aEventMapping {
     }
 
     /**
-     * Classified content events for a task's answer surface: one event per text part across the task's
-     * artifacts (typed envelopes via {@link LlmPayload}, plain text → {@link InboundEvent.Kind#CONTENT}).
+     * Classified answer events for a task's reply surface: one event per text part across the task's
+     * artifacts (typed envelopes via {@link LlmPayload}, plain text → {@link InboundEvent.Kind#ANSWER}).
      * If the task has no artifact parts, falls back to the status message's text, then the last history
-     * entry's text, as CONTENT events — the same priority order as the legacy task-text extractor.
+     * entry's text, as ANSWER events — the same priority order as the legacy task-text extractor.
      * Empty list if the task carries no answer text at all.
      *
      * <p>Derived events carry {@code raw = null} <em>by design</em>. They originate from a terminal
@@ -171,21 +171,23 @@ public final class A2aEventMapping {
         if (t.artifacts() != null) {
             for (Artifact artifact : t.artifacts()) {
                 if (artifact != null) {
-                    out.addAll(partEvents(artifact.parts(), null));
+                    out.addAll(partEvents(artifact.parts(), null, true));
                 }
             }
         }
         if (!out.isEmpty()) {
             return out;
         }
-        // No artifact text — fall back to status message, then last history entry.
+        // No artifact text — fall back to status message, then last history entry. Every text the
+        // task carries IS its reply, so surface plain text as ANSWER (e.g. an INPUT_REQUIRED task's
+        // clarifying question lives in status.message).
         if (t.status() != null && t.status().message() != null) {
-            out.addAll(partEvents(t.status().message().parts(), null));
+            out.addAll(partEvents(t.status().message().parts(), null, true));
         }
         if (out.isEmpty() && t.history() != null && !t.history().isEmpty()) {
             Message last = t.history().get(t.history().size() - 1);
             if (last != null) {
-                out.addAll(partEvents(last.parts(), null));
+                out.addAll(partEvents(last.parts(), null, true));
             }
         }
         return out;
@@ -193,10 +195,16 @@ public final class A2aEventMapping {
 
     /**
      * One classified event per text part: typed {@code {type,index,payload}} envelopes via
-     * {@link LlmPayload}, plain text → {@link InboundEvent.Kind#CONTENT}. Non-{@link TextPart}s and
-     * null texts are skipped.
+     * {@link LlmPayload}; a plain-text part becomes {@link InboundEvent.Kind#CONTENT} by default (live
+     * streamed chunks are intermediate), or {@link InboundEvent.Kind#ANSWER} when
+     * {@code plainTextAsAnswer} is set — used by {@link #contentEventsOf}, where every text a settled
+     * task carries IS its reply. Non-{@link TextPart}s and null texts are skipped.
      */
     private static List<InboundEvent> partEvents(List<Part<?>> parts, Object raw) {
+        return partEvents(parts, raw, false);
+    }
+
+    private static List<InboundEvent> partEvents(List<Part<?>> parts, Object raw, boolean plainTextAsAnswer) {
         if (parts == null) {
             return List.of();
         }
@@ -204,7 +212,13 @@ public final class A2aEventMapping {
         for (Part<?> part : parts) {
             if (part instanceof TextPart tp && tp.text() != null) {
                 InboundEvent typed = LlmPayload.classify(tp.text(), raw);
-                out.add(typed != null ? typed : InboundEvent.content(tp.text(), raw));
+                if (typed != null) {
+                    out.add(typed);
+                } else {
+                    out.add(plainTextAsAnswer
+                            ? InboundEvent.answer(tp.text(), raw)
+                            : InboundEvent.content(tp.text(), raw));
+                }
             }
         }
         return out;

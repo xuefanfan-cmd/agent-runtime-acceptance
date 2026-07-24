@@ -33,6 +33,11 @@ import java.util.UUID;
  * this transport-package renderer must not depend on (direction invariant). When the caller has none
  * (the {@code using(transport)} unit-test seam, where there is no client to read the agent card URL
  * from), the request-line shows {@code <endpoint unknown>}.
+ *
+ * <p><b>REST_GATEWAY / REST_VERSATILE</b> (high-code adapter / low-code gateway): identical render shape
+ * to the REST family — the pre-rendered EDPA envelope ({@code body()} verbatim) addressed to the
+ * cid-bearing conversation URL. Streaming-only, so the minimal-body fallback (rare — {@code body()} is
+ * normally present) carries {@code stream:true}.
  */
 public final class WireRequestRenderer {
 
@@ -51,7 +56,7 @@ public final class WireRequestRenderer {
     public static String render(MessageProtocol protocol, OutboundMessage message, String endpointUrl) {
         return switch (protocol) {
             case A2A_STREAM, A2A_SYNC -> httpBlock(endpointUrl, a2aBody(protocol, message));
-            case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC ->
+            case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC, REST_GATEWAY, REST_VERSATILE ->
                     httpBlock(endpointUrl, restBody(protocol, message));
             default -> throw new IllegalArgumentException("Unsupported protocol: " + protocol);
         };
@@ -98,8 +103,12 @@ public final class WireRequestRenderer {
         if (message.body() != null) {
             return prettyJsonOrRaw(message.body());
         }
+        // The streaming REST protocols (stream:true → SSE). REST_GATEWAY/REST_VERSATILE are streaming-only,
+        // so always true here too (their body() is normally pre-rendered, so this minimal branch is rare).
         boolean stream = protocol == MessageProtocol.REST_QUERY
-                || protocol == MessageProtocol.REST_REACTIVE;
+                || protocol == MessageProtocol.REST_REACTIVE
+                || protocol == MessageProtocol.REST_GATEWAY
+                || protocol == MessageProtocol.REST_VERSATILE;
         String conversationId = (message.contextId() != null && !message.contextId().isBlank())
                 ? message.contextId() : UUID.randomUUID().toString();
         Map<String, Object> body = new LinkedHashMap<>();

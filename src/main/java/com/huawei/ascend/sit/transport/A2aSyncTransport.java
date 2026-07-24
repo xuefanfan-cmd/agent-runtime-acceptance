@@ -35,17 +35,18 @@ public final class A2aSyncTransport implements MessageTransport {
         InboundExchange exchange = new InboundExchange();
         Message sdkMessage = A2aStreamingWire.buildMessage(
                 message.text(), message.taskId(), message.contextId());
-        // The terminal task may arrive on several consecutive callbacks (the SDK re-delivers the
-        // cumulative COMPLETED snapshot); surface its answer at most ONCE so the whole artifact set
-        // is not re-emitted on every such callback.
+        // A settled state — final (COMPLETED/FAILED/...) or INPUT_REQUIRED — means the round's reply is
+        // ready. The SDK may re-deliver the cumulative snapshot on several consecutive callbacks, so
+        // surface the reply at most ONCE (compareAndSet): both to avoid re-emitting the whole artifact
+        // set per callback and to bound the wire log. INPUT_REQUIRED is included (even though the SDK's
+        // isFinal() excludes it) so an INPUT_REQUIRED sync round surfaces its status.message reply the
+        // same way a COMPLETED round surfaces its artifacts.
         java.util.concurrent.atomic.AtomicBoolean surfaced = new java.util.concurrent.atomic.AtomicBoolean();
         sender.send(sdkMessage, message.metadata(),
                 java.util.List.of((clientEvent, card) -> {
                     java.util.List<InboundEvent> es = A2aEventMapping.toEventList(clientEvent);
-                    boolean terminal = es.stream().anyMatch(
-                            e -> e.kind() == InboundEvent.Kind.STATE
-                                    && e.state() != null && e.state().isFinal());
-                    if (terminal && surfaced.compareAndSet(false, true)) {
+                    boolean settled = es.stream().anyMatch(A2aSyncTransport::isSettledState);
+                    if (settled && surfaced.compareAndSet(false, true)) {
                         // Fallback for agents whose message/send returns only a terminal task with no
                         // streamed chunks: surface that task's answer as classified events before the
                         // STATE, so exchange.answerText() carries it uniformly across protocols without
@@ -65,5 +66,20 @@ public final class A2aSyncTransport implements MessageTransport {
                 err -> {});
         exchange.markStreamEnd();
         return exchange;
+    }
+
+    /**
+     * A sync round has settled — its reply is ready to surface — when the task reaches a state that
+     * won't auto-progress: any {@link org.a2aproject.sdk.spec.TaskState#isFinal() final} state, or
+     * {@link org.a2aproject.sdk.spec.TaskState#TASK_STATE_INPUT_REQUIRED} (paused for user input, whose
+     * clarifying reply lives in {@code status.message}). INPUT_REQUIRED is included even though the
+     * SDK's {@code isFinal()} excludes it, so an INPUT_REQUIRED sync round surfaces its reply the same
+     * way a COMPLETED round does.
+     */
+    private static boolean isSettledState(InboundEvent e) {
+        return e.kind() == InboundEvent.Kind.STATE
+                && e.state() != null
+                && (e.state().isFinal()
+                        || e.state() == org.a2aproject.sdk.spec.TaskState.TASK_STATE_INPUT_REQUIRED);
     }
 }

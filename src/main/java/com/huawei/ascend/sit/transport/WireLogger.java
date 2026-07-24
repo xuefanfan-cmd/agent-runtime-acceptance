@@ -31,8 +31,9 @@ public interface WireLogger {
      *
      * @param protocol  the wire-protocol tag (e.g. {@code A2A_STREAM}, {@code REST_QUERY_SYNC})
      * @param round     1-based round index within the flow
-     * @param sessionId the flow/session tag (from {@link OutboundMessage#metadata()}), used in the
-     *                  filename; falls back to contextId / {@code "nosession"}
+     * @param sessionId the flow/session tag (the JUnit invocation label from {@link SessionLabels},
+     *                  set by the test-side extension), used in the filename; falls back to
+     *                  contextId / {@code "nosession"}. Never read from message metadata.
      * @param request   the outbound message (the request content)
      * @param response  the full inbound event list (decoded text + raw frames)
      */

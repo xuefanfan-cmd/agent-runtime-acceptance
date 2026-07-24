@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +31,7 @@ import java.time.format.DateTimeFormatter;
  * @see SutStack
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@ExtendWith(SessionLabelExtension.class)   // 每次 invocation 派生 wire-log 会话标签（@Inherited，子类全覆盖）
 public abstract class BaseManagedStackTest {
 
     protected TestConfig config;

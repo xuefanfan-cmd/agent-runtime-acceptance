@@ -9,8 +9,11 @@ import com.huawei.ascend.sit.transport.MessageProtocol;
 import com.huawei.ascend.sit.transport.MessageTransport;
 import com.huawei.ascend.sit.transport.OutboundMessage;
 import com.huawei.ascend.sit.transport.ProtocolResolver;
+import com.huawei.ascend.sit.transport.RestGatewayTransport;
 import com.huawei.ascend.sit.transport.RestExchange;
 import com.huawei.ascend.sit.transport.RestQueryTransport;
+import com.huawei.ascend.sit.transport.RestVersatileTransport;
+import com.huawei.ascend.sit.transport.SessionLabels;
 import com.huawei.ascend.sit.transport.WireLogger;
 import com.huawei.ascend.sit.transport.WireRequestRenderer;
 
@@ -20,6 +23,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -168,9 +172,32 @@ public class InteractionFlow {
                     URI.create(client.getBaseUrl() + "/v1/query/reactive"), true);
             case REST_REACTIVE_SYNC -> new RestQueryTransport(new RestExchange(),
                     URI.create(client.getBaseUrl() + "/v1/query/reactive"), false);
+            // The two EDPA-style wires share an identity-bearing conversation endpoint
+            // (/v1/{pid}/agents/{aid}/conversations/{cid}) built from the shared GatewayIdentity +
+            // the pinned cid (ensureConversationCid guarantees fixedContextId is set at execute()).
+            case REST_VERSATILE -> new RestVersatileTransport(new RestExchange(),
+                    GatewayIdentity.loadDefault().conversationEndpoint(client.getBaseUrl(), fixedContextId));
+            case REST_GATEWAY -> new RestGatewayTransport(new RestExchange(),
+                    GatewayIdentity.loadDefault().conversationEndpoint(client.getBaseUrl(), fixedContextId));
             default -> throw new IllegalStateException(
                     "Protocol not supported on InteractionFlow: " + resolvedProtocol());
         };
+    }
+
+    /**
+     * Pin a conversation cid for the gateway/adapter wires ({@code REST_VERSATILE}/{@code REST_GATEWAY})
+     * before the transport is built: their endpoint URL carries {@code {cid}}, which must equal the
+     * body's {@code conversation_id} (one coherent conversation). A test-supplied
+     * {@link #withContextId(String)} wins; otherwise a UUID is minted and pinned as the fixed context
+     * id so every round — and the endpoint — share it. No-op for the other protocols (their endpoints
+     * carry no cid; {@code RestQueryTransport} mints its own conversation_id in the body).
+     */
+    private void ensureConversationCid() {
+        MessageProtocol p = resolvedProtocol();
+        if ((p == MessageProtocol.REST_VERSATILE || p == MessageProtocol.REST_GATEWAY)
+                && (fixedContextId == null || fixedContextId.isBlank())) {
+            fixedContextId = UUID.randomUUID().toString();
+        }
     }
 
     /** Start a new interaction round by sending the given text. */
@@ -187,6 +214,7 @@ public class InteractionFlow {
      * @throws AssertionError if any round's expectations are not met
      */
     public FlowResult execute() {
+        ensureConversationCid();   // gateway/adapter wires carry {cid} in the endpoint URL — pin one before building it
         if (transport == null) {
             transport = transportFor(client);   // honours resolvedProtocol(): override > env > A2A_STREAM
         }
@@ -269,7 +297,7 @@ public class InteractionFlow {
         // Pre-render the paste-ready wire request once (cheap); reused by the post-await wire log.
         final String wireRequest = (wireLogger != null && wireLogger.enabled())
                 ? WireRequestRenderer.render(resolvedProtocol(), outbound,
-                        client == null ? null : endpointFor(resolvedProtocol(), client))
+                        client == null ? null : endpointFor(resolvedProtocol(), client, fixedContextId))
                 : null;
 
         // The await (success or AssertionError-on-timeout) is the drain/synchronization point: by the
@@ -398,16 +426,9 @@ public class InteractionFlow {
         return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
-    /** Flow identity for wire-log file naming: metadata sessionId > contextId > "nosession". */
+    /** Flow identity for wire-log file naming: JUnit invocation label > contextId > "nosession". */
     private static String sessionIdOf(OutboundMessage m) {
-        Map<String, Object> md = m.metadata();
-        if (md != null) {
-            Object sid = md.get("sessionId");
-            if (sid != null && !String.valueOf(sid).isBlank()) {
-                return String.valueOf(sid);
-            }
-        }
-        return (m.contextId() == null || m.contextId().isBlank()) ? "nosession" : m.contextId();
+        return SessionLabels.resolveLogName(m.contextId());
     }
 
     /**
@@ -418,7 +439,8 @@ public class InteractionFlow {
      * (bare, as {@code transportFor} builds it for the flow path). Resolved only
      * when a client is present (the {@code using(transport)} unit-test seam has none → caller passes null).
      */
-    private static String endpointFor(MessageProtocol protocol, A2aServiceClient client) {
+    private static String endpointFor(MessageProtocol protocol, A2aServiceClient client,
+                                      String conversationId) {
         return switch (protocol) {
             case A2A_STREAM, A2A_SYNC -> {
                 String url = client.getAgentCard() == null ? null : client.getAgentCard().url();
@@ -426,6 +448,9 @@ public class InteractionFlow {
             }
             case REST_QUERY, REST_QUERY_SYNC -> client.getBaseUrl() + "/v1/query";
             case REST_REACTIVE, REST_REACTIVE_SYNC -> client.getBaseUrl() + "/v1/query/reactive";
+            // Same identity-bearing endpoint transportFor builds for these wires.
+            case REST_VERSATILE, REST_GATEWAY -> GatewayIdentity.loadDefault()
+                    .conversationEndpoint(client.getBaseUrl(), conversationId).toString();
             default -> null;
         };
     }

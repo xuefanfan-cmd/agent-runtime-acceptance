@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.transport.InboundEvent;
 import com.huawei.ascend.sit.transport.MessageProtocol;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.TaskState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -73,9 +75,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * surface INPUT_REQUIRED.
  *
  * <p>{@link InteractionFlow} threads each round's {@code contextId} into the next, so A-08's two
- * {@code .send(...)} calls (and C-03's three) are one continued conversation. Each protocol invocation
- * uses a distinct {@code sessionId} ({@code "<scenario>-<protocol>"}) so the 12 concurrent runs do not
- * collide on the SUT side.
+ * {@code .send(...)} calls (and C-03's three) are one continued conversation. SUT-side isolation
+ * of the 12 concurrent runs rests on server-assigned conversation ids (round 1 carries no
+ * continuation ids, so each invocation opens a fresh conversation); the wire-log filenames are
+ * distinguished by the JUnit-derived session label ({@code SessionLabelExtension}, e.g.
+ * {@code A-07-1-A2A_STREAM-r1-A2A_STREAM.log}).
  *
  * <p><b>Credentials &amp; proxy.</b> Export the unified {@code LLM_*} env once — all three agents read
  * {@code ${LLM_*}} natively, and {@code ProcessLauncher} passes the test JVM's env to each child.
@@ -86,11 +90,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Run this class's parameterized methods (3 scenarios × 4 protocols = 12 invocations) concurrently
 // against the single shared managed stack (mainplan → trip → hotel), brought up once at @BeforeAll.
 // BaseManagedStackTest is @TestInstance(PER_CLASS), so the same instance — and thus config/client — is
-// reused for every invocation; the stack fields are set in @BeforeAll and only read here. Each
-// invocation gets a protocol-scoped sessionId so concurrent conversations don't collide on the SUT.
+// reused for every invocation; the stack fields are set in @BeforeAll and only read here. Concurrent
+// conversations stay isolated via server-assigned conversation ids (no continuation ids on round 1).
 // Requires junit.jupiter.execution.parallel.enabled=true (src/test/resources/junit-platform.properties);
 // the suite default stays same_thread, so only opting-in classes run in parallel.
 @Execution(ExecutionMode.CONCURRENT)
+@Feature("FEAT-004: 任务驱动远程智能体调用")
 class StreamingTravelPlanningTest extends BaseManagedStackTest {
 
     /** Single fully-specified turn expected to complete the whole trip with no follow-ups. */
@@ -138,12 +143,12 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
     @ParameterizedTest(name = "[{index}] {0}")
     @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
             names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC"})
-    @DisplayName("A-07: one-shot complete request reaches COMPLETED with a valid plan")
+    @DisplayName("one-shot complete request reaches COMPLETED with a valid plan")
+    @Story("ra.agent-once: react agent远端链路")
     void oneShotRequestStreamsSubmittedWorkingCompleted(MessageProtocol protocol) {
         InteractionFlow.of(client("mainplan"))
                 .protocol(protocol)
-                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
-                        "sessionId", "a07-" + protocol.name()))
+                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 .send(COMPLETE_REQUEST)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
@@ -179,12 +184,12 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
     @ParameterizedTest(name = "[{index}] {0}")
     @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
             names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC"})
-    @DisplayName("A-08: incomplete turn → INPUT_REQUIRED, follow-up → COMPLETED")
+    @DisplayName("incomplete turn → INPUT_REQUIRED, follow-up → COMPLETED")
+    @Story("ra.input-required: react agent远端链路多轮中断续接")
     void incompleteThenFollowUpFollowsExpectedStateSequences(MessageProtocol protocol) {
         InteractionFlow.of(client("mainplan"))
                 .protocol(protocol)
-                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
-                        "sessionId", "a08-" + protocol.name()))
+                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // Turn 1 — incomplete (no departure date / origin): agent should pause for more input.
                 .send(INCOMPLETE_TURN_1)
@@ -230,12 +235,12 @@ class StreamingTravelPlanningTest extends BaseManagedStackTest {
     @ParameterizedTest(name = "[{index}] {0}")
     @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
             names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC"})
-    @DisplayName("C-03: three-turn info collection → INPUT_REQUIRED→INPUT_REQUIRED→COMPLETED")
+    @DisplayName("three-turn info collection → INPUT_REQUIRED→INPUT_REQUIRED→COMPLETED")
+    @Story("ra.input-required: react agent远端链路多轮中断续接")
     void threeTurnCollectionFollowsExpectedStateSequences(MessageProtocol protocol) {
         InteractionFlow.of(client("mainplan"))
                 .protocol(protocol)
-                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent",
-                        "sessionId", "c03-" + protocol.name()))
+                .withMetadata(Map.of("userId", "manual-user", "agentId", "main-plan-agent"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // Turn 1 — intent + destination only (no dates, no origin): rail should ask for more.
                 .send(COLLECTION_TURN_1)

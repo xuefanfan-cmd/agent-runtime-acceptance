@@ -1,0 +1,10 @@
+{
+  "_doc": "edpa-adapter Agent Card contract — dotted field path -> expected value, asserted against the raw JSON served at /.well-known/agent.json. Grounded in agent-service-app AgentCardController.buildCard() + the adapter's application.yml (spring.application.name=versatile-adapter, openjiuwen.service.a2a.* overrides). provider.organization is NOT pinned here (its value is the empty string \"\" — see the providerOrganizationIsNotBlank 争议点 in EdpaAdapterCardDiscoveryTest); skills are asserted separately via cardDeclaresVersatileBankProxySkill. The legacy top-level url/preferredTransport are deprecated (validated as 'emitted' in the topLevelUrlAndPreferredTransportAreAbsent 争议点), so neither is pinned here.",
+  "name": "versatile-adapter",
+  "version": "0.1.0",
+  "capabilities.streaming": true,
+  "capabilities.pushNotifications": false,
+  "capabilities.extendedAgentCard": false,
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"]
+}

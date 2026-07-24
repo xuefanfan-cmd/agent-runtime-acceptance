@@ -52,6 +52,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
       version: 0.1.0
+      port: 8095
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
@@ -72,6 +73,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-trip
       version: 0.1.0
+      port: 8094
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
@@ -81,6 +83,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
+      port: 8093
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
     hotel-sandbox:
       group: com.openjiuwen.example

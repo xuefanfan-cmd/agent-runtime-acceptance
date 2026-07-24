@@ -23,6 +23,7 @@
         <java.version>21</java.version>
         <a2a-sdk.version>1.0.0.Final</a2a-sdk.version>
         <awaitility.version>4.2.2</awaitility.version>
+        <okhttp.version>4.12.0</okhttp.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <allure.version>2.35.3</allure.version>
         <!-- agent-runtime-java (com.openjiuwen) — white-box contract tests (e.g. Feat003) reach into
@@ -65,6 +66,14 @@
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
             <version>${awaitility.version}</version>
+        </dependency>
+
+        <!-- HTTP mock server — Card validation tests need mock agent returning invalid Card -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>${okhttp.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- ================================================================ -->

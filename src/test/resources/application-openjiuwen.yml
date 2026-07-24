@@ -13,6 +13,13 @@ sut:
   wire-log:
     enabled: true
   services:
+    postgres:
+      image: postgres:latest
+      port: 5432
+      env:
+        POSTGRES_DB: agent_rdc
+        POSTGRES_USER: agent_rdc
+        POSTGRES_PASSWORD: agent_rdc
     redis:
       image: redis:7-alpine
       port: 6379
@@ -41,6 +48,21 @@ sut:
   # are for code analysis only and are never used at runtime.
   # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
+    registry-center:
+      group: com.openjiuwen
+      artifact: registry-discovery-center
+      version: 0.1.0
+      ready-mode: tcp
+      spring:
+        properties:
+          spring.datasource.username: agent_rdc
+          spring.datasource.password: agent_rdc
+          spring.flyway.enabled: true
+          agent-bus.registry.mvp.probe-interval-ms: 600000
+      service-bindings:
+        postgres:
+          url-key: spring.datasource.url
+          url-template: "jdbc:postgresql://{{url}}/agent_rdc"
     mock-mcp:
       group: com.huawei.ascend.examples
       artifact: travel-openjiuwen-test-support
@@ -85,6 +107,11 @@ sut:
       version: 0.1.0
       port: 8093
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+    hotel-skillhub:
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
+      version: 0.1.0
+      profile: skillhub-remote
     hotel-sandbox:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel

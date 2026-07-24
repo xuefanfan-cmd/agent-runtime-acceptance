@@ -31,6 +31,8 @@
              `agent-service-app` is the jar that transitively brings spec + adapters-common +
              adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY. -->
         <agent-runtime-java.version>0.1.0</agent-runtime-java.version>
+        <agent-runtime-ext-java.version>0.1.0</agent-runtime-ext-java.version>
+        <registry-discovery-center.version>0.1.0</registry-discovery-center.version>
     </properties>
 
     <dependencyManagement>
@@ -82,6 +84,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -138,6 +145,21 @@
             <groupId>com.openjiuwen</groupId>
             <artifactId>agent-service-adapters-agentcore</artifactId>
             <version>${agent-runtime-java.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-022 Custom REST ingress SPI. The SUT process loads this same artifact externally. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-app-custom-rest</artifactId>
+            <version>${agent-runtime-ext-java.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-016 public contracts; this artifact is also launched as an external JAR. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>registry-discovery-center</artifactId>
+            <version>${registry-discovery-center.version}</version>
+            <classifier>lib</classifier>
             <scope>test</scope>
         </dependency>
     </dependencies>

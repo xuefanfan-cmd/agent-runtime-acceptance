@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -50,6 +52,9 @@ import static org.assertj.core.api.Assertions.fail;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-004")
+@Feature("FEAT-004: 任务驱动远程智能体调用")
+@Story("da.multi-turn-search-followup: 远端 INPUT_REQUIRED 多轮追问补全查询意图")
 class MultiTurnSearchFollowupTest extends BaseManagedStackTest {
 
     private static final Logger LOG = Logger.getLogger(MultiTurnSearchFollowupTest.class.getName());

@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -45,6 +48,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("component")
 @Tag("smoke")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Stories({
+        @Story("da.agent-card-discovery: /.well-known/agent-card.json 端点发现与三端点等价"),
+        @Story("da.agent-card-contract: card 关键字段契约快照")
+})
 class AgentCardDiscoveryTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

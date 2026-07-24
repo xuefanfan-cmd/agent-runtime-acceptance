@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
+import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Stories({
+        @Story("da.jsonrpc-invalid-request: 合法 JSON 但缺 method → -32600 invalid-request"),
+        @Story("da.jsonrpc-id-preserved: 错误响应须回显请求 id")
+})
 class JsonRpcInvalidRequestTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";
@@ -50,7 +59,7 @@ class JsonRpcInvalidRequestTest extends BaseManagedStackTest {
 
     @Test
     @DisplayName("FEAT-001.jsonrpc-invalid-request: 缺 method → HTTP 200 + code=-32600 + id 回显 '1'")
-    void invalidShapeProducesInvalidRequestAndPreservesId() throws Exception {
+    void missingMethodReturnsInvalidRequestWithHttpOk() throws Exception {
         String bodyText = "{\"jsonrpc\":\"2.0\",\"id\":\"1\"}";
         HttpResponse<String> response = post("/a2a", bodyText);
 
@@ -73,6 +82,33 @@ class JsonRpcInvalidRequestTest extends BaseManagedStackTest {
         assertThat(body.path("id").asText())
                 .as("id should be preserved as '1' (FEAT-001.jsonrpc-id-preserved)\nbody: %s", response.body())
                 .isEqualTo("1");
+    }
+
+    @Test
+    @DisplayName("FEAT-001.jsonrpc-invalid-request: 顶层为 JSON 数组 [] → HTTP 200 + code=-32600")
+    void nonObjectPayloadReturnsInvalidRequest() throws Exception {
+        // JSON-RPC 2.0 §4.2 / §6: empty array (or any non-object top-level payload) is not a
+        // well-formed Request/Batch, dispatcher must return -32600 invalid-request in a 200 body.
+        // Top-level is not an object so there is no request id to echo → error id must be null.
+        HttpResponse<String> response = post("/a2a", "[]");
+
+        assertThat(response.statusCode())
+                .as("HTTP status should be 200 (invalid-request lives in body)\nbody: %s", response.body())
+                .isEqualTo(200);
+
+        JsonNode body = mapper.readTree(response.body());
+        assertThat(body.path("jsonrpc").asText())
+                .as("body should be a JSON-RPC 2.0 envelope\nbody: %s", response.body())
+                .isEqualTo("2.0");
+        assertThat(body.has("error"))
+                .as("body should carry an error object\nbody: %s", response.body())
+                .isTrue();
+        assertThat(body.path("error").path("code").asInt())
+                .as("error.code should be -32600 (invalid request)\nbody: %s", response.body())
+                .isEqualTo(JSON_RPC_INVALID_REQUEST);
+        assertThat(body.hasNonNull("id"))
+                .as("id should be null (no request object to echo id from)\nbody: %s", response.body())
+                .isFalse();
     }
 
     private HttpResponse<String> post(String path, String body) throws Exception {

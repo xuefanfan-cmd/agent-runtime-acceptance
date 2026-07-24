@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -37,6 +39,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Story("da.jsonrpc-parse-error: 非法 JSON body → -32700 parse-error + id=null")
 class JsonRpcParseErrorTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";
@@ -52,7 +57,7 @@ class JsonRpcParseErrorTest extends BaseManagedStackTest {
 
     @Test
     @DisplayName("FEAT-001.jsonrpc-parse-error: 非法 JSON → HTTP 200 + error.code=-32700 + id=null")
-    void malformedJsonProducesParseError() throws Exception {
+    void parseErrorReturnsJsonRpcErrorWithHttpOkAndNullId() throws Exception {
         String malformed = "{not-json";
         HttpResponse<String> response = post("/a2a", malformed);
 

@@ -26,6 +26,9 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
+import io.qameta.allure.Story;
 
 /**
  * DA-02 — deep-research 同步 SendMessage (场景 2).
@@ -55,6 +58,12 @@ import com.huawei.ascend.sit.lifecycle.SutStack;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Stories({
+        @Story("da.send-message-sync: A2A SendMessage 同步一发一收"),
+        @Story("da.task-lifecycle: SUBMITTED→WORKING→COMPLETED 状态收束")
+})
 class SyncSendMessageTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

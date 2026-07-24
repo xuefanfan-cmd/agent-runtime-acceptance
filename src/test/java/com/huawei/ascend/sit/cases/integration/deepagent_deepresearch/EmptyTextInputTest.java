@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
@@ -69,6 +71,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("integration")
 @Tag("deepagent")
 @Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Story("da.empty-text-input: §5.1.6 反推空文本输入拒绝语义")
 class EmptyTextInputTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

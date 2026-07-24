@@ -55,7 +55,7 @@ related_docs:
 | 9 | 结果回灌（COMPLETED → InteractiveInput → LLM resume） | 🟡 隐式 | 所有多-agent 用例的 COMPLETED（LLM 汇总输出的存在就是回灌生效） | 无专用断言"tool call/result pair 出现在 LLM 上下文"，靠 golden answer 兜底。 |
 | 10 | 父 Task 进度投射（远程 artifact → 父 Task artifact） | 🟡 隐式 | StreamingTravelPlanningTest（父 stream 收到中间 progress） | 无专用断言"父 artifact 来源于远端 ArtifactUpdate"。 |
 | 11 | 取消级联传播 | ⬜ 未覆盖 | — | 无用例做父 Task CancelTask → 断远端 CancelTask 触达。 |
-| 12 | 超时检测（REMOTE_TIMEOUT + 孤儿 cancel） | 🟡 已落地 · **当前 expected-red · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)** | [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) | Mock SSE stall 30s 后主动 close；期待父 Task 载荷含 `REMOTE_TIMEOUT` 字面串。首跑证据：mock 30s close 后 openjiuwen `A2ARemoteAgentClient` 3 分钟零日志、父 Task 永久卡 `requires-interaction` → SUT bug（基础错误路径缺失）。详见 §5.2 / BUG-004。 |
+| 12 | 超时检测（REMOTE_TIMEOUT + 孤儿 cancel） | ✅ 覆盖 · **BUG-004 修复回归 watchdog** | [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) | Mock SSE stall 30s 后主动 close;开发组 2026-07-23 澄清后走三档模型的**回灌 LLM 路径**(`REMOTE_TIMEOUT` / `REMOTE_STREAM_CLOSED`),稳定码不落 wire,只断言"不 hang"。BUG-004 已修复;详见 §5.2 / [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)。 |
 | 13 | 嵌套远程调用禁止（NESTED_REMOTE_INVOCATION_UNSUPPORTED） | 🟡 已落地 · **expected-red · spec-⬜ watchdog** | [NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) | L2 §2.1 line 73 明标该能力 ⬜ 未实现；本用例作为未来 spec ✅ 后的自动 flip-green watchdog（详见 §5.3）。 |
 | 14 | Graph/Parallel 编排 | ⬜ 未覆盖（当前限制） | — | version-scope 明标"⬜ 仅支持单层"，非 MUST。 |
 
@@ -67,8 +67,8 @@ related_docs:
 |---|---|---|---|---|
 | 1 | Card 初次解析失败（URL 不可达 → pending，本地正常启动） | ⬜ | — | 无负例（构造错 URL 后仍能启动主 Agent）。 |
 | 2 | Card 后续刷新失败（保留上次 Card） | ⬜ | — | 无负例。 |
-| 3 | 远程超时（REMOTE_TIMEOUT） | 🟡 已落地 · **expected-red · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)** | [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) | 同 §2 #12。 |
-| 4 | 远程返回 FAILED | 🟡 部分 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) | 造成的是"连接被 reset"而不是"远端返回 FAILED status"，最贴近但不等价。 |
+| 3 | 远程超时（REMOTE_TIMEOUT） | ✅ 覆盖 · **BUG-004 修复回归 watchdog** | [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) | 同 §2 #12。走三档模型回灌 LLM 路径,稳定码 payload 不落 wire。 |
+| 4 | 远程返回 FAILED(REMOTE_ERROR 类) | 🟡 层 1 覆盖 · **层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)** | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) + [RemoteSseAbortFalseCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteSseAbortFalseCompletedTest.java) | issue-42 修复只覆盖层 1(终态 FAILED,不假报 COMPLETED);层 2(`status.message` 结构化 payload)因 [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md) 缺失(REMOTE_ERROR 稳定码未分派、payload 未落 wire)。详见 §5.4。 |
 | 5 | 父 Task 取消（best-effort cancel 远程） | ⬜ | — | 同 §2 #11。 |
 | 6 | 远端 late event（terminal 后到达 → 丢弃） | ⬜ | — | 未覆盖。 |
 | 7 | 嵌套远程调用（NESTED_REMOTE_INVOCATION_UNSUPPORTED） | 🟡 已落地 · **expected-red · spec-⬜ watchdog** | [NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java) | 同 §2 #13。 |
@@ -84,7 +84,7 @@ related_docs:
 | `TaskStatusUpdate` | COMPLETED | toolResult = TextPart 文本 | 🟡 隐式（所有多-agent 用例走 COMPLETED） |
 | `TaskStatusUpdate` | INPUT_REQUIRED | 父 Task → INPUT_REQUIRED + metadata | ✅（中断-续接用例族） |
 | `TaskStatusUpdate` | 其他 final state（FAILED/CANCELED/REJECTED） | toolResult = error JSON | ⬜（DownstreamAgentKilledMidStreamTest 走的是 reset，不是 FAILED status） |
-| 超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` | 🟡 已落地 · **expected-red · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)**（[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java);详见 §5.2） |
+| 超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` | ✅ 覆盖 · **BUG-004 修复回归 watchdog**([RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java);详见 §5.2)—— 走回灌 LLM 路径,不落 wire |
 
 ---
 
@@ -108,40 +108,39 @@ related_docs:
 - `terminalState=TASK_STATE_COMPLETED` —— SUT 走成功终态，无 stream 异常
 - **结论**：SUT 违反 L2 §3.1 ⚠️ 关键约束。用例作为 spec 卫兵**正确红**；SUT 侧修复后自动绿。
 
-### 5.2 远端 SSE 超时投射 REMOTE_TIMEOUT（[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md) watchdog）
+### 5.2 远端 SSE 超时 / 关流:回灌 LLM 路径([BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md) 修复回归 watchdog)
 
-**Spec 依据（已 verbatim 核对 primary source `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md`）**：
-- **L2 §2.1 能力清单**（同档 line 72）：「超时检测 | ✅ | REMOTE_TIMEOUT + 孤儿 Task cancel」。
-- **L2 §3.2 远程调用管道 · 远端结果映射**（同档 line 163）：「超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` |」。
-- **L2 §5.3 错误、取消、降级处理**（同档 line 280）：「远程超时 | 超过 stream-timeout | REMOTE_TIMEOUT → child error | toolResult = `{"error":"REMOTE_TIMEOUT"}` |」。
-- **version-scope §2.1 能力清单**（`version-scope/FEAT-004-remote-agent-orchestration.md`）同款转述。
-- **agent-runtime README** line 121：「`stream-timeout` caps one streaming invocation of that remote agent. On expiry the runtime keeps the results already received, appends a failed result carrying the stable code `REMOTE_TIMEOUT` (retryable), and best-effort cancels the remote task.」
-- **SUT 源常量**：`A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE = "REMOTE_TIMEOUT"`（`spring-ai-ascend/agent-runtime/src/main/.../a2a/A2aRemoteAgentOutboundAdapter.java` line 47）。
+**开发组 2026-07-23 澄清的错误分类模型**(三档稳定码):
 
-**覆盖状态**：🟡 已落地 · **当前 expected-red** · SUT bug（[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)）
+| 稳定码 | 触发场景 | 处理策略 | 期望终态 | 覆盖用例 |
+|---|---|---|---|---|
+| `REMOTE_TIMEOUT` | 远端 SSE 超过 stream-timeout | **回灌 LLM 当 tool-result** | LLM 决策(通常 COMPLETED) | 本节 · [RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) |
+| `REMOTE_STREAM_CLOSED` | 远端 SSE 已建立后 server 关流,无终态事件 | **回灌 LLM 当 tool-result** | LLM 决策(通常 COMPLETED) | 本节 · 同上 |
+| `REMOTE_ERROR` | 连接层失败/远端不可达(issue-42 场景) | **直接报 FAILED,不回灌 LLM** | FAILED 携带结构化 payload | §5.4 · [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) |
 
-**落点**：[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java)
-—— 复用 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java)
-新增的 `STALL_SSE` 模式：`GET /.well-known/agent-card.json` 返合法 card（含非空 `web_search` skill,
-让 tool spec 正常装配),`POST /a2a` 打开 SSE 流,每 500ms 发一条 `:keep-alive` 探活,30s 后 mock 主动 `close()`;
-deep-research 通过 `SEARCH_AGENT_URL` env 指向 mock。断言任一 client event 的 status/artifact 文本含字面串
-`REMOTE_TIMEOUT`,并要求父 Task 在 180s 内到达终态。
+**Spec 依据(已 verbatim 核对 primary source `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-004-remote-agent-orchestration.md`)**:
+- **L2 §2.1 能力清单**(同档 line 72):「超时检测 | ✅ | REMOTE_TIMEOUT + 孤儿 Task cancel」。
+- **L2 §3.2 远程调用管道 · 远端结果映射**(同档 line 163):「超时 | 超过 stream-timeout | `{"error":"remote A2A stream timed out","code":"REMOTE_TIMEOUT"}` |」—— 注意按澄清后的模型走"回灌 LLM"路径,不落 A2A wire 的 `status.message`。
+- **L2 §5.3 错误、取消、降级处理**(同档 line 280)。
+- **SUT 源常量**:`A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE = "REMOTE_TIMEOUT"`(`spring-ai-ascend/agent-runtime/src/main/.../a2a/A2aRemoteAgentOutboundAdapter.java` line 47)。
 
-**首次执行观测（2026-07-21）**:
-- `mock.cardGetCount=1` —— SUT 拉过 card,触发前置成立 ✅
-- `mock.a2aPostCount=1` —— SUT 向 mock `/a2a` 发起了 `SendStreamingMessage`(tool spec 装配成功,planner 路由到远端)✅
-- `mock.a2aClientClosedCount=0` —— **SUT 全程未主动关闭 SSE 连接** ❌
-- `mock.a2aLastHoldMillis=30068` —— mock 自身 30s deadline 到,由 <b>mock 主动关</b>了连接
-- `elapsedMs=180115` —— 用例整体超时(180s):**即使 mock 已在 30s 关流,SUT 又在 150s 后仍未把父 Task 收束到终态**
-- SUT 日志硬信号:`16:40:12.492 A2ARemoteAgentClient - A2A streaming call agent=search-agent ...` 之后 **3 分钟零日志**(没有 EOF 感知 / 没有 error / 没有 cancel / 没有失败 tool result)。父 Task 永久卡 `requires-interaction`。
-- `terminalState` 未到达 → `awaitTerminalState` 纯 `ConditionTimeoutException`
+**覆盖状态**:✅ 覆盖 · **BUG-004 修复回归 watchdog**(<em>期望绿</em>)
 
-**判读(bug 归档)**:openjiuwen 侧确有 a2a client 栈(`com.openjiuwen.service.agent.core.*.A2ARemoteAgentClient` /
-`A2AEnabledServeOrchestrator`,SUT 日志已确认),但**基础错误路径完全缺失** —— SSE reader 不感知服务端
-close/EOF,不发失败 tool result,父 Task 不 un-suspend。这不是"实现了但用了不同错误码"级别的 spec 差异,
-而是任何 a2a client 都应处理的通用错误分支,与是否遵循 spring-ai-ascend `REMOTE_TIMEOUT` spec 无关。
-因此单独归为 **[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)**
-(P1)。SUT 修复后本用例自动转绿。
+**BUG-004 修复前后对比**:
+- **首观(2026-07-21)**:mock 30s 关流后 SUT 侧 3 分钟零日志、父 Task 永久卡 `requires-interaction` —— 用例纯超时。
+- **修复后(2026-07-23)**:`A2ARemoteAgentClient` 感知 SSE close,分派 `code=REMOTE_STREAM_CLOSED`,回灌 LLM,LLM 兜底汇总收束到终态。
+
+**落点**:[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java)
+—— 复用 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) 的 `STALL_SSE` 模式;
+deep-research 通过 `SEARCH_AGENT_URL` env 指向 mock。
+
+**断言层次**:
+- 层 2(前置一致性):`mock.cardGetCount >= 1` 且 `mock.a2aPostCount >= 1` —— 证明 SUT 走到了 Card Cache + 远端 tool 装配 + SendStreamingMessage。
+- 层 1(核心 · BUG-004 修复):任务在 180s 内到达某终态(不再永久 hang)—— 证明 SSE close 被感知、父 Task 被 un-suspend。
+- 层 3(健康度 soft-check):`mock.a2aClientClosedCount >= 1` 或 `mock.a2aLastHoldMillis < MOCK_STALL_MS` —— 证明 SUT 主动关了 SSE 连接(非必需)。
+
+**为何不断言 `REMOTE_STREAM_CLOSED` / `REMOTE_TIMEOUT` 字面串出现在 client event**:
+按澄清模型,这两档稳定码走"回灌 LLM"路径,payload 是 LLM 的 tool-result prompt,不会以字面串出现在 A2A wire 上的 `status.message.parts` 或 artifact 中 —— LLM 会消化并以自然语言汇总输出。因此本用例只断言**健康度**(不 hang + 走了远端 tool call),而不断言 wire 端字面串。
 
 ### 5.3 嵌套远程调用禁止(spec-⬜ watchdog · 非 bug)
 
@@ -173,17 +172,38 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 **INCONCLUSIVE 情形**(已知非确定性):
 - LLM 决定把两个查询**合并成一次** web_search 调用 → 嵌套根本不发生;当前不加机器可读的 INCONCLUSIVE 分支,通过 haystack + terminalState 组合信息在诊断消息里由人肉判读。可选后续:改用 mock 反射二次 invocation 的 wire 形态直接触发路径(需要 mock 精确产出 openjiuwen `runtime.remote.kind=REMOTE_AGENT_INVOCATION` 结构化 payload)。
 
+### 5.4 REMOTE_ERROR 路径未落 wire · issue-42 层 2 缺口([BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md))
+
+**开发组澄清模型下**,`REMOTE_ERROR` 是三档稳定码中**唯一不回灌 LLM、直接报 FAILED** 的一档 —— 正因如此,它承担的信息传递责任比另外两档更重:调用方**必须**从 `status.message` 拿到结构化描述,否则完全无法诊断远端不可达 vs 逻辑错误 vs 其他。
+
+**Spec 依据(已 verbatim 核对)**:
+- **FEAT-001 §5.1.8**(`architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-001-standardized-agent-service-entrypoint.md`):handler/runtime exception 必须形成 A2A failed Task 或 JSON-RPC internal error,可形成 Task 的路径应携带**结构化错误 payload**。
+- **L2 §5.3 错误、取消、降级处理**(同档 line 284):REMOTE_ERROR 类需直接报 FAILED 并携带 payload。
+
+**覆盖状态**:🟡 层 1 覆盖(不假报 COMPLETED)· **层 2 expected-red** · SUT bug([BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md))
+
+**落点**:
+- 层 1 watchdog:[RemoteSseAbortFalseCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteSseAbortFalseCompletedTest.java)(issue-42 layer-1 watchdog)。
+- 层 1 + 层 2 联合断言:[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) —— 层 1 已绿(终态 FAILED),层 2 红(`task.status.message == null`)。
+
+**首次执行观测(2026-07-23,contextId=06fc8de3)**:
+- 层 1 通过:`terminalState=TASK_STATE_FAILED`(不再假报 COMPLETED)✅
+- 层 2 失败:`Expecting actual not to be null`(`task.status().message()` 为 null)❌
+- SUT 日志:`A2ARemoteAgentClient - WARN A2A stream failed: Connection refused: getsockopt` —— **连 `code=REMOTE_ERROR` 这一条日志都不存在**,说明稳定码分派逻辑压根没走到 REMOTE_ERROR 分支。
+
+**判读(bug 归档)**:`A2AEnabledServeOrchestrator.failRemoteStream` 只对"SSE 已建立后关流"一条子路径分派了稳定码(`REMOTE_STREAM_CLOSED`),对"socket-level 失败"(`ConnectException` / `SocketException`)完全没做分类;同时 `REMOTE_ERROR` 路径未把 payload 写入 `task.status.message`。归为 **[BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)**(P1)。SUT 修复后 DownstreamAgentKilledMidStreamTest 层 2 自动转绿。
+
 ---
 
 ## 6. 汇总
 
 | 桶 | 数量 | 说明 |
 |---|---|---|
-| ✅ 硬覆盖 | 2 | 远程调用主路径、中断-续接 |
-| 🟡 隐式覆盖 / expected-red | 8 | YAML 配置生效 / Card 拉取成功 / Tool 生成 / Tool 安装 / 结果回灌 / 父 Task 进度投射 / 远程 FAILED（部分）/ **§5.1 无 skills 反例**（已落地 · SUT 违反,当前红 · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md)）/ **§5.2 REMOTE_TIMEOUT watchdog**（已落地 · SUT bug,当前红 · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md)）/ **§5.3 嵌套禁止 watchdog**（已落地 · spec-⬜,当前红） |
+| ✅ 硬覆盖 | 3 | 远程调用主路径 / 中断-续接 / **§5.2 BUG-004 修复回归 watchdog(RemoteStreamTimeoutTest)** |
+| 🟡 隐式覆盖 / expected-red | 8 | YAML 配置生效 / Card 拉取成功 / Tool 生成 / Tool 安装 / 结果回灌 / 父 Task 进度投射 / **§5.1 无 skills 反例**(SUT 违反,当前红 · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md))/ **§5.3 嵌套禁止 watchdog**(spec-⬜,当前红)/ **§5.4 REMOTE_ERROR 层 2**(SUT 侧稳定码/payload 缺失,当前红 · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)) |
 | ⬜ 未覆盖 | 6 | Card 故障降级 (×3) / Metadata 转发 / 取消级联 / late event 丢弃 / Card Cache 全空 |
 
-**Gap 摘要**：主路径成熟；**§5.1 关键约束**首次落硬断言,SUT 侧当前违反(SkillsEmptyRemoteAgentTest expected-red · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md));**§5.2 REMOTE_TIMEOUT** 首次落 watchdog(RemoteStreamTimeoutTest expected-red · [BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md),openjiuwen A2ARemoteAgentClient 未感知 SSE close);**§5.3 嵌套禁止** 首次落 watchdog(NestedRemoteInvocationRefusalTest expected-red · L2 明标 ⬜ · 特性未落地);其余错误 / 取消 / 降级分支仍缺硬断言。
+**Gap 摘要**:主路径成熟;**§5.1 关键约束**首次落硬断言,SUT 侧当前违反(SkillsEmptyRemoteAgentTest expected-red · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md));**§5.2 BUG-004 修复**回归 watchdog 已绿(RemoteStreamTimeoutTest,三档模型回灌 LLM 路径已按设计工作);**§5.3 嵌套禁止**首次落 watchdog(NestedRemoteInvocationRefusalTest expected-red · L2 明标 ⬜ · 特性未落地);**§5.4 REMOTE_ERROR 层 2**首次落 wire 断言,SUT 侧稳定码 + payload 双缺失(DownstreamAgentKilledMidStreamTest 层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md));其余错误 / 取消 / 降级分支仍缺硬断言。
 
 ---
 
@@ -191,10 +211,11 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 
 1. **P1 · 无 skills Agent Card 反例** —— ✅ **已落地**（[SkillsEmptyRemoteAgentTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/SkillsEmptyRemoteAgentTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java)）· 当前 expected-red · SUT 违反 §3.1 关键约束 · 详见 [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md) / §5.1。
 2. **P1 · 嵌套远程调用禁止** —— ✅ **已落地**([NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java))· 当前 expected-red · **spec-⬜ watchdog**(L2 §2.1 line 73 明标 ⬜,全代码库 `NESTED_REMOTE_INVOCATION_UNSUPPORTED` 常量零命中,非 SUT bug)· 详见 §5.3 / §9.2。
-3. **P2 · REMOTE_TIMEOUT** —— ✅ **已落地**（[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) `STALL_SSE` 模式)· 当前 expected-red · **SUT bug([BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md))**:openjiuwen `A2ARemoteAgentClient` 完全未感知 SSE close/EOF,父 Task 永久卡 `requires-interaction` · 详见 §5.2。
-4. **P2 · 取消级联** —— 父 Task CancelTask → 断远端 SUT 侧也收到 CancelTask 或最终状态。需要在远端 SUT 侧观察 cancel 触达。
-5. **P3 · Card 刷新失败保留上次 Card** —— 启动后 kill 远端 → 断主 Agent tool 仍可见。与 downstream-agent-killed 有部分重叠。
-6. **P3 · Card 全空 / 初次拉取失败** —— 低价值，负 fallback 路径。
+3. **P2 · REMOTE_TIMEOUT / REMOTE_STREAM_CLOSED 回灌 LLM 路径** —— ✅ **已落地**([RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) `STALL_SSE` 模式)· **BUG-004 修复回归 watchdog** · 期望绿 · 详见 §5.2。
+4. **P1 · REMOTE_ERROR 层 2 wire payload** —— 🟡 层 1 已绿 · **层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)**([DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) 层 2 + [RemoteSseAbortFalseCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteSseAbortFalseCompletedTest.java) 层 1 watchdog)· SUT 未把 `REMOTE_ERROR` 稳定码分派 + 未把 payload 落到 `task.status.message` · 详见 §5.4。
+5. **P2 · 取消级联** —— 父 Task CancelTask → 断远端 SUT 侧也收到 CancelTask 或最终状态。需要在远端 SUT 侧观察 cancel 触达。
+6. **P3 · Card 刷新失败保留上次 Card** —— 启动后 kill 远端 → 断主 Agent tool 仍可见。与 downstream-agent-killed 有部分重叠。
+7. **P3 · Card 全空 / 初次拉取失败** —— 低价值，负 fallback 路径。
 
 ---
 
@@ -232,15 +253,15 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 - **不断言**:mock 或 search-agent 侧的 wire 计数(用真 search-agent,无 wire 级 count),具体错误消息措辞。
 - **落点**:[NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java)。
 
-### 9.3 FEAT-004.remote-stream-timeout — 远端 SSE 超时投射 REMOTE_TIMEOUT
+### 9.3 FEAT-004.remote-stream-timeout — 远端 SSE 关流 → 回灌 LLM 路径(BUG-004 修复回归 watchdog)
 
-- **状态**：✅ **已落地** · 当前 expected-red · **[BUG-004](../bugs/BUG-004-remote-sse-close-not-detected-parent-task-hangs-forever.md) watchdog**(openjiuwen `A2ARemoteAgentClient` 未感知 SSE close;详见 §5.2)
-- **FEAT 依据**：L2 §2.1 line 72「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」;L2 §3.2 line 163 远端结果映射;L2 §5.3 line 280 错误、取消、降级处理;agent-runtime README line 121 stream-timeout 描述;SUT 源常量 `A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE`。
-- **G**:SIT 侧起 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) 的 `STALL_SSE` 模式;`GET /.well-known/agent-card.json` 返合法 card(含非空 `web_search` skill,让 tool spec 正常装配);`POST /a2a` 设 `Content-Type: text/event-stream` 打开 SSE 流,不发任何事件,连接保持 30s;主 Agent(deep-research)通过 `SEARCH_AGENT_URL` env 指向该 mock。
+- **状态**:✅ **已落地** · **BUG-004 修复回归 watchdog** · <em>期望绿</em>(开发组澄清模型:`REMOTE_TIMEOUT` / `REMOTE_STREAM_CLOSED` 走回灌 LLM 路径,由 LLM 兜底汇总到终态)
+- **FEAT 依据**:L2 §2.1 line 72「超时检测 ✅ REMOTE_TIMEOUT + 孤儿 Task cancel」;L2 §3.2 line 163 远端结果映射;L2 §5.3 line 280 错误、取消、降级处理;SUT 源常量 `A2aRemoteAgentOutboundAdapter.REMOTE_TIMEOUT_CODE`。
+- **G**:SIT 侧起 [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) 的 `STALL_SSE` 模式;`GET /.well-known/agent-card.json` 返合法 card(含非空 `web_search` skill,让 tool spec 正常装配);`POST /a2a` 设 `Content-Type: text/event-stream` 打开 SSE 流,不发任何事件,连接保持 30s 后 mock 主动 close;主 Agent(deep-research)通过 `SEARCH_AGENT_URL` env 指向该 mock。
 - **W**:拉起主 Agent,发一个明确的 search 类型 prompt("帮我搜索 2026 年 7 月 15 日全球黄金价格盘中最高价...")。
-- **T**:任一 client event 的 `status.message.parts` 中 TextPart / artifact 文本内含字面串 `REMOTE_TIMEOUT` —— 层 1 核心;`mock.cardGetCount >= 1` AND `mock.a2aPostCount >= 1` —— 层 2 前置(证明 tool 装配 + planner 路由到远端);终态非空 —— 层 3 健康度。
-- **PASS**:任一 client event 文本含 `REMOTE_TIMEOUT`。**FAIL(BUG-004)**:通篇无 `REMOTE_TIMEOUT` 字面串 + `awaitTerminalState` 纯超时 —— openjiuwen `A2ARemoteAgentClient` 未感知 SSE close/EOF,父 Task 永久 hang(当前预期形态)。**INCONCLUSIVE**:层 2 前置不成立(`cardGetCount=0` 或 `a2aPostCount=0`,说明 tool 未装配 / planner 未 route,层 1 无意义)。
-- **不断言**:具体父终态类型(FAILED / COMPLETED 均合规,spec §3.2 只规定 toolResult 内容);mock 侧是否收到 `CancelTask` POST(best-effort cancel 属实现细节,时序不硬约束)。
+- **T**:层 2(前置一致性):`mock.cardGetCount >= 1` AND `mock.a2aPostCount >= 1`;层 1(核心 · BUG-004 修复):任务在 180s 内到达某终态(不再永久 hang);层 3(健康度 soft-check):`mock.a2aClientClosedCount >= 1` 或 `mock.a2aLastHoldMillis < MOCK_STALL_MS`。
+- **PASS**:任务在 180s 内到达终态(无论 FAILED / COMPLETED,均由 LLM 兜底决策)。**FAIL(BUG-004 回归)**:`awaitTerminalState` 纯超时 —— `A2ARemoteAgentClient` 未感知 SSE close/EOF,父 Task 永久 hang。**INCONCLUSIVE**:层 2 前置不成立(`cardGetCount=0` 或 `a2aPostCount=0`,说明 tool 未装配 / planner 未 route,层 1 无意义)。
+- **不断言**:具体父终态类型(FAILED / COMPLETED 均合规,spec §3.2 只规定 toolResult 内容);wire 端字面串 `REMOTE_TIMEOUT` / `REMOTE_STREAM_CLOSED`(回灌 LLM 路径,payload 是 tool-result prompt,LLM 会消化,不落 wire);mock 侧是否收到 `CancelTask` POST(best-effort cancel 属实现细节)。
 - **落点**:[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java)。
 
 ---

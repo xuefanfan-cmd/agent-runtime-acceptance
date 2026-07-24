@@ -5,6 +5,8 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.mock.MockRemoteAgentServer;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
@@ -85,6 +87,8 @@ import static org.assertj.core.api.Assertions.fail;
 @Tag("deepagent")
 @Tag("feat-004")
 @Tag("manual")
+@Feature("FEAT-004: 任务驱动远程智能体调用")
+@Story("da.skills-empty-not-installed: L2 §3.1 skills=[] 不被 Card Cache 装配为 tool")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SkillsEmptyRemoteAgentTest {
 

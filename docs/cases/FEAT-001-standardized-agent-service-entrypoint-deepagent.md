@@ -101,7 +101,7 @@ related_docs:
 | | B5 | jsonrpc-id-preserved | ✅ | 并入 B2 / B3 / B4 |
 | **C. 核心 A2A 方法（5）** | C1 | send-message-blocking | ✅ | SyncSendMessageTest（DA-02） |
 | | C2 | send-streaming-message | ✅ | StreamingSendMessageTest（DA-03） |
-| | C3 | downstream-agent-killed-mid-stream | 🟡 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)（watchdog + @manual；本地拉两 jar，用 SutStack.stop() 中途杀 search） |
+| | C3 | downstream-agent-killed-mid-stream | 🟡 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)(watchdog + @manual;层 1 绿,层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)) |
 | | C4 | get-task / not-found | ✅ | GetTaskTest（DA-04 + F） |
 | | C5 | nonexistent-tool-refusal | ✅ | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) |
 | **D. Push Config CRUD（1）** | D1 | push-config-crud | ✅ | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)（capabilities=false 时 assumeTrue skip） |
@@ -251,17 +251,17 @@ related_docs:
 - **框架落点**：[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java)。
 
 #### FEAT-001.downstream-agent-killed-mid-stream — 下游 A2A agent 中途被杀
-- **状态**：partial（watchdog 已落；本地拉起两 jar，用 `SutStack.stop()` 中途杀 search 触发；jar 就绪前 @manual）
-- **评审关联**：§6 —— 具体 `error.code` 值断不了；但**层 1 / 层 2 是 spec 明文 MUST**，不受 §6 影响
-- **FEAT 依据**：§5.1.4「stream 必须关闭 + 以 failed 收束」+ §5.1.6「COMPLETED 语义:任务已完成」+ §5.1.8「handler runtime exception → failed Task + 结构化错误 payload」。
-- **G**：deep-research + search 两 jar 本地就绪（`~/.m2/repository/com/openjiuwen/example/`）；框架拉起 search 后再拉起 deep-research 并把 search baseUrl 通过 `SEARCH_AGENT_URL` 环境变量注入。
-- **W**：`SendStreamingMessage` 发一个明确需要 search 的 prompt；等待 deep-research 进入 WORKING 状态 + 一小段 grace period（让 tool call 真正打给 search）后调 `SutStack.stop("search")`；收集所有 SSE frame + terminal Task。
-- **T**：
-  - **层 1**（§5.1.4 + §5.1.6 + §5.1.8）：stream 终态 ∈ {FAILED, CANCELED, REJECTED} —— **COMPLETED 视为 FAIL**（agent 无法完整回答用户却包装成成功，违反 spec）
-  - **层 2**（§5.1.8）：终态 Task 携带结构化错误 payload（`status.message.parts` 非空）
-  - **不断言**：具体 `error.code` / 错误消息措辞
-- **PASS**：层 1 + 层 2 都满足。**FAIL**：终态是 COMPLETED（下游挂了却走成功收束——即 SUT 违反 §5.1.6） / 无结构化 payload / 静默 FIN。
-- **框架落点**：[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)。标 `@Tag("manual")`：需要本地 deep-research + search 两 jar，CI 环境默认不具备；jar 就绪且 SEARCH_AGENT_URL env 注入验证生效后可移除 manual tag。
+- **状态**:partial · **层 1 绿 · 层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)**(watchdog 已落;本地拉起两 jar,用 `SutStack.stop()` 中途杀 search 触发;jar 就绪前 @manual)
+- **评审关联**:§6 —— 具体 `error.code` 值断不了;但**层 1 / 层 2 是 spec 明文 MUST**,不受 §6 影响
+- **FEAT 依据**:§5.1.4「stream 必须关闭 + 以 failed 收束」+ §5.1.6「COMPLETED 语义:任务已完成」+ §5.1.8「handler runtime exception → failed Task + 结构化错误 payload」。
+- **G**:deep-research + search 两 jar 本地就绪(`~/.m2/repository/com/openjiuwen/example/`);框架拉起 search 后再拉起 deep-research 并把 search baseUrl 通过 `SEARCH_AGENT_URL` 环境变量注入。
+- **W**:`SendStreamingMessage` 发一个明确需要 search 的 prompt;等待 deep-research 进入 WORKING 状态 + 一小段 grace period(让 tool call 真正打给 search)后调 `SutStack.stop("search")`;收集所有 SSE frame + terminal Task。
+- **T**:
+  - **层 1**(§5.1.4 + §5.1.6 + §5.1.8):stream 终态 ∈ {FAILED, CANCELED, REJECTED} —— **COMPLETED 视为 FAIL**(agent 无法完整回答用户却包装成成功,违反 spec)—— ✅ 2026-07-23 issue-42 修复后当前绿
+  - **层 2**(§5.1.8):终态 Task 携带结构化错误 payload(`status.message.parts` 非空)—— ❌ 2026-07-23 观测红:`task.status.message == null`;根因是 REMOTE_ERROR 稳定码未分派 + payload 未落 wire,归为 [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)
+  - **不断言**:具体 `error.code` / 错误消息措辞
+- **PASS**:层 1 + 层 2 都满足。**当前 FAIL(BUG-005)**:层 2 红 —— SUT 侧 REMOTE_ERROR 路径既没分派稳定码也没落 payload。修复方向见 [BUG-005 §6](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)。
+- **框架落点**:[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java);姐妹用例 [RemoteSseAbortFalseCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteSseAbortFalseCompletedTest.java) 承载 issue-42 层 1 watchdog。标 `@Tag("manual")`:需要本地 deep-research + search 两 jar,CI 环境默认不具备;jar 就绪且 SEARCH_AGENT_URL env 注入验证生效后可移除 manual tag。
 
 #### FEAT-001.nonexistent-tool-refusal — 不存在工具的 LLM 拒答
 - **状态**：runnable（COMPLETED 正例，与 downstream-agent-killed 构成完整错误面覆盖）

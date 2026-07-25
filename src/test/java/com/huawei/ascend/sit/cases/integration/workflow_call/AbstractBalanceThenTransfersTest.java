@@ -11,11 +11,12 @@ import com.huawei.ascend.sit.transport.MessageProtocol;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 循环直接桥到 plan-agent 的 A2A 流式（{@link MessageProtocol#A2A_STREAM}）或 REST 流式（{@link MessageProtocol#REST_QUERY}）线上，
  * 复用 InteractionFlow 传输层，无新线逻辑。续轮：A2A taskId / REST conversation_id 跨 {@code send} 续传；contextId 钉在 cid 上。
  *
- * <p><b>三个 seam</b>：
+ * <p><b>四个 seam</b>：
  * <ul>
  *   <li>{@link #buildStack} —— 继承自 {@link BaseManagedStackTest}，本类<b>不</b>实现，仍 {@code abstract}，
  *       叶子类决定栈拓扑/中间件（如 redis profile / multi-workflow 绑定）。非目标环境在叶子 {@code buildStack} 第一行 {@code assumeTrue} gate。</li>
@@ -40,6 +41,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       （如 multi-workflow 禁 {@code type} 查询参）或 base URL（如 gateway 变体）。</li>
  *   <li>{@link #afterCheck} —— 后置检查点 seam，默认软捕获转账完成态标记（{@code System.out} 打印命中清单）；叶子类 override 追加专属断言
  *       （如 Redis 键空间门禁 + 完成态硬断言）。</li>
+ *   <li>{@link #protocols} —— 参数化协议集 seam，默认 A2A_STREAM + REST_QUERY；<b>非静态</b>——靠 {@code @TestInstance(PER_CLASS)}
+ *       生效，叶子类 override 多态命中（如换 {@link MessageProtocol#REST_GATEWAY}）。由 {@link BalanceTransfersProtocolProvidersTest} 兜底锁定。</li>
  * </ul>
  *
  * <p><b>为何只跑 stepUi 一种驱动器</b>：SCRIPT 驱动器维度已在 {@code TransferAfterBalanceAcceptanceTest} 覆盖，
@@ -70,13 +73,21 @@ abstract class AbstractBalanceThenTransfersTest extends BaseManagedStackTest {
     // buildStack(TestConfig) 不在此实现 —— 继承自 BaseManagedStackTest 仍为 abstract，叶子类 override 它切换栈拓扑/中间件。
 
     /**
+     * 本变体驱动的协议集；叶子可 override 以驱动不同的线（如直连 plan-agent gateway 端点的
+     * {@link MessageProtocol#REST_GATEWAY}）。<b>非静态</b>——靠 {@link com.huawei.ascend.sit.base.BaseManagedStackTest}
+     * 的 {@code @TestInstance(PER_CLASS)} 生效，子类 override 多态命中。默认 = 原行为（A2A_STREAM + REST_QUERY）。
+     */
+    protected Stream<MessageProtocol> protocols() {
+        return Stream.of(MessageProtocol.A2A_STREAM, MessageProtocol.REST_QUERY);
+    }
+
+    /**
      * 模板方法：openConversation → runFlow → assertCoreSemantics → afterCheck。{@code final} 锁骨架，子类不得 override；
      * 变体差异一律走 {@link #buildStack}（栈/中间件）与 {@link #afterCheck}（额外检查点）。
      */
     @ParameterizedTest(name = "[{index}] {0}")
-    @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
-            names = {"A2A_STREAM", "REST_QUERY"})
-    @DisplayName("查余额+转账（stepUi）—— A2A_STREAM / REST_QUERY")
+    @MethodSource("protocols")
+    @DisplayName("查余额+转账（stepUi）")
     protected final void balanceThenTransfers(MessageProtocol protocol) {
         try (Conversation conv = openConversation(protocol)) {
             String blob = runFlow(conv);

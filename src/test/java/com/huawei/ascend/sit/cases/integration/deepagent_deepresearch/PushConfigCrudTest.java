@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -44,6 +46,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Tag("integration")
 @Tag("deepagent")
 @Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Story("da.push-config-crud: PushNotificationConfig Set/Get/List/Delete 契约")
 class PushConfigCrudTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

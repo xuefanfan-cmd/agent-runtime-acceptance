@@ -5,6 +5,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
@@ -45,7 +47,10 @@ import static org.assertj.core.api.Assertions.fail;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-003")
 @Tag("manual")
+@Feature("FEAT-003: 智能体任务状态缓存")
+@Story("da.long-term-memory-recall: 长期记忆跨轮召回")
 class LongTermMemoryRecallTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

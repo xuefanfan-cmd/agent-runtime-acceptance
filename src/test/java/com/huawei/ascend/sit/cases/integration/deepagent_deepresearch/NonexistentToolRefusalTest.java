@@ -5,6 +5,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
@@ -54,6 +56,8 @@ import static org.assertj.core.api.Assertions.fail;
 @Tag("integration")
 @Tag("deepagent")
 @Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Story("da.nonexistent-tool-refusal: §5.1.6 用户请求不存在工具走 COMPLETED 业务拒答")
 class NonexistentToolRefusalTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";

@@ -4,6 +4,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -68,6 +70,8 @@ import static org.assertj.core.api.Assertions.fail;
 @Tag("deepagent")
 @Tag("feat-001")
 @Tag("manual")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Story("da.downstream-killed-mid-stream: §5.1.4 下游被杀 → failed 家族收束")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DownstreamAgentKilledMidStreamTest {
 

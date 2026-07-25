@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -47,6 +49,8 @@ import static org.assertj.core.api.Assertions.fail;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
 class GetTaskTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";
@@ -64,6 +68,7 @@ class GetTaskTest extends BaseManagedStackTest {
 
     @Test
     @DisplayName("DA-04: send → getTask 快照 id / state / artifact 一致且无 bug")
+    @Story("da.get-task: GetTask 快照与 send 侧终态一致")
     void getTaskMatchesSendSnapshotAfterCompleted() {
         A2aServiceClient a2a = client(DEEP_RESEARCH);
 
@@ -129,7 +134,8 @@ class GetTaskTest extends BaseManagedStackTest {
 
     @Test
     @DisplayName("DA-04.F: getTask(<不存在 id>) 应走 JSON-RPC 协议错误路径（unmarshalResponse 抛 A2AClientException + 'Task not found'），而非 HTTP 500 泄漏")
-    void getTaskWithNonExistentIdShouldReturnProtocolError() {
+    @Story("da.get-task-notfound: 不存在 taskId 走 -32001 协议错误(而非 HTTP 500)")
+    void getTaskWithUnknownIdReturnsJsonRpcProtocolError() {
         A2aServiceClient a2a = client(DEEP_RESEARCH);
 
         String fakeTaskId = UUID.randomUUID().toString();

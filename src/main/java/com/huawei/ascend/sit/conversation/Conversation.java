@@ -2,6 +2,7 @@ package com.huawei.ascend.sit.conversation;
 
 import com.huawei.ascend.sit.conversation.mid.MidConversationSupport;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import com.huawei.ascend.sit.transport.MessageProtocol;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -34,7 +35,14 @@ public final class Conversation implements AutoCloseable {
         this.mapper = b.mapper;
         this.timeout = b.timeout;
         this.maxInteractions = b.maxInteractions;
-        this.transport = b.transport != null ? b.transport : new RestVersatileTransport();
+        // Default transport: the low-code gateway (REST_VERSATILE) via ConversationInteractionAdapter —
+        // migrated from conversation.RestVersatileTransport. Same gateway wire, now routed through the
+        // shared GatewayStreamingTransport base + the gateway's own VersatileEventMapping classifier + the
+        // adapter's wire-log, so the gateway path gets typed-envelope classification + terminal synthesis
+        // like every other protocol.
+        this.transport = b.transport != null ? b.transport
+                : ConversationInteractionAdapter.forBaseUrl(MessageProtocol.REST_VERSATILE,
+                        gatewayBaseUrl, timeout.toMillis());
         this.cid = mapper.open(b.requestedCid);
     }
 
@@ -96,7 +104,8 @@ public final class Conversation implements AutoCloseable {
             return this;
         }
         public Builder conversationId(String c) { this.requestedCid = c; return this; }
-        /** Override the outbound transport (default: {@link RestVersatileTransport}). Test/future use. */
+        /** Override the outbound transport (default: {@link ConversationInteractionAdapter} on
+         *  {@link MessageProtocol#REST_VERSATILE}). Test/future use. */
         public Builder transport(ConversationTransport t) { this.transport = t; return this; }
         public Conversation open() {
             if (identity == null) throw new IllegalStateException("identity required");

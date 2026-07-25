@@ -105,8 +105,7 @@ class ExpenseReviewWorkflowDirectAcceptanceTest extends BaseManagedStackTest {
     void overLimitExpenseRequiresApprovalThenCompletesOnApprove(MessageProtocol protocol) {
         InteractionFlow.of(client(WORKFLOW_AGENT))
                 .protocol(protocol)
-                .withMetadata(Map.of("userId", "direct-user", "agentId", "expense-review-workflow",
-                        "sessionId", "expense-direct-scenario1-" + protocol.name()))
+                .withMetadata(Map.of("userId", "direct-user", "agentId", "expense-review-workflow"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 // 轮 1 — 超标（住宿 800>600、晚餐 800>300）：workflow 走 risk=high ⇒ Questioner 审批节点。
                 .send(OVER_LIMIT_EXPENSE)
@@ -147,8 +146,7 @@ class ExpenseReviewWorkflowDirectAcceptanceTest extends BaseManagedStackTest {
     void compliantExpenseAutoApprovesAndCompletes(MessageProtocol protocol) {
         InteractionFlow.of(client(WORKFLOW_AGENT))
                 .protocol(protocol)
-                .withMetadata(Map.of("userId", "direct-user", "agentId", "expense-review-workflow",
-                        "sessionId", "expense-direct-scenario2-" + protocol.name()))
+                .withMetadata(Map.of("userId", "direct-user", "agentId", "expense-review-workflow"))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 .send(COMPLIANT_EXPENSE)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)

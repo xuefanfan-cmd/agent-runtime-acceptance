@@ -6,6 +6,8 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -55,7 +57,10 @@ import static org.assertj.core.api.Assertions.fail;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-003")
 @Tag("manual")
+@Feature("FEAT-003: 智能体任务状态缓存")
+@Story("da.checkpointer-redis-recall: Redis checkpointer 跨进程持久化召回")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class RedisCheckpointerRecallTest extends BaseManagedStackTest {
 

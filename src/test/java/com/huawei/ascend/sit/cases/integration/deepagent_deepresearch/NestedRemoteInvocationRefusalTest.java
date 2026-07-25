@@ -4,6 +4,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
@@ -52,10 +54,10 @@ import static org.assertj.core.api.Assertions.fail;
  * </ul>
  *
  * <p><b>本用例定性</b>:<b>spec-⬜ watchdog</b>(<em>非 bug 报告</em>)。
- * L2 §2.1 line 73 能力总表内 「嵌套远程调用」明标 ⬜ (未实现) —— 与 REMOTE_TIMEOUT(L2 §2.1 line 72 ✅ 已实现,
- * 未落等价于 SUT bug,见 BUG-004)在**根本上不同**:嵌套禁止是 spec 自己承认尚未落地的能力,
- * 全代码库 grep {@code NESTED_REMOTE_INVOCATION_UNSUPPORTED} 常量<b>零命中</b>
- * (spring-ai-ascend agent-runtime 也没有,openjiuwen SUT 也没有)。因此本用例首次跑必然
+ * L2 §2.1 line 73 能力总表内 「嵌套远程调用」明标 ⬜ (未实现) —— 与 REMOTE_TIMEOUT(L2 §2.1 line 72 ✅
+ * 已实现,BUG-004 修复后 SSE close 感知 + 回灌 LLM 路径已按设计工作)在**根本上不同**:嵌套禁止是
+ * spec 自己承认尚未落地的能力,全代码库 grep {@code NESTED_REMOTE_INVOCATION_UNSUPPORTED} 常量
+ * <b>零命中</b>(spring-ai-ascend agent-runtime 也没有,openjiuwen SUT 也没有)。因此本用例首次跑必然
  * <b>红</b>,不作 bug 记录,而是作为**特性未落地的活体观察点**:待
  * <ol>
  *   <li>L2 能力总表把「嵌套远程调用」从 ⬜ 升级到 ✅;</li>
@@ -105,6 +107,8 @@ import static org.assertj.core.api.Assertions.fail;
 @Tag("feat-004")
 @Tag("manual")
 @Tag("slow")
+@Feature("FEAT-004: 任务驱动远程智能体调用")
+@Story("da.nested-remote-invocation-refused: L2 §3.4/§5.3 NESTED_REMOTE_INVOCATION_UNSUPPORTED (spec-⬜ watchdog)")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NestedRemoteInvocationRefusalTest {
 

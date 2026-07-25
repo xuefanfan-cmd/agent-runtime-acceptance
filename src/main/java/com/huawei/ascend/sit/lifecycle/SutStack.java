@@ -785,6 +785,10 @@ public final class SutStack implements AutoCloseable {
                             + Arrays.toString(AgentConfig.ReadyMode.values()));
                 }
             }
+            int yamlPort = config.getInt("sut.agents." + name + ".port", 0);
+            if (yamlPort > 0) {
+                configOverrides.port(yamlPort);
+            }
             config.getStringMap("sut.agents." + name + ".java.system-properties")
                     .forEach(configOverrides::jvmSystemProperty);
             config.getStringMap("sut.agents." + name + ".spring.properties")

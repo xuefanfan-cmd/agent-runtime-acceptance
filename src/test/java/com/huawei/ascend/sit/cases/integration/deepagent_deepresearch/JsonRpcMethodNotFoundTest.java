@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Stories;
+import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("integration")
 @Tag("deepagent")
+@Tag("feat-001")
+@Feature("FEAT-001: 标准化智能体服务入口")
+@Stories({
+        @Story("da.jsonrpc-method-not-found: 未知 method → -32601 method-not-found"),
+        @Story("da.jsonrpc-id-preserved: 错误响应须回显请求 id")
+})
 class JsonRpcMethodNotFoundTest extends BaseManagedStackTest {
 
     private static final String DEEP_RESEARCH = "deep-research";
@@ -50,7 +59,7 @@ class JsonRpcMethodNotFoundTest extends BaseManagedStackTest {
 
     @Test
     @DisplayName("FEAT-001.jsonrpc-method-not-found: 未知 method → HTTP 200 + code=-32601 + id 回显 '7'")
-    void unknownMethodProducesMethodNotFoundAndPreservesId() throws Exception {
+    void unknownMethodReturnsJsonRpcError() throws Exception {
         String bodyText = "{\"jsonrpc\":\"2.0\",\"id\":\"7\","
                 + "\"method\":\"NoSuchMethodEver\",\"params\":{}}";
         HttpResponse<String> response = post("/a2a", bodyText);

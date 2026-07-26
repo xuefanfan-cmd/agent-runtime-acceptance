@@ -28,8 +28,17 @@ fi
 [ "$ONLY_PROVISION" -eq 1 ] && { echo "[pipeline] --only-provision: done after Stage 1"; exit 0; }
 
 # Stage 2 + 3
+#
+# Runs ONLY the sub-link regression suite — SubLinkRegressionSuite selects
+# cases/component/workflow_call + all of cases/integration (everything that used
+# to run under the bare `mvnw test` default, minus the non-workflow_call
+# component cases). To run something else for one invocation, pass a surefire
+# selector after `--`; the last `-Dtest=` on the command line wins, e.g.
+#   ./scripts/run-pipeline.sh --env openjiuwen -- -Dtest=SomeTest
+# To restore the full Surefire default (every component + integration *Test),
+# drop `-Dtest=SubLinkRegressionSuite` from the line below.
 set +e
-./mvnw test -Dtest.env="$ENV" -Dmaven.test.failure.ignore=true "${MVN_ARGS[@]}"
+./mvnw test -Dtest=SubLinkRegressionSuite -Dtest.env="$ENV" -Dmaven.test.failure.ignore=true "${MVN_ARGS[@]}"
 rc=$?
 set -e
 

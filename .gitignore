@@ -7,6 +7,17 @@ out/
 allure-results/
 .travel-hotel-skills/
 
+**/__pycache__
+
+# class-level tests
+src/test/java/com/huawei/ascend/sit/client
+src/test/java/com/huawei/ascend/sit/config
+src/test/java/com/huawei/ascend/sit/conversation
+src/test/java/com/huawei/ascend/sit/lifecycle
+src/test/java/com/huawei/ascend/sit/mock
+src/test/java/com/huawei/ascend/sit/transport
+src/test/java/com/huawei/ascend/sit/utils
+
 # IDE
 .idea/
 .vscode/

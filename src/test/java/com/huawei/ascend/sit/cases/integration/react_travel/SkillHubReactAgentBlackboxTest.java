@@ -53,7 +53,7 @@ import static org.assertj.core.api.Assertions.fail;
 import static org.awaitility.Awaitility.await;
 
 /** FEAT-005 ReactAgent acceptance through external process, HTTP, A2A, files, and logs only. */
-@Feature("005")
+@Feature("FEAT-005: 启动态智能体中间件请求代理")
 @Tag("feat-005")
 @Tag("integration")
 @Tag("blackbox")

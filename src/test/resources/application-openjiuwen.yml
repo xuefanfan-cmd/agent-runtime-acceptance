@@ -63,12 +63,6 @@ sut:
         postgres:
           url-key: spring.datasource.url
           url-template: "jdbc:postgresql://{{url}}/agent_rdc"
-    mock-mcp:
-      group: com.huawei.ascend.examples
-      artifact: travel-openjiuwen-test-support
-      version: 0.1.0
-      ready-mode: tcp
-
     # react scenario
     mainplan:
       group: com.openjiuwen.example

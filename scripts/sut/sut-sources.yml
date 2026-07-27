@@ -2,22 +2,69 @@
 # application-<env>.yml (in src/test/resources/) remains the source of truth for
 # WHICH artifacts the tests need; provision-sut.sh cross-checks the two.
 #
-# ${VAR:default} expanded from environment. third_party/... is only the fallback
-# default — set SUT_SOURCE_DIR (and JAVA_HOME_21 / JAVA_HOME_17) per machine.
-# Fill `repo:` with a reachable git URL to enable lazy clone when the dir is absent.
+# Nested structure (parsed by lib/cfg_emit.py via python3+PyYAML). Each env declares:
+#   java-home        JDK for the build (may be empty → inherit)
+#   sources          named git trees; one entry per checkout. Needed because the
+#                    project is mid-development and deps like agent-core-java /
+#                    agent-runtime-java share NO parent pom with the SUT, so a single
+#                    source root can't express the build.
+#       .dir         checkout location (${VAR:default} expanded from env)
+#       .repo        git URL — leave empty to disable lazy clone (dir must exist)
+#       .ref         branch / tag / commit
+#       .sync        hard | pull | none  (optional, default none). Governs EXISTING
+#                    checkouts only: none = honor the dev's working tree (non-destructive,
+#                    best-effort `git checkout ref`); hard = fetch + reset --hard origin/ref
+#                    (CI / clean third_party clones); pull = fetch + ff-only.
+#   steps            ORDERED reactor plan; each entry is { source, module } where module
+#                    is a path under that source's dir. Order = build order and may cross
+#                    sources (e.g. build the SDK before the examples).
 #
 # m2-root is NOT set here: derived from application-<env>.yml's sut.m2.repo
 # (default ~/.m2/repository) — see spec §5.
+#
+# Per-machine: set SUT_SOURCE_DIR (and AGENT_CORE_DIR / AGENT_RUNTIME_DIR / JAVA_HOME_21)
+# to point at your local checkouts; the third_party/... values are only fallbacks.
 
-env.local.source.repo:    https://github.com/chaosxingxc-orion/spring-ai-ascend.git
-env.local.source.ref:     release/v0.2.0-rc1
-env.local.source.dir:     ${SUT_SOURCE_DIR:third_party/spring-ai-ascend}
-env.local.java-home:      ${JAVA_HOME_21:}
-env.local.build.1:        examples/travel
-env.local.build.2:        examples/workflow-calls
+envs:
+  local:
+    java-home: ${JAVA_HOME_21:}
+    sources:
+      spring-ai-ascend:
+        repo: https://github.com/chaosxingxc-orion/spring-ai-ascend.git
+        ref:  release/v0.2.0-rc1
+        dir:  ${SUT_SOURCE_DIR:third_party/spring-ai-ascend}
+    steps:
+      - { source: spring-ai-ascend, module: examples/travel }
+      - { source: spring-ai-ascend, module: examples/workflow-calls }
 
-env.openjiuwen.source.repo:    https://github.com/chaosxingxc-orion/spring-ai-ascend.git
-env.openjiuwen.source.ref:     release/v0.2.0-rc1
-env.openjiuwen.source.dir:     ${SUT_SOURCE_DIR:third_party/spring-ai-ascend}
-env.openjiuwen.java-home:      ${JAVA_HOME_21:}
-env.openjiuwen.build.1:        examples/travel-openjiuwen
+  openjiuwen:
+    java-home: ${JAVA_HOME_21:}
+    sources:
+      agent-core-java:
+        # SDK the examples resolve. Fill `repo` to enable lazy clone; on a dev box
+        # point AGENT_CORE_DIR at your checkout (e.g. ~/agent_java/agent-core-java).
+        repo: https://gitcode.com/openJiuwen/agent-core-java.git
+        ref:  730
+        dir:  ${AGENT_CORE_DIR:third_party/agent-core-java}
+      agent-runtime-java:
+        repo: https://gitcode.com/openJiuwen/agent-runtime-java.git
+        ref:  develop
+        dir:  ${AGENT_RUNTIME_DIR:third_party/agent-runtime-java}
+      agent-solution:
+        repo: https://gitcode.com/openJiuwen/agent-solution.git
+        ref:  common
+        dir:  ${SUT_SOURCE_DIR:third_party/agent-solution}
+    steps:
+      # Pre-build the SDK / runtime FIRST when iterating on agent-core-java /
+      # agent-runtime-java locally (they are not under a shared parent pom with the
+      # examples, so a clean reactor won't pick them up). Uncomment as needed:
+      - { source: agent-core-java, module: "." }
+      - { source: agent-runtime-java, module: "." }
+      - { source: agent-solution, module: common/agent-core-ext-java }
+      - { source: agent-solution, module: common/agent-runtime-ext-java }
+      - { source: agent-solution, module: common/agent-service-spec-ext }
+      - { source: agent-solution, module: common/agent-bus }
+      - { source: agent-solution, module: common/registry-discovery-center }
+      - { source: agent-solution, module: common/example/multi-react-travel-demo }
+      - { source: agent-solution, module: common/example/multi-deep-research-demo }
+      - { source: agent-solution, module: common/example/versatile-orchestration-demo }

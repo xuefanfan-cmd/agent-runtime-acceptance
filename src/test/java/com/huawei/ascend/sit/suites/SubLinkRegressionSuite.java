@@ -43,8 +43,8 @@ import org.junit.platform.suite.api.Suite;
 @Suite
 
 @SelectPackages({
-        "com.huawei.ascend.sit.cases.component.workflow_call",
-        "com.huawei.ascend.sit.cases.integration.workflow_call"
+        "com.huawei.ascend.sit.cases.component.workflow_agent",
+        "com.huawei.ascend.sit.cases.integration"
 })
 public class SubLinkRegressionSuite {
 

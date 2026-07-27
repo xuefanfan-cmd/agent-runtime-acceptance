@@ -371,7 +371,7 @@ L2 原编号没有 T12，保持原样：
 ## 9. 标签与报告
 
 ```java
-@Feature("FEAT-005: Agent middleware request proxy")
+@Feature("FEAT-005: 启动态智能体中间件请求代理")
 @Tag("feat-005")
 @Tag("integration")
 @Tag("blackbox")

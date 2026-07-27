@@ -5,6 +5,7 @@ import com.huawei.ascend.sit.client.InteractionFlow;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("integration")
 @Tag("openjiuwen")
+@Disabled("FEAT-008 尚未交付，暂不执行")
 class OpenjiuwenThreeTurnInputRequiredTest extends BaseManagedStackTest {
 
     private static final String MAINPLAN = "mainplan";

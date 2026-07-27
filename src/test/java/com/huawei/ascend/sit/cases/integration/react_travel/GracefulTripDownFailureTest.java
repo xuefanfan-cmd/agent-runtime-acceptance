@@ -7,6 +7,8 @@ import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Artifact;
@@ -53,13 +55,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * C artifact 不漏堆栈 / D 流层无非预期异常。详见 docs/cases/reactagent/B-09-*.md。
  *
  * <p>标签 {@code @Tag("degraded")} 而非 {@code integration}——避免 -P integration
- * 默认套件把本类拖进绿色 CI（trip 停掉时正常用例会全红）。运行靠显式
- * {@code -Dtest=GracefulTripDownFailureTest}。
+ * 默认套件把本类拖进绿色 CI（trip 停掉时正常用例会全红）。运行靠特性标签
+ * {@code feat-004} 或显式 {@code -Dtest=GracefulTripDownFailureTest}。
  *
  * <p>栈走 BaseManagedStackTest 默认形态；远端栈在 application-sit.yml 把三 agent 都
  * 标成 remote-url（{@code -Dtest.env=SIT}），SutStack.start() 仅注册地址不启动进程，本类天然走远端栈。
  */
 @Tag("degraded")
+@Tag("feat-004")
+@Feature("FEAT-004: 任务驱动远程智能体调用")
 class GracefulTripDownFailureTest extends BaseManagedStackTest {
 
     private static final String CASE_RESOURCE =
@@ -101,6 +105,7 @@ class GracefulTripDownFailureTest extends BaseManagedStackTest {
     }
 
     @Test
+    @Story("FEAT-004.downstream-unavailable: 下游 Agent 不可达时父任务返回可诊断失败或降级结果")
     @DisplayName("B-09: trip agent 停止时 mainplan 优雅答复用户（不挂死/不漏栈/不幻觉）")
     void mainplanRepliesGracefullyWhenTripIsDown() throws Exception {
         String tripBaseUrl = stack.baseUrl(TRIP);

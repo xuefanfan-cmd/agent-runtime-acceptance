@@ -1,6 +1,5 @@
 package com.huawei.ascend.sit.cases.integration.deepagent_deepresearch;
 
-import com.huawei.ascend.sit.base.BaseManagedStackTest;
 import com.huawei.ascend.sit.client.A2aEventCollector;
 import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.TaskTextExtractor;
@@ -16,9 +15,12 @@ import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskState;
 import org.a2aproject.sdk.spec.TextPart;
 import org.awaitility.Awaitility;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,11 +57,13 @@ import static org.assertj.core.api.Assertions.fail;
 @Tag("feat-004")
 @Feature("FEAT-004: 任务驱动远程智能体调用")
 @Story("da.multi-turn-search-followup: 远端 INPUT_REQUIRED 多轮追问补全查询意图")
-class MultiTurnSearchFollowupTest extends BaseManagedStackTest {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class MultiTurnSearchFollowupTest {
 
     private static final Logger LOG = Logger.getLogger(MultiTurnSearchFollowupTest.class.getName());
 
     private static final String DEEP_RESEARCH = "deep-research";
+    private static final String SEARCH = "search";
     private static final long ROUND_TIMEOUT_MS = 240_000;
     private static final int MAX_ROUNDS = 5;
 
@@ -80,17 +84,39 @@ class MultiTurnSearchFollowupTest extends BaseManagedStackTest {
             TaskState.TASK_STATE_COMPLETED,
             TaskState.TASK_STATE_INPUT_REQUIRED);
 
-    @Override
-    protected SutStack.Builder buildStack(TestConfig config) {
-        return SutStack.builder(config)
+    private TestConfig config;
+    private SutStack searchStack;
+    private SutStack deepStack;
+
+    @BeforeAll
+    void startStack() {
+        config = TestConfig.load();
+        // 双 stack pattern（同 DownstreamAgentKilledMidStreamTest）:deep-research 通过 SEARCH_AGENT_URL
+        // env 寻址 search，需先启 search 拿到其解析后的 baseUrl，再 build deep-research 并把 env 塞进去。
+        // 走单 stack 会因 deep-research 默认 SEARCH_AGENT_URL=http://127.0.0.1:18091 而无法连通框架
+        // 分配的随机端口 → search-agent tool 装配失败 → LLM 走 MCP 直接答，绕过 ask_user 追问链路。
+        searchStack = SutStack.builder(config).agent(SEARCH).start();
+        String searchBaseUrl = searchStack.baseUrl(SEARCH);
+        deepStack = SutStack.builder(config)
                 .streaming(false)
-                .agent(DEEP_RESEARCH);
+                .agent(DEEP_RESEARCH, a -> a.env("SEARCH_AGENT_URL", searchBaseUrl))
+                .start();
+    }
+
+    @AfterAll
+    void tearDown() {
+        if (deepStack != null) {
+            deepStack.close();
+        }
+        if (searchStack != null) {
+            searchStack.close();
+        }
     }
 
     @Test
     @DisplayName("DA-08: 多轮追问 → 同 contextId 续答 → 最终命中模型 + 价格语义")
     void multiTurnSearchFollowupReachesCompletedWithPricing() {
-        A2aServiceClient a2a = client(DEEP_RESEARCH);
+        A2aServiceClient a2a = deepStack.client(DEEP_RESEARCH);
 
         String runSuffix = "-" + UUID.randomUUID().toString().substring(0, 8);
         String anchorContextId = "ctx-da08-followup" + runSuffix;

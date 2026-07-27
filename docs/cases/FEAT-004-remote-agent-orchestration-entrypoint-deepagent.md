@@ -50,7 +50,7 @@ related_docs:
 | 4 | RemoteAgentToolSpec 生成 | 🟡 隐式 | StreamingTravelPlanningTest（mainplan 调用 `dispatch_travel_plan` 证明 tool 被注入 LLM） | 无用例专门断言 tool 描述内容 / 无 skills 时不生成 tool。 |
 | 5 | OpenJiuwen Tool 安装（Placeholder + Interrupt Rail） | 🟡 隐式 | 同上 | 无专用观察点。 |
 | 6 | 远程 A2A 调用（SendStreamingMessage 出站） | ✅ 覆盖 | StreamingTravelPlanningTest / ExpenseReviewAcceptanceTest / TransferAfterBalanceAcceptanceTest / MultiTurnSearchFollowupTest | 主路径充分覆盖，golden path PASS。 |
-| 7 | 中断-续接（远端 INPUT_REQUIRED → 父挂起 → 用户输入 → 续写） | ✅ 覆盖 | ExpenseReviewAcceptanceTest 场景 1（Questioner 人审）/ OpenjiuwenThreeTurnInputRequiredTest / StreamingTravelPlanningTest A-08 / MultiTurnSearchFollowupTest / StreamInterruptRecoveryTest | 三轮 INPUT_REQUIRED、多轮补齐、断链恢复齐全。 |
+| 7 | 中断-续接（远端 INPUT_REQUIRED → 父挂起 → 用户输入 → 续写） | ✅ 协议契约覆盖 · 🟡 AskUserRail 桥接层双段 bug：**[BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) 极端形态由 [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) DA-08.A 5 轮上限 watchdog 天然捕获（2026-07-27 SIT 稳定红）** · **[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) 精细反例断言未落地** · 详见 §5.5 | ExpenseReviewAcceptanceTest 场景 1（Questioner 人审）/ OpenjiuwenThreeTurnInputRequiredTest / StreamingTravelPlanningTest A-08 / MultiTurnSearchFollowupTest / StreamInterruptRecoveryTest | 三轮 INPUT_REQUIRED、多轮补齐、断链恢复齐全（协议状态机层）。**深度 gap**：`AskUserRail` 桥接层 Turn 1 追问下发（[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md)：文本丢失只回 `"ask_user"`）与 Turn 2 用户答复回投（[BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) / agent-core-java [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48)：`resolveInterrupt(userInput)` 错返 `approve()` 致 userInput 丢弃）两段互补 bug；后者当前稳定触发 ask_user 死循环、被 DA-08.A 5 轮上限判 FAIL —— DA-08 已履行 BUG-008 极端形态 watchdog；BUG-002 反例（Round 1 textOf 非 `"ask_user"`）与更细粒度 BUG-008 语义命中（Round 2 userInput 场景外命中）待独立分层落地，见 §5.5 / §9.4。 |
 | 8 | Metadata 转发（入站 → 出站远程调用） | ⬜ 未覆盖 | — | 无用例断言 `X-Tenant-Id` 等 metadata 出站透传（与 FEAT-001 F1 tenant 双条同 blocker）。 |
 | 9 | 结果回灌（COMPLETED → InteractiveInput → LLM resume） | 🟡 隐式 | 所有多-agent 用例的 COMPLETED（LLM 汇总输出的存在就是回灌生效） | 无专用断言"tool call/result pair 出现在 LLM 上下文"，靠 golden answer 兜底。 |
 | 10 | 父 Task 进度投射（远程 artifact → 父 Task artifact） | 🟡 隐式 | StreamingTravelPlanningTest（父 stream 收到中间 progress） | 无专用断言"父 artifact 来源于远端 ArtifactUpdate"。 |
@@ -193,6 +193,39 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 
 **判读(bug 归档)**:`A2AEnabledServeOrchestrator.failRemoteStream` 只对"SSE 已建立后关流"一条子路径分派了稳定码(`REMOTE_STREAM_CLOSED`),对"socket-level 失败"(`ConnectException` / `SocketException`)完全没做分类;同时 `REMOTE_ERROR` 路径未把 payload 写入 `task.status.message`。归为 **[BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)**(P1)。SUT 修复后 DownstreamAgentKilledMidStreamTest 层 2 自动转绿。
 
+### 5.5 AskUserRail 中断-续接链路双段 bug（[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) + [BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) / agent-core-java [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48) · 姊妹 bug）
+
+**关键事实**：openjiuwen SUT agent（deep-research / agent-search 等）均为 **Java agent**（Maven `com.openjiuwen.example:*`），装配 `agent-core-java` 的 Java Rail 层。deep-research 触发的 `ask_user` 追问链路**穿过** `com.openjiuwen.harness.rails.interrupt.AskUserRail`（非 python hitl 生态），因此本节的两个 bug 都归 `AskUserRail` 桥接层。
+
+**两段互补 bug**：同一 `AskUserRail` 中断链路上，`agent-core-java` 侧下发（Turn 1）与回投（Turn 2）各有一 bug：
+
+| 段 | Bug | 出错点 | 客户端症状 |
+|---|---|---|---|
+| Turn 1 追问**下发**（agent → A2A wire） | **[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md)** | AskUserRail 拦截 `ask_user` tool call 桥接为 A2A INPUT_REQUIRED 时，只取 tool name (`"ask_user"`) 落到 `status.message.parts[0].text`，丢弃 `arguments.question` 自然语言 | 客户端拿到字面串 `"ask_user"` 不知该答什么 |
+| Turn 2 用户答复**回投**（A2A wire → agent） | **[BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md)** / [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48) | `AskUserRail.resolveInterrupt(userInput)` 在 `userInput != null` 分支错返 `approve()`（`ApproveResult(null)`），`BaseInterruptRail.applyDecision` 识别为 no-op，工具体以**原参数**执行，userInput 丢弃。正确决策应为 `reject(userInput)`：短路工具体并把 userInput 注入 tool-result | 用户答复了，agent 拿不到、以原始参数猜答；叠加 BUG-002 触发 ask_user 死循环 |
+
+**为何归 FEAT-004**：capability 7 中断-续接的 spec 描述是「远端 INPUT_REQUIRED → 父挂起 → 用户输入 → 续写」，`ask_user` 工具形态是此链路的一种深度实现，与 planner clarify 形态（[MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) 已覆盖协议层）平行。
+
+**当前覆盖分层**（2026-07-27 SIT 复现 · 当日下午本地替换新 jar 验证后修正）：
+
+| 层 | Bug | 用例 | 状态 |
+|---|---|---|---|
+| 极端形态 watchdog | **BUG-008**（Turn 2 userInput 丢弃 → 死循环） | [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) DA-08.A 5 轮上限断言 | ✅ 已落地 · **BUG-008 已修**（2026-07-27 下午本地替换 openjiuwen 新 jar 验证 · 用例 PASS · search-agent stdout 里 3 处 `tool_result` 严格挂到 `ask_user tool_call_id` 上，[BUG-008 §9](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md#L156) 硬证据）· DA-08.A watchdog 继续在位防退化 |
+| 精细反例 1a | **BUG-002**（Round 1 追问文本 = `"ask_user"`） | 待新增（见 §9.4 方案 A） | 🟡 未落地 · **BUG-002 仍在** —— 客户端每轮 fullSnapshot 追问段仍是字面 `ask_user` 4 字符；追问自然语言只在 search-agent 服务端日志出现（[BUG-002 §2.5](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) 有硬证据） |
+| 精细反例 1b | **BUG-008**（场景外 userInput 语义命中） | 待新增（见 §9.4 方案 A） | 🟡 未落地 · 本地已证 BUG-008 修复，但 fix 稳定性需换场景外 userInput（`"用户ID#42 指定选项 C"` 等 LLM 无法从上下文猜到的 answer）做二次防退化断言 |
+
+**MultiTurnSearchFollowupTest 与新增精细用例的分工**：
+- **DA-08**（现有）：以协议契约 5 项 + 5 轮上限收束为骨架，**天然捕获 BUG-008 极端形态**（若 approve() 分支回归会立即触 5 轮上限红）。BUG-008 已修后 DA-08 转为**防退化 watchdog**。
+- **新增精细用例**（§9.4 方案 A）：把 BUG-002（Round 1 textOf 非 `"ask_user"`）与 BUG-008 精细形态（Round 2 场景外 userInput 语义命中）独立分层为 1a / 1b，**归因粒度提升**——DA-08 只能报"死循环"，新增用例能区分"Turn 1 追问下发丢了" vs "Turn 2 用户答复回投丢了"。
+- **首观 2026-07-13 → 复观 2026-07-27 → 当日下午二次复观**：首观时 DA-08 PASSed（Round 2 侥幸绿，BUG-008 未稳定触发）；复观时稳定红（BUG-008 稳定触发）；当日下午替换含 issue-48 fix 的 openjiuwen 新 jar 后 DA-08 PASS，BUG-008 已修但 BUG-002 依然存在。
+
+**覆盖状态**：✅ **BUG-008 已修**（本地新 jar 验证 · DA-08.A 转为防退化 watchdog）· 🟡 **BUG-002 仍在 · BUG-008 精细反例断言未落地**（需在 §9.4 方案 A 用例里分层落地）
+
+**落地依赖 / 未决**：
+1. 82 服务器 deep-research 部署上的 `agent-core-java` 版本更新到含 issue-48 fix 的版本（本地 `~/.m2` 已落新 jar；82 侧上线时点待确认）—— 影响 SIT 环境（`TEST_ENV=SIT`）下 DA-08 是稳定红还是稳定绿；LOCAL 环境已确证 PASS。
+2. 触发 `AskUserRail.resolveInterrupt` 走 `userInput != null` 分支的 prompt 已由 DA-08 「查 DeepSeek 定价」验证稳定复现。
+3. userInput 选择："场景外 answer"（LLM 无法从上下文推测）—— 建议如 `"仅要 DeepSeek-Coder-V2 定价"` 或纯代号 `"用户ID#42 指定选项 C"`，最大化 userInput 是否被丢弃的可辨识度。
+
 ---
 
 ## 6. 汇总
@@ -200,10 +233,10 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 | 桶 | 数量 | 说明 |
 |---|---|---|
 | ✅ 硬覆盖 | 3 | 远程调用主路径 / 中断-续接 / **§5.2 BUG-004 修复回归 watchdog(RemoteStreamTimeoutTest)** |
-| 🟡 隐式覆盖 / expected-red | 8 | YAML 配置生效 / Card 拉取成功 / Tool 生成 / Tool 安装 / 结果回灌 / 父 Task 进度投射 / **§5.1 无 skills 反例**(SUT 违反,当前红 · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md))/ **§5.3 嵌套禁止 watchdog**(spec-⬜,当前红)/ **§5.4 REMOTE_ERROR 层 2**(SUT 侧稳定码/payload 缺失,当前红 · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)) |
-| ⬜ 未覆盖 | 6 | Card 故障降级 (×3) / Metadata 转发 / 取消级联 / late event 丢弃 / Card Cache 全空 |
+| 🟡 隐式覆盖 / expected-red | 9 | YAML 配置生效 / Card 拉取成功 / Tool 生成 / Tool 安装 / 结果回灌 / 父 Task 进度投射 / **§5.1 无 skills 反例**(SUT 违反,当前红 · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md))/ **§5.3 嵌套禁止 watchdog**(spec-⬜,当前红)/ **§5.4 REMOTE_ERROR 层 2**(SUT 侧稳定码/payload 缺失,当前红 · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md))/ **§5.5 BUG-008 极端形态 watchdog**（DA-08.A 5 轮上限,当前稳定红 · [BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md)） |
+| ⬜ 未覆盖 / 未落地 | 6 | Card 故障降级 (×3) / Metadata 转发 / 取消级联 / late event 丢弃 / Card Cache 全空 / **§5.5 AskUserRail 桥接层双段 bug 精细反例断言**（[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) Round 1 textOf 非 `"ask_user"` + [BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) 场景外 userInput 语义命中 · 待新增姊妹用例） |
 
-**Gap 摘要**:主路径成熟;**§5.1 关键约束**首次落硬断言,SUT 侧当前违反(SkillsEmptyRemoteAgentTest expected-red · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md));**§5.2 BUG-004 修复**回归 watchdog 已绿(RemoteStreamTimeoutTest,三档模型回灌 LLM 路径已按设计工作);**§5.3 嵌套禁止**首次落 watchdog(NestedRemoteInvocationRefusalTest expected-red · L2 明标 ⬜ · 特性未落地);**§5.4 REMOTE_ERROR 层 2**首次落 wire 断言,SUT 侧稳定码 + payload 双缺失(DownstreamAgentKilledMidStreamTest 层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md));其余错误 / 取消 / 降级分支仍缺硬断言。
+**Gap 摘要**:主路径成熟;**§5.1 关键约束**首次落硬断言,SUT 侧当前违反(SkillsEmptyRemoteAgentTest expected-red · [BUG-003](../bugs/BUG-003-skills-empty-remote-still-installed-as-tool.md));**§5.2 BUG-004 修复**回归 watchdog 已绿(RemoteStreamTimeoutTest,三档模型回灌 LLM 路径已按设计工作);**§5.3 嵌套禁止**首次落 watchdog(NestedRemoteInvocationRefusalTest expected-red · L2 明标 ⬜ · 特性未落地);**§5.4 REMOTE_ERROR 层 2**首次落 wire 断言,SUT 侧稳定码 + payload 双缺失(DownstreamAgentKilledMidStreamTest 层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md));**§5.5 AskUserRail 桥接层双段 bug**——BUG-008 极端形态已由 [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) DA-08.A 5 轮上限 watchdog 天然捕获(2026-07-27 稳定红);BUG-002 + BUG-008 精细反例断言(Round 1 textOf 非 `"ask_user"` + Round 2 场景外 userInput 命中)未落地,待新增姊妹用例;其余错误 / 取消 / 降级分支仍缺硬断言。
 
 ---
 
@@ -213,7 +246,8 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 2. **P1 · 嵌套远程调用禁止** —— ✅ **已落地**([NestedRemoteInvocationRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NestedRemoteInvocationRefusalTest.java))· 当前 expected-red · **spec-⬜ watchdog**(L2 §2.1 line 73 明标 ⬜,全代码库 `NESTED_REMOTE_INVOCATION_UNSUPPORTED` 常量零命中,非 SUT bug)· 详见 §5.3 / §9.2。
 3. **P2 · REMOTE_TIMEOUT / REMOTE_STREAM_CLOSED 回灌 LLM 路径** —— ✅ **已落地**([RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java) + [MockRemoteAgentServer](../../src/test/java/com/huawei/ascend/sit/mock/MockRemoteAgentServer.java) `STALL_SSE` 模式)· **BUG-004 修复回归 watchdog** · 期望绿 · 详见 §5.2。
 4. **P1 · REMOTE_ERROR 层 2 wire payload** —— 🟡 层 1 已绿 · **层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)**([DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) 层 2 + [RemoteSseAbortFalseCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteSseAbortFalseCompletedTest.java) 层 1 watchdog)· SUT 未把 `REMOTE_ERROR` 稳定码分派 + 未把 payload 落到 `task.status.message` · 详见 §5.4。
-5. **P2 · 取消级联** —— 父 Task CancelTask → 断远端 SUT 侧也收到 CancelTask 或最终状态。需要在远端 SUT 侧观察 cancel 触达。
+5. **P2 · AskUserRail 桥接层双段 bug**（[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) 追问下发 + [BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) / agent-core-java [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48) 答复回投） —— 🟡 **BUG-008 极端形态已由 [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) DA-08.A 5 轮上限 watchdog 天然捕获（当前稳定红 · 2026-07-27 复现）** · **BUG-002 + BUG-008 精细反例断言未落地**：Round 1 textOf 非 `"ask_user"`（BUG-002 精细反例）与 Round 2 场景外 userInput 语义命中（BUG-008 精细反例，可区分"agent 消费 userInput"vs"LLM 从上下文猜到"）需在新增姊妹用例中独立分层 · 详见 §5.5 / §9.4。BUG-002/BUG-008 修复后 DA-08 恢复绿、新增用例转绿。
+6. **P2 · 取消级联** —— 父 Task CancelTask → 断远端 SUT 侧也收到 CancelTask 或最终状态。需要在远端 SUT 侧观察 cancel 触达。
 6. **P3 · Card 刷新失败保留上次 Card** —— 启动后 kill 远端 → 断主 Agent tool 仍可见。与 downstream-agent-killed 有部分重叠。
 7. **P3 · Card 全空 / 初次拉取失败** —— 低价值，负 fallback 路径。
 
@@ -228,9 +262,9 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 
 ---
 
-## 9. P1 补齐用例卡片（doc-only 设计，代码未落）
+## 9. P1/P2 补齐用例卡片（doc-only 设计 · 部分已落代码）
 
-> **用法**：以下两条对应 §7 的 P1 项，采 FEAT-001 §3 同款 G/W/T 卡片格式。每张卡片带 **spec 依据 / 触发路径 / 断言层 / 落点建议 / 未决问题**。所有卡片当前状态均为 **draft**，代码未新建；作为下一步实现的原始规格入口。
+> **用法**：以下四条对应 §7 的补齐项，采 FEAT-001 §3 同款 G/W/T 卡片格式。每张卡片带 **spec 依据 / 触发路径 / 断言层 / 落点建议 / 未决问题**。§9.1–§9.3 代码已落（当前状态见各卡片"状态"行）；§9.4 代码未落，作为下一步实现的原始规格入口。
 
 ### 9.1 FEAT-004.remote-agent-no-skills-not-installed — 无 skills Agent Card 不注入 Tool
 
@@ -263,6 +297,27 @@ L2 能力总表(§2.1)自身把该能力标为 ⬜ (未实现),这与 REMOTE_TIM
 - **PASS**:任务在 180s 内到达终态(无论 FAILED / COMPLETED,均由 LLM 兜底决策)。**FAIL(BUG-004 回归)**:`awaitTerminalState` 纯超时 —— `A2ARemoteAgentClient` 未感知 SSE close/EOF,父 Task 永久 hang。**INCONCLUSIVE**:层 2 前置不成立(`cardGetCount=0` 或 `a2aPostCount=0`,说明 tool 未装配 / planner 未 route,层 1 无意义)。
 - **不断言**:具体父终态类型(FAILED / COMPLETED 均合规,spec §3.2 只规定 toolResult 内容);wire 端字面串 `REMOTE_TIMEOUT` / `REMOTE_STREAM_CLOSED`(回灌 LLM 路径,payload 是 tool-result prompt,LLM 会消化,不落 wire);mock 侧是否收到 `CancelTask` POST(best-effort cancel 属实现细节)。
 - **落点**:[RemoteStreamTimeoutTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/RemoteStreamTimeoutTest.java)。
+
+### 9.4 FEAT-004.ask-user-rail-interrupt-resume-dual-bug — AskUserRail 中断链路双段反例断言（[BUG-002](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) + [BUG-008](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md) / [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48) · 精细归因分层）
+
+- **状态**：✅ **BUG-008 已修**（2026-07-27 下午本地替换 openjiuwen 新 jar，[MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) PASS · [BUG-008 §9](../bugs/BUG-008-askuser-rail-resolve-interrupt-approve-userinput-discarded.md#L156) 硬证据）· 🟡 **BUG-002 仍在**（[BUG-002 §2.5](../bugs/BUG-002-input-required-prompt-lost-as-ask-user.md) 有二次复观证据）· **BUG-002 + BUG-008 精细反例断言未落地**（本卡片规格,作为新增姊妹用例的落地入口 · BUG-008 已修后精细断言从"验证首红"转为"防退化 + 场景外 userInput 二次防御"）
+- **与 DA-08 的分工**：DA-08.A 断"5 轮内到 COMPLETED",BUG-008 死循环时必红,已充分承担极端形态 watchdog 职责,**无须替代或改造**;本卡片规格的新增姊妹用例目的是**归因粒度提升**——把 BUG-002（Round 1 追问下发丢自然语言）与 BUG-008 精细形态（Round 2 场景外 userInput 语义命中）拆分为独立断言层,让"死循环"报告能区分"Turn 1 追问下发 bug"vs"Turn 2 用户答复回投 bug"。
+- **FEAT 依据**：capability 7「中断-续接」深度形态；`AskUserRail` 桥接层的两段互补 bug 详见 §5.5 表。
+- **G**：复用 [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) 现有 SutStack（deep-research + search-agent 双启动，无需新增 SUT）。
+- **W**：Round 1 发一条已知稳定触发 `ask_user` 的模糊 prompt（DA-08 现有 prompt「查一下 DeepSeek 官方定价」已验证）；Round 2 用**场景外 userInput** 回投——**关键改动**：不用 DA-08 现在的 `"DeepSeek-V3"`（LLM 能从 tool-call arguments/history 侥幸推得），改用一个 LLM 无法自行推测的答复（例如显式代号 `"仅要 DeepSeek-Coder-V2 官网定价，不要其他型号"`，或未在上下文出现的具体口径）；等 Task 到 COMPLETED（或触发上限收束）。
+- **T**：三层独立断言（**归因分层设计,支持一处修复→另一层仍红的精细报告**）：
+  - **层 2（前置）**：Round 1 Task 状态经 `SUBMITTED → INPUT_REQUIRED`；Round 2 Task 达 COMPLETED（协议契约层，与 DA-08 一致）。
+  - **层 1a（BUG-002 精细反例 · 独立报告）**：Round 1 `TaskTextExtractor.textOf(task)` 或 `fullSnapshotTextOf(task)` 抽出的文本**不等于**字面串 `"ask_user"`、`"request_user_input"` 等 tool-name，且**含非空自然语言**（长度 > 5 且包含追问语义信号如"?"、"哪"、"哪款"、"具体"等）。**独立**归因到 BUG-002 修复状态。
+  - **层 1b（BUG-008 精细反例 · 独立报告）**：Round 2 达 COMPLETED 后，`textOf(task)` 抽出的 artifact **反映场景外 userInput 语义命中**——artifact 应指向 userInput 明确要求的目标（如"DeepSeek-Coder-V2 官网定价 + 官网链接"），而非 LLM 猜测的其他 DeepSeek 模型定价。**独立**归因到 BUG-008 修复状态。用场景外 userInput 是**关键**：DA-08 的 `"DeepSeek-V3"` 有场景先验（tool-call arguments 里已经有 DeepSeek），LLM 猜也能对上,无法区分"agent 消费 userInput"vs"LLM 从上下文猜到";场景外 userInput 强制走 userInput 消费路径。
+- **PASS**：三层均命中（BUG-002 + BUG-008 均已修复）。**FAIL(当前预期形态,分层报告)**：层 1a 红 = BUG-002 未修；层 1b 红 = BUG-008 未修；两者同红 = 双段 bug 依然存在（当前 2026-07-27 SIT 状态）。**INCONCLUSIVE**：Round 1 未到 INPUT_REQUIRED（agent 直接答复了模糊 prompt，路径未激活）—— 触发时切换到更强模糊 prompt；或层 2 前置失败（如 Round 2 也停 INPUT_REQUIRED 触发 BUG-008 极端形态 → 已由 DA-08.A 报告,本用例层 1b 判 INCONCLUSIVE 不重复报告）。
+- **不断言**：Round 1 具体追问措辞；`AskUserRail` 内部字段（黑盒不可见）；工具体是否重复执行（agent-core-java 内部行为）；5 轮上限行为（已由 DA-08.A 承担）。
+- **落点建议**：
+  - **方案 A（推荐）**：起姊妹用例 `AskUserRailInterruptResumeAntiRegressionTest`，与 MultiTurnSearchFollowupTest 同包，@Feature("FEAT-004") + @Tag("feat-004") + @Tag("bug-002") + @Tag("bug-008")。**保留 DA-08 现状不破坏**（DA-08.A 仍作 BUG-008 极端形态 watchdog）,新增用例首次以 expected-red 入库,分层报告 1a/1b。
+  - **方案 B（不推荐）**：把两层反例断言直接加进 MultiTurnSearchFollowupTest（同 test method 内），DA-08 从"BUG-008 极端形态 watchdog"翻成"混合断言"——归因边界模糊,慎用。
+- **未决问题**：
+  1. 82 服务器 deep-research 部署上的 `agent-core-java` 版本更新到含 [issue-48](https://gitcode.com/openJiuwen/agent-core-java/issues/48) fix 的版本（本地 `~/.m2` 已落新 jar，DA-08 PASS；82 侧上线时点待确认）—— 影响 `TEST_ENV=SIT` 下 DA-08 是稳定红还是稳定绿。
+  2. 场景外 userInput 的具体口径待与 SUT prompt 联调（保证 LLM 从上下文猜不到，同时 agent 有能力用它检索）。
+  3. 层 1a / 层 1b 已独立分层报告,可分别归因,无需担心"一处修好另一处未修"的判读混乱。
 
 ---
 

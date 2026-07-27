@@ -18,6 +18,8 @@ import java.util.Set;
  *       {@code /v1/{pid}/agents/{aid}/conversations/{cid}} (Conversation default).</li>
  *   <li>{@link #REST_REACTIVE} — REST {@code POST /v1/query/reactive} with {@code stream:true} (SSE, WebFlux).</li>
  *   <li>{@link #REST_REACTIVE_SYNC} — REST {@code POST /v1/query/reactive} with {@code stream:false} (JSON, WebFlux).</li>
+ *   <li>{@link #REST_GATEWAY} — high-code adapter EDPA wire (MessageTransport peer of
+ *       {@link #REST_QUERY}; Conversation-driven via the adapter, endpoint URL per the adapter spec).</li>
  * </ul>
  * Placeholders (selectable once their transport adapter lands): {@link #DIRECT_A2A},
  * {@link #DIRECT_REST}.
@@ -30,12 +32,13 @@ public enum MessageProtocol {
     REST_VERSATILE,
     REST_REACTIVE,
     REST_REACTIVE_SYNC,
+    REST_GATEWAY,
     DIRECT_A2A,
     DIRECT_REST;
 
     private static final Set<MessageProtocol> IMPLEMENTED = Set.of(
             A2A_STREAM, A2A_SYNC, REST_QUERY, REST_QUERY_SYNC, REST_VERSATILE,
-            REST_REACTIVE, REST_REACTIVE_SYNC);
+            REST_REACTIVE, REST_REACTIVE_SYNC, REST_GATEWAY);
 
     /** True once the transport adapter for this protocol exists. */
     public boolean isImplemented() {

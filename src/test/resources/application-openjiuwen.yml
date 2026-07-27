@@ -13,6 +13,13 @@ sut:
   wire-log:
     enabled: true
   services:
+    postgres:
+      image: postgres:latest
+      port: 5432
+      env:
+        POSTGRES_DB: agent_rdc
+        POSTGRES_USER: agent_rdc
+        POSTGRES_PASSWORD: agent_rdc
     redis:
       image: redis:7-alpine
       port: 6379
@@ -41,6 +48,21 @@ sut:
   # are for code analysis only and are never used at runtime.
   # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
+    registry-center:
+      group: com.openjiuwen
+      artifact: registry-discovery-center
+      version: 0.1.0
+      ready-mode: tcp
+      spring:
+        properties:
+          spring.datasource.username: agent_rdc
+          spring.datasource.password: agent_rdc
+          spring.flyway.enabled: true
+          agent-bus.registry.mvp.probe-interval-ms: 600000
+      service-bindings:
+        postgres:
+          url-key: spring.datasource.url
+          url-template: "jdbc:postgresql://{{url}}/agent_rdc"
     mock-mcp:
       group: com.huawei.ascend.examples
       artifact: travel-openjiuwen-test-support
@@ -85,6 +107,11 @@ sut:
       version: 0.1.0
       port: 8093
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+    hotel-skillhub:
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
+      version: 0.1.0
+      profile: skillhub-remote
     hotel-sandbox:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
@@ -99,13 +126,25 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
-    # deepresearch scenario (remote — running on server)
+    # deepresearch secnario
     deep-research:
-      url: "http://7.209.189.212:18090"
+      group: com.openjiuwen.example
+      artifact: agent-deep-research
+      version: 0.1.0
+    # FEAT-005 SkillHub DeepAgent 黑盒:与 deep-research 同坐标,别名隔离供 SkillHubDeepAgentBlackboxTest
+    # 独立启动。不注入 SEARCH_AGENT_URL,让 planner 直接用 skill 回答,避开 sub-agent 干扰。
+    deep-research-skillhub:
+      group: com.openjiuwen.example
+      artifact: agent-deep-research
+      version: 0.1.0
     search:
-      url: "http://7.209.189.212:18091"
+      group: com.openjiuwen.example
+      artifact: agent-search
+      version: 0.1.0
     agent-search:
-      url: "http://7.209.189.212:18091"
+      group: com.openjiuwen.example
+      artifact: agent-search
+      version: 0.1.0
     # workflow scenario
     expense-review-workflow:
       group: com.openjiuwen.example

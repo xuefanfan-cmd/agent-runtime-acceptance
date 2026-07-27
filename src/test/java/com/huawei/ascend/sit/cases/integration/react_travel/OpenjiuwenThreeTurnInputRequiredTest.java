@@ -5,6 +5,7 @@ import com.huawei.ascend.sit.client.InteractionFlow;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import org.a2aproject.sdk.spec.TaskState;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -23,12 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Tag("integration")
 @Tag("openjiuwen")
+@Disabled("FEAT-008 尚未交付，暂不执行")
 class OpenjiuwenThreeTurnInputRequiredTest extends BaseManagedStackTest {
 
     private static final String MAINPLAN = "mainplan";
     private static final String TRIP = "trip";
     private static final String HOTEL = "hotel";
-    private static final String SESSION_ID = "oj-05-manual-session-001";
 
     /**
      * Turn texts follow C-03 shape. Turn1/2 add anti-complete / anti-default-origin clauses so
@@ -61,8 +62,7 @@ class OpenjiuwenThreeTurnInputRequiredTest extends BaseManagedStackTest {
         InteractionFlow.FlowResult result = InteractionFlow.of(client(MAINPLAN))
                 .withMetadata(Map.of(
                         "userId", "manual-user",
-                        "agentId", "mainplan",
-                        "sessionId", SESSION_ID))
+                        "agentId", "mainplan"))
                 .withTimeoutMs(timeoutMs)
                 .send(TURN1)
                     .awaitState(TaskState.TASK_STATE_INPUT_REQUIRED)

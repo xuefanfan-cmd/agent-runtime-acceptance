@@ -9,8 +9,11 @@ import com.huawei.ascend.sit.transport.InboundExchange;
 import com.huawei.ascend.sit.transport.MessageProtocol;
 import com.huawei.ascend.sit.transport.MessageTransport;
 import com.huawei.ascend.sit.transport.OutboundMessage;
+import com.huawei.ascend.sit.transport.RestGatewayTransport;
 import com.huawei.ascend.sit.transport.RestExchange;
 import com.huawei.ascend.sit.transport.RestQueryTransport;
+import com.huawei.ascend.sit.transport.RestVersatileTransport;
+import com.huawei.ascend.sit.transport.SessionLabels;
 import com.huawei.ascend.sit.transport.WireLogger;
 import com.huawei.ascend.sit.transport.WireRequestRenderer;
 import com.huawei.ascend.sit.utils.JsonUtils;
@@ -75,8 +78,9 @@ import java.util.Set;
 public final class ConversationInteractionAdapter implements ConversationTransport {
 
     private final MessageProtocol protocol;
-    private final A2aServiceClient client;       // null when a transport is injected via using()
-    private MessageTransport transport;          // null on the client path until the first send
+    private final A2aServiceClient client;       // null when a transport is injected via using() or built from baseUrl
+    private final String baseUrl;                // gateway base URL on the forBaseUrl path; null on the client path
+    private MessageTransport transport;          // null until the first send (both the client + baseUrl paths)
     private final long timeoutMs;
 
     /**
@@ -114,18 +118,41 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
      * @param timeoutMs per-round resolution timeout (await {@code INPUT_REQUIRED} or a terminal)
      */
     public ConversationInteractionAdapter(MessageProtocol protocol, A2aServiceClient client, long timeoutMs) {
-        this.protocol = protocol;
-        this.client = client;
-        this.transport = null;   // built on first send — REST needs the conversation's workspace_id
-        this.timeoutMs = timeoutMs;
+        this(protocol, client, null, null, timeoutMs);
+    }
+
+    /**
+     * Build an adapter for a gateway base URL <em>without</em> an {@link A2aServiceClient} — the
+     * {@code Conversation} default-transport path ({@link MessageProtocol#REST_VERSATILE}), which has only
+     * the gateway URL (no plan-agent client to anchor on). The transport is built lazily on the first
+     * {@link #send} from this base URL, exactly as the client path builds it from
+     * {@code client.getBaseUrl()}. REST-only (A2A needs the client's {@code sendMessageStreaming}).
+     */
+    static ConversationInteractionAdapter forBaseUrl(MessageProtocol protocol, String baseUrl, long timeoutMs) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("baseUrl is required for forBaseUrl, got " + baseUrl);
+        }
+        return new ConversationInteractionAdapter(protocol, null, baseUrl, null, timeoutMs);
     }
 
     /** Private ctor with a pre-built transport — backs the {@link #using} test seam. */
     private ConversationInteractionAdapter(MessageProtocol protocol, MessageTransport transport, long timeoutMs) {
+        this(protocol, null, null, transport, timeoutMs);
+    }
+
+    /** Single private ctor — every factory route funnels through here. */
+    private ConversationInteractionAdapter(MessageProtocol protocol, A2aServiceClient client,
+                                           String baseUrl, MessageTransport transport, long timeoutMs) {
         this.protocol = protocol;
-        this.client = null;
+        this.client = client;
+        this.baseUrl = baseUrl;
         this.transport = transport;
         this.timeoutMs = timeoutMs;
+    }
+
+    /** The REST base URL: {@code client.getBaseUrl()} on the client path, else the {@link #baseUrl} field. */
+    private String base() {
+        return client != null ? client.getBaseUrl() : baseUrl;
     }
 
     /**
@@ -163,8 +190,9 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         return this;
     }
 
-    private static MessageTransport transportFor(MessageProtocol protocol, A2aServiceClient client,
-                                                 int workspaceId, Set<String> disabled) {
+    private MessageTransport transportFor(ConversationOutbound out, Set<String> disabled) {
+        int workspaceId = out.workspaceId();
+        String base = base();
         return switch (protocol) {
             // A2A_STREAM binds the streaming SDK Client (sendMessageStreaming → SSE message/stream);
             // client::sendMessage is the legacy sync default and would make A2A_STREAM wire-identical
@@ -172,12 +200,23 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             case A2A_STREAM -> new A2aStreamingTransport(new A2aStreamingWire(client::sendMessageStreaming));
             case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC -> {
                 URI ep = isReactive(protocol)
-                        ? restReactiveEndpoint(client.getBaseUrl(), workspaceId, disabled)
-                        : restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled);
+                        ? restReactiveEndpoint(base, workspaceId, disabled)
+                        : restQueryEndpoint(base, workspaceId, disabled);
                 yield new RestQueryTransport(new RestExchange(), ep, isStreaming(protocol));
             }
+            // REST_GATEWAY (high-code adapter) + REST_VERSATILE (low-code gateway) share the SAME identity-bearing
+            // conversation endpoint (/v1/{pid}/agents/{aid}/conversations/{cid}?type=controller&workspace_id=N)
+            // and the SAME GatewayStreamingTransport wire loop (POST → leaf.map() → SseStateClassifier); they differ
+            // only in the leaf class + SSE classifier — GatewayEventMapping (adapter, custom_rsp_data/think_chunk)
+            // vs VersatileEventMapping (gateway, bare {event,data}). Both streaming-only.
+            case REST_GATEWAY -> new RestGatewayTransport(new RestExchange(),
+                    restConversationEndpoint(base, out.projectId(), out.agentId(),
+                            out.conversationId(), workspaceId, disabled));
+            case REST_VERSATILE -> new RestVersatileTransport(new RestExchange(),
+                    restConversationEndpoint(base, out.projectId(), out.agentId(),
+                            out.conversationId(), workspaceId, disabled));
             default -> throw new IllegalArgumentException(
-                    "ConversationInteractionAdapter supports A2A_STREAM + REST family, got " + protocol);
+                    "ConversationInteractionAdapter supports A2A_STREAM + REST family + REST_GATEWAY + REST_VERSATILE, got " + protocol);
         };
     }
 
@@ -233,6 +272,20 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         return restEndpoint(baseUrl, "v1/query/reactive", workspaceId, disabled);
     }
 
+    /**
+     * The identity-bearing conversation endpoint shared by {@code REST_GATEWAY} (high-code adapter) and
+     * {@code REST_VERSATILE} (low-code gateway): {@code <base>/v1/{pid}/agents/{aid}/
+     * conversations/{cid}?type=controller&workspace_id=<N>} — mirroring the gateway's conversation
+     * endpoint shape. Distinct from the flat {@code /v1/query} REST family. Reuses
+     * {@link #restEndpoint(String, String, int, Set)} (same trailing-slash tolerance + disable
+     * semantics) by composing the conversation path as the path segment.
+     */
+    static URI restConversationEndpoint(String baseUrl, String projectId, String agentId, String conversationId,
+                                        int workspaceId, Set<String> disabled) {
+        String pathSeg = "v1/" + projectId + "/agents/" + agentId + "/conversations/" + conversationId;
+        return restEndpoint(baseUrl, pathSeg, workspaceId, disabled);
+    }
+
     /** True for the streaming REST-family protocols ({@code stream:true} → SSE). */
     static boolean isStreaming(MessageProtocol p) {
         return switch (p) {
@@ -252,10 +305,10 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         try {
             // The transport is built on the first send, not in the ctor: the REST endpoint must carry
             // the conversation's workspace_id (mirroring the gateway's RestPlanAgentClient.restEndpoint),
-            // and that id is first available here, in out.workspaceId(). It is constant for one
-            // conversation (= one adapter instance), so a once-only lazy build is correct.
+            // and REST_GATEWAY additionally carries pid/aid/cid — all first available here, on out. They are
+            // constant for one conversation (= one adapter instance), so a once-only lazy build is correct.
             if (transport == null) {
-                transport = transportFor(protocol, client, out.workspaceId(), disabledQueryParams);
+                transport = transportFor(out, disabledQueryParams);
             }
             boolean continuation = prevTaskId != null && !prevTaskId.isEmpty()
                     && prevState != null && !prevState.isFinal();
@@ -304,7 +357,11 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
                 wireLogger = WireLoggerResolver.resolved();
             }
             if (wireLogger.enabled()) {
-                String endpoint = client == null ? null : endpointFor(protocol, client, out.workspaceId(), disabledQueryParams);
+                // The using() test seam has neither client nor baseUrl → no endpoint (preserves the
+                // historical null). The client + forBaseUrl paths both resolve a real endpoint, so the
+                // gateway (forBaseUrl) path now gets a wire-log too (Design 1 goal).
+                String endpoint = (client == null && baseUrl == null)
+                        ? null : endpointFor(out, disabledQueryParams);
                 String wireRequest = WireRequestRenderer.render(protocol, message, endpoint);
                 wireLogger.logRound(protocol.name(), ++round, sessionIdOf(message), message,
                         exchange.events(), wireRequest);
@@ -314,16 +371,9 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         }
     }
 
-    /** Session id for the wire-log filename: metadata {@code sessionId} → contextId → {@code "nosession"}. */
+    /** Session id for the wire-log filename: JUnit invocation label → contextId → {@code "nosession"}. */
     private static String sessionIdOf(OutboundMessage m) {
-        Map<String, Object> md = m.metadata();
-        if (md != null) {
-            Object sid = md.get("sessionId");
-            if (sid != null && !String.valueOf(sid).isBlank()) {
-                return String.valueOf(sid);
-            }
-        }
-        return (m.contextId() == null || m.contextId().isBlank()) ? "nosession" : m.contextId();
+        return SessionLabels.resolveLogName(m.contextId());
     }
 
     /**
@@ -331,17 +381,21 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
      * the agent card URL (base URL fallback); REST → the workspace-scoped {@code /v1/query} URL. Resolved
      * only when a client is present (the {@code using()} unit-test seam has none → caller passes null).
      */
-    private static String endpointFor(MessageProtocol protocol, A2aServiceClient client,
-                                      int workspaceId, Set<String> disabled) {
+    private String endpointFor(ConversationOutbound out, Set<String> disabled) {
+        int workspaceId = out.workspaceId();
+        String base = base();
         return switch (protocol) {
             case A2A_STREAM -> {
                 String url = client.getAgentCard() == null ? null : client.getAgentCard().url();
-                yield (url == null || url.isBlank()) ? client.getBaseUrl() : url;
+                yield (url == null || url.isBlank()) ? base : url;
             }
             case REST_QUERY, REST_QUERY_SYNC ->
-                    restQueryEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
+                    restQueryEndpoint(base, workspaceId, disabled).toString();
             case REST_REACTIVE, REST_REACTIVE_SYNC ->
-                    restReactiveEndpoint(client.getBaseUrl(), workspaceId, disabled).toString();
+                    restReactiveEndpoint(base, workspaceId, disabled).toString();
+            case REST_GATEWAY, REST_VERSATILE ->
+                    restConversationEndpoint(base, out.projectId(), out.agentId(),
+                            out.conversationId(), workspaceId, disabled).toString();
             default -> null;
         };
     }
@@ -371,8 +425,20 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC ->
                     new OutboundMessage(null, null, taskId, contextId,
                             restBody(out, env, textPart, isStreaming(protocol)));
+            // REST_GATEWAY (high-code adapter): streaming-only, so stream is always true. Posts the full
+            // EDPA envelope — the same restBody shape as the REST family, just addressed to the adapter's
+            // cid-bearing /v1/{pid}/agents/{aid}/conversations/{cid} URL (built in transportFor).
+            case REST_GATEWAY ->
+                    new OutboundMessage(null, null, taskId, contextId,
+                            restBody(out, env, textPart, true));
+            // REST_VERSATILE (low-code gateway — the Conversation default): posts out.jsonBody() VERBATIM.
+            // The Conversation path's body IS the full gateway EDPA body (ConversationRequest.toJson()),
+            // so it is posted unchanged — the same contract the old conversation.RestVersatileTransport
+            // had. No restBody rebuild / EdpaEnvelope.parse reshaping: the body is already gateway-shaped.
+            case REST_VERSATILE ->
+                    new OutboundMessage(null, null, taskId, contextId, out.jsonBody());
             default -> throw new IllegalArgumentException(
-                    "ConversationInteractionAdapter supports A2A_STREAM + REST family, got " + protocol);
+                    "ConversationInteractionAdapter supports A2A_STREAM + REST family + REST_GATEWAY + REST_VERSATILE, got " + protocol);
         };
     }
 

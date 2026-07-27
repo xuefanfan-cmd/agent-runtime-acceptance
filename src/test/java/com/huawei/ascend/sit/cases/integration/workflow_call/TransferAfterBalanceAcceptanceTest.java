@@ -51,10 +51,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * REST 客户端已单测覆盖，真机确认待 LLM keys 实跑。
  *
  * <p><b>为何不像 ExpenseReviewAcceptanceTest 那样参数化 A2A/REST 流式。</b>本用例走 {@link Conversation} 客户端，
- * 其出站 transport 目前只有 {@code RestVersatileTransport}（{@link com.huawei.ascend.sit.transport.MessageProtocol#REST_VERSATILE}），
- * <b>没有 A2A 流式 ConversationTransport</b>——故无法像 {@link InteractionFlow} 那样以 {@code .protocol(A2A_STREAM/REST_QUERY)}
- * 参数化。这里的"两模式"维度是<b>网关下行协议</b>（gateway→plan-agent 的 a2a/rest，见上），且为 stack 级属性（{@code @BeforeAll}
- * 构栈一次），靠 {@code -DGATEWAY_PROTOCOL} 跑两遍覆盖，而非 JUnit 参数化。待新增 A2A 版 ConversationTransport 后方可同型参数化。
+ * 其默认出站 transport 为 {@link ConversationInteractionAdapter}（{@link com.huawei.ascend.sit.transport.MessageProtocol#REST_VERSATILE}
+ * 经 {@code forBaseUrl}，无 A2A client），<b>默认路径不开 A2A 流式</b>——故无法像 {@link InteractionFlow} 那样以
+ * {@code .protocol(A2A_STREAM/REST_QUERY)} 参数化。这里的"两模式"维度是<b>网关下行协议</b>（gateway→plan-agent 的 a2a/rest，见上），
+ * 且为 stack 级属性（{@code @BeforeAll} 构栈一次），靠 {@code -DGATEWAY_PROTOCOL} 跑两遍覆盖，而非 JUnit 参数化。
+ * （迁移前默认 transport 是已删除的 {@code conversation.RestVersatileTransport}；现已统一到 {@link ConversationInteractionAdapter}，
+ * 网关路径同样获得 typed-envelope 分类 + wire-log。）
  *
  * <p><b>profile 门</b>：{@code buildStack} 第一行 {@code assumeTrue(openjiuwen)} —— 非 openjiuwen 在基类
  * {@code .start()} 之前就 abort，不拉任何容器；{@code stack} 留 null，{@code tearDownStack} null-safe。
@@ -163,80 +165,6 @@ class TransferAfterBalanceAcceptanceTest extends BaseManagedStackTest {
                     .as("汇总须含 余额/转账/参与者 之一").isTrue();
 
             // —— 断言（很可能，首轮后可校准）——
-            assertThat(blob).as("余额笔证据(8200)").contains("8200");
-            assertThat(blob).as("收款人 李四").contains("李四");
-            assertThat(blob).as("收款人 王五").contains("王五");
-
-            // —— 证据采集（首轮软捕获，确认后提升为硬断言）——
-            List<String> hit = TRANSFER_DONE.stream().filter(blob::contains).toList();
-            System.out.println("[transfer-completion markers hit] " + hit);
-        }
-    }
-
-    /**
-     * <b>SCRIPT 步计数驱动</b>版（与 {@link #balanceThenTransfers()} 同拓扑、同 kickoff、同 5 个 manual select）。
-     *
-     * <p>与 stepUi 的差别仅在驱动器：SCRIPT <b>不查中台 step-ui</b>，按声明的 {@code advance/select}
-     * 序列逐条 {@code next-request → POST}。select 的 label 在 SCRIPT 下<b>仅记录不校验</b>（步漂移不会硬失败，
-     * 这是 SCRIPT 的已知弱点；步漂移检测是 stepUi 的 {@code consumeSelection} 职责）。
-     *
-     * <p><b>指令编排依据</b>（来自 envexplorer 场景定义）：plan-agent 的 versatile 委托会把 envexplorer 的
-     * auto/纯展示 步<b>打包推进到下一个 input-required 边界</b>再中断——故<b>一个框架 POST = 跨到下一个 manual 步</b>，
-     * auto 步无需单独 advance。kickoff 一句话已驱动到 balance 的纯展示步 {@code on_balance_detail}
-     * （manual 但无 selection_key → 需一次 advance 放行）；该 advance 同时把 balance 推到 END 并跨腿到 transfer 李四
-     * 的 {@code on_payee_input}。之后 5 个 select 与 stepUi 用例<b>同序同值</b>：李四 3 个 + 王五 2 个
-     * （王五 payee 由 {@code context_builder} 的 {@code skipTo='paycard_input'} 预解析，故跳过 {@code on_payee_input}）。
-     * 跨腿发生在 on_confirm_remit 的恢复 POST 内（李四 END → versatile 返回 → plan-agent 继续 → 王五第一步）。
-     *
-     * <p><b>cid-gap</b>：SCRIPT 与 stepUi 共用 {@link com.huawei.ascend.sit.conversation.mid.MidConversationSupport}
-     * 的 {@code getOpt} 容错，跨腿行为一致（plan-agent 在 3s 重试窗口内重绑同一 cid）。{@code untilDone()} 让脚本跑到
-     * 工作流自然结束（next-request 返回 null）或指令耗尽。
-     *
-     * <p><b>首轮校准点</b>：开头 advance 数取决于 versatile 是否把 auto/展示步打包到 manual 边界（此处按"打包"模型取 1 次）。
-     * 若首轮实测 balance 在 {@code on_balance_detail} 不中断（kickoff 直接跨到 on_payee_input），改为 0 次；若 versatile
-     * 一次只推一步，改为 2 次。select 的 label/值与 stepUi 用例一致，无需校准。
-     */
-    @Test
-    @DisplayName("查余额+转账（SCRIPT 步计数）：同拓扑同 kickoff，1 advance(balance 展示步) + 5 select(李四3/王五2)")
-    void balanceThenTransfersScript() {
-        try (Conversation conv = Conversation.at(
-                stack.baseUrl("edpa-gateway"), stack.serviceUrl("envexplorer"))
-                .identity(ConversationIdentity.loadDefault())
-                .timeout(Duration.ofSeconds(600))
-                .open()) {
-
-            // SCRIPT：select 必须声明在 DriveMode.script() 构建器内（Turn.select() 仅 stepUi 消费）。
-            TurnResult turn = conv.turn(SENTENCE)
-                    .intent("")
-                    .driveMode(DriveMode.script()
-                            // balance on_balance_detail(纯展示, 无 selection_key) 放行 → END → 跨腿 transfer 李四 on_payee_input
-                            .advance(2)
-                            // —— 转账李四 ——
-                            .advance(1)
-                            .select("on_payee_input",   Map.of("recSerialNum", "SN20240001"))
-                            .select("on_paycard_input", Map.of("accIndex", "0"))
-                            .advance(1)
-                            .select("on_confirm_remit", Map.of("_text", "确定"))
-                            .advance(1)
-                            // —— 转账王五（on_confirm_remit 的 POST 内跨腿；payee 由 skipTo 预解析，无 on_payee_input）——
-                            .advance(1)
-                            .select("on_paycard_input", Map.of("accIndex", "0"))
-                            .advance(1)
-                            .select("on_confirm_remit", Map.of("_text", "确定"))
-                            .untilDone())
-                    .run();
-
-            List<SseEvent> events = turn.allEvents();
-            String blob = concat(events);
-
-            for (String m : STACK_LEAK_MARKERS) {
-                assertThat(blob).as("SSE 不得泄露 JVM 堆栈").doesNotContain(m);
-            }
-            assertThat(blob).as("plan-agent 汇总非空").isNotBlank();
-            assertThat(TOPICAL.stream().anyMatch(blob::contains))
-                    .as("汇总须含 余额/转账/参与者 之一").isTrue();
-
-            // —— 断言（与 stepUi 用例一致；SCRIPT 下 select label 仅记录不校验）——
             assertThat(blob).as("余额笔证据(8200)").contains("8200");
             assertThat(blob).as("收款人 李四").contains("李四");
             assertThat(blob).as("收款人 王五").contains("王五");

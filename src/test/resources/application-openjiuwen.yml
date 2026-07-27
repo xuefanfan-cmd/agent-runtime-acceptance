@@ -115,6 +115,11 @@ sut:
         jiuwenbox:
           url-key: openjiuwen.service.external.sandbox.servers[0].service-url
           url-template: "http://{{url}}"
+    # Duplicate hotel instance for multi-instance dedup testing (RdcMultiInstanceDedupTest)
+    hotel-dup:
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
+      version: 0.1.0
     # deepresearch secnario
     deep-research:
       group: com.openjiuwen.example
@@ -127,6 +132,10 @@ sut:
       artifact: agent-deep-research
       version: 0.1.0
     search:
+      group: com.openjiuwen.example
+      artifact: agent-search
+      version: 0.1.0
+    agent-search:
       group: com.openjiuwen.example
       artifact: agent-search
       version: 0.1.0

@@ -71,8 +71,7 @@ class RdcMultiInstanceDedupTest extends BaseManagedStackTest {
         int candidates = r.get("candidates").size();
         assertThat(candidates).as("""
                 需求 §5.1 要求同一 Card 的多个实例合并为 1 个候选。
-                实测 rdc 返回 %d 个候选（未去重）。
-                2026-07-23 手工验证：hotel:8093 + hotel:8097 同 Card → discover 返回 2 candidates。
-                """.formatted(candidates)).isEqualTo(2); // 当前实际行为，标记待开发修复
+                PR #115 后 rdc 正确去重，返回 1 个候选。
+                """).isEqualTo(1);
     }
 }

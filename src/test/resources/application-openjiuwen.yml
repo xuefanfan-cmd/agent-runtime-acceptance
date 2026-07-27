@@ -94,7 +94,18 @@ sut:
         jiuwenbox:
           url-key: openjiuwen.service.external.sandbox.servers[0].service-url
           url-template: "http://{{url}}"
-    # deepresearch secnario
+    # Duplicate hotel instance for multi-instance dedup testing (RdcMultiInstanceDedupTest)
+    hotel-dup:
+      group: com.openjiuwen.example
+      artifact: travel-demo-hotel
+      version: 0.1.0
+    # deepresearch scenario (remote — running on server)
+    deep-research:
+      url: "http://7.209.189.212:18090"
+    search:
+      url: "http://7.209.189.212:18091"
+    agent-search:
+      url: "http://7.209.189.212:18091"
     # workflow scenario
     expense-review-workflow:
       group: com.openjiuwen.example

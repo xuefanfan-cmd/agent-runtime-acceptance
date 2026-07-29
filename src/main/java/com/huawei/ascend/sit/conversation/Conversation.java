@@ -1,12 +1,15 @@
 package com.huawei.ascend.sit.conversation;
 
 import com.huawei.ascend.sit.conversation.mid.MidConversationSupport;
+import com.huawei.ascend.sit.conversation.mid.dto.StepUI;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.transport.MessageProtocol;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 对话生命周期：持 conversation_id（经 {@link ConversationIdMapper}），可跨多个 Turn 复用同一 cid。
@@ -27,6 +30,7 @@ public final class Conversation implements AutoCloseable {
     private final ConversationTransport transport;
     private final String cid;
     private final List<TurnResult> turns = new ArrayList<>();
+    private final List<ParallelTurnResult> parallelTurns = new ArrayList<>();
 
     private Conversation(Builder b) {
         this.gatewayBaseUrl = b.gatewayBaseUrl;
@@ -48,9 +52,12 @@ public final class Conversation implements AutoCloseable {
 
     public String cid() { return cid; }
     public List<TurnResult> turns() { return List.copyOf(turns); }
+    /** Parallel turns recorded via {@link Turn#runParallel()} (additive to {@link #turns()}). */
+    public List<ParallelTurnResult> parallelTurns() { return List.copyOf(parallelTurns); }
     public ConversationResult result() { return new ConversationResult(cid, turns()); }
     public Turn turn(String input) { return new Turn(this, input); }
     void recordTurn(TurnResult r) { turns.add(r); }
+    void recordParallelTurn(ParallelTurnResult r) { parallelTurns.add(r); }
 
     // package-private 访问器供 Turn 使用：
     String gatewayBaseUrl() { return gatewayBaseUrl; }
@@ -61,6 +68,44 @@ public final class Conversation implements AutoCloseable {
     String cidValue() { return cid; }
     ConversationTransport transport() { return transport; }
     MidConversationSupport mid() { return mid; }
+
+    /**
+     * POST a per-child resume for parallel driving: sends {@code query} on the parent conversation
+     * ({@code body.conversation_id} = the parent cid — children share it) carrying the child's
+     * {@code toolCallId} so the adapter stamps {@code params.message.parts[0].metadata.toolCallId}, routing
+     * the resume input to that specific child member via the runtime's
+     * {@code RemoteInvocationBatchCoordinator.resumeWaitingBatch}. NO {@code metadata.runtime.remoteToolInputs}
+     * is carried on the wire. Returns the resulting Step (SSE events + timing). Mirrors {@link Turn}'s
+     * serial post(), but carries the per-child resume routing key.
+     *
+     * @param parentCid   the parent conversation id (conversationId on the wire — children share it)
+     * @param toolCallId  the remote-invocation toolCallId identifying the child to resume
+     * @param query       the resume input text for that child
+     * @param selectionKv the manual-step form inputs that produced this resume (captured on the Step for diagnostics)
+     * @param index       the step index for this child
+     * @param stepUi      the StepUI snapshot that triggered this resume (captured on the Step; may be null)
+     */
+    Step postResume(String parentCid, String toolCallId, String query,
+                    Map<String, String> selectionKv, int index, StepUI stepUi) {
+        ConversationRequest body = ConversationRequest.from(identity)
+                .query(query).intent("LATEST").conversationId(parentCid).build();
+        ConversationEventCollector c = new ConversationEventCollector();
+        Instant s = Instant.now();
+        ConversationOutbound out = new ConversationOutbound(
+                gatewayBaseUrl,
+                identity.projectId(),
+                identity.agentId(),
+                parentCid,
+                identity.workspaceId(),
+                body.toJson(),
+                identity.roleName(),
+                identity.roleId(),
+                String.valueOf(timeout.getSeconds()),
+                toolCallId);   // stamps parts[0].metadata.toolCallId — routes this resume to the child
+        transport.send(out, c);
+        c.awaitStreamEnd(timeout.toMillis());
+        return new Step(index, stepUi, null, selectionKv, body, c.snapshot(), Duration.between(s, Instant.now()));
+    }
 
     @Override public void close() {}
 

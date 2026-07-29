@@ -5,6 +5,7 @@ import org.a2aproject.sdk.client.MessageEvent;
 import org.a2aproject.sdk.client.TaskEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
 import org.a2aproject.sdk.spec.Artifact;
+import org.a2aproject.sdk.spec.DataPart;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.Part;
 import org.a2aproject.sdk.spec.Task;
@@ -18,6 +19,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.huawei.ascend.sit.utils.JsonUtils;
 
 /**
  * Maps A2A SDK {@link ClientEvent}s to neutral {@link InboundEvent}s. Task-bearing events (a
@@ -194,11 +197,21 @@ public final class A2aEventMapping {
     }
 
     /**
-     * One classified event per text part: typed {@code {type,index,payload}} envelopes via
+     * One classified event per part: typed {@code {type,index,payload}} envelopes via
      * {@link LlmPayload}; a plain-text part becomes {@link InboundEvent.Kind#CONTENT} by default (live
      * streamed chunks are intermediate), or {@link InboundEvent.Kind#ANSWER} when
      * {@code plainTextAsAnswer} is set — used by {@link #contentEventsOf}, where every text a settled
      * task carries IS its reply. Non-{@link TextPart}s and null texts are skipped.
+     *
+     * <p>{@link DataPart}s (structured part payloads the runtime emits for non-textual chunks, per
+     * {@code ChunkMapper}) are <em>not</em> skipped: their {@code data} is stringified and run through the
+     * same {@link LlmPayload#classify} path as a {@link TextPart}'s text, so a terminal envelope carried
+     * as a structured Map classifies to {@link InboundEvent.Kind#ANSWER} just as it would on the
+     * TextPart path. A non-envelope structured object falls back to {@link InboundEvent.Kind#CONTENT} /
+     * {@code ANSWER} (per {@code plainTextAsAnswer}), its text the data JSON-stringified — so the wire
+     * log records the structured payload verbatim instead of dropping the part. The legacy
+     * {@code instanceof TextPart}-only walk silently dropped every DataPart, losing structured parts
+     * (the gap surfaced once the runtime switched terminal envelopes to DataPart).
      */
     private static List<InboundEvent> partEvents(List<Part<?>> parts, Object raw) {
         return partEvents(parts, raw, false);
@@ -210,18 +223,48 @@ public final class A2aEventMapping {
         }
         List<InboundEvent> out = new ArrayList<>();
         for (Part<?> part : parts) {
-            if (part instanceof TextPart tp && tp.text() != null) {
-                InboundEvent typed = LlmPayload.classify(tp.text(), raw);
-                if (typed != null) {
-                    out.add(typed);
-                } else {
-                    out.add(plainTextAsAnswer
-                            ? InboundEvent.answer(tp.text(), raw)
-                            : InboundEvent.content(tp.text(), raw));
-                }
+            String text = partText(part);
+            if (text == null) {
+                continue;
+            }
+            InboundEvent typed = LlmPayload.classify(text, raw);
+            if (typed != null) {
+                out.add(typed);
+            } else {
+                out.add(plainTextAsAnswer
+                        ? InboundEvent.answer(text, raw)
+                        : InboundEvent.content(text, raw));
             }
         }
         return out;
+    }
+
+    /**
+     * The stringifiable text a part carries, or {@code null} if it carries none. A {@link TextPart}
+     * yields its {@code text()}; a {@link DataPart} yields its {@code data()} stringified (a structured
+     * Map/List → JSON so {@link LlmPayload#classify} and the wire log see the envelope verbatim; a
+     * String → verbatim, not JSON-quoted, since a string data is already text). Other part types and
+     * null data yield {@code null} (skipped).
+     */
+    private static String partText(Part<?> part) {
+        if (part instanceof TextPart tp && tp.text() != null) {
+            return tp.text();
+        }
+        if (part instanceof DataPart dp && dp.data() != null) {
+            return stringifyData(dp.data());
+        }
+        return null;
+    }
+
+    /**
+     * Stringify a {@link DataPart}'s data for the text-extraction path: a {@link String} verbatim (it is
+     * already text — JSON-quoting would double-encode it), any other object (Map/List/Number/Boolean) as
+     * compact JSON so a structured envelope carries verbatim into {@link LlmPayload#classify} / the wire
+     * log. JSON is preferred over {@code toString()} so a Map renders as {@code {"k":"v"}} (parseable by
+     * {@code LlmPayload.classify}), not the JDK's {@code {k=v}}.
+     */
+    private static String stringifyData(Object data) {
+        return data instanceof String s ? s : JsonUtils.toJsonCompact(data);
     }
 
     private static InboundEvent state(Task t, Object raw) {
@@ -267,8 +310,9 @@ public final class A2aEventMapping {
         if (parts == null) return "";
         StringBuilder sb = new StringBuilder();
         for (Part<?> part : parts) {
-            if (part instanceof TextPart tp && tp.text() != null) {
-                sb.append(tp.text());
+            String text = partText(part);
+            if (text != null) {
+                sb.append(text);
             }
         }
         return sb.toString();

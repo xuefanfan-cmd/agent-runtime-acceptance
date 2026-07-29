@@ -152,6 +152,7 @@ sut:
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "expense-review"
+          openjiuwen.service.a2a.remote-agents[0].streaming: true
     edpa-gateway:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-gateway
@@ -166,6 +167,7 @@ sut:
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "versatile-adapter"
+          openjiuwen.service.a2a.remote-agents[0].streaming: true
     edpa-adapter:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-adapter

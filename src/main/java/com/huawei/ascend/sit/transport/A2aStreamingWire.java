@@ -4,6 +4,7 @@ import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.TextPart;
 
 import java.util.List;
 import java.util.Map;
@@ -48,9 +49,30 @@ public final class A2aStreamingWire {
      * Build the A2A user {@link Message}: start from a user-text message, then set
      * {@code taskId}/{@code contextId} only when present and non-blank. Mirrors the pre-refactor
      * {@code InteractionFlow.executeRound} builder exactly, so continuation behavior is unchanged.
+     * Equivalent to {@link #buildMessage(String, Map, String, String)} with no part metadata.
      */
     public static Message buildMessage(String text, String taskId, String contextId) {
-        Message.Builder builder = Message.builder(A2A.toUserMessage(text));
+        return buildMessage(text, null, taskId, contextId);
+    }
+
+    /**
+     * Build the A2A user {@link Message} with optional part-level {@code metadata} stamped onto
+     * {@code parts[0]} — the parallel-resume routing channel: the adapter sets
+     * {@code parts[0].metadata.toolCallId} so the runtime's {@code RemoteInvocationBatchCoordinator} routes
+     * the round's input to a specific child member. When {@code partMetadata} is null/empty, this is
+     * byte-identical to {@link A2A#toUserMessage} — a bare {@link TextPart} with role=USER and an
+     * auto-generated messageId. When present, the {@link TextPart} is built directly carrying that
+     * metadata, with the same role=USER + auto messageId as {@code toUserMessage}.
+     * {@code taskId}/{@code contextId} are set only when present and non-blank.
+     */
+    public static Message buildMessage(String text, Map<String, Object> partMetadata,
+                                       String taskId, String contextId) {
+        TextPart part = (partMetadata == null || partMetadata.isEmpty())
+                ? new TextPart(text)
+                : new TextPart(text, partMetadata);
+        Message.Builder builder = Message.builder()
+                .role(Message.Role.ROLE_USER)
+                .parts(List.of(part));
         if (taskId != null && !taskId.isBlank()) {
             builder.taskId(taskId);
         }

@@ -22,8 +22,6 @@ public final class Turn {
     private final List<DeclaredSelection> selections = new ArrayList<>();
     private DriveMode mode = DriveMode.stepUi();
 
-    private record DeclaredSelection(String label, Map<String, String> kv) {}
-
     /** 驱动循环的结果:终态 StepUI(SCRIPT=null) + 是否被交互上限熔断。 */
     private record DriveOutcome(StepUI terminal, boolean capped) {
         static DriveOutcome done(StepUI s) { return new DriveOutcome(s, false); }
@@ -69,6 +67,131 @@ public final class Turn {
                 Duration.between(start, Instant.now()));
         conv.recordTurn(result);
         return result;
+    }
+
+    /**
+     * Drive a {@link DriveMode.ParallelStepUi} turn as a <b>serial-then-parallel</b> flow:
+     * <ol>
+     *   <li><b>Kickoff</b> (Step 0, same body as {@link #run()}).</li>
+     *   <li><b>Serial phase</b> — advance the balance workflow via the same step-ui/next-request loop as
+     *       {@link #driveStepUi(List)} (consuming {@code this.selections} for any manual balance step),
+     *       scanning each round for the parallel fan-out signal. The {@code parallel-transfer} profile
+     *       runs the balance query SERIALLY first; the transfer fan-out ({@code _remote_invocation}
+     *       projections) appears only in a LATER round — so we must drive forward to reach it. The loop
+     *       stops the moment a round carries ≥2 projections (the fan-out), or when the workflow ends /
+     *       hits the safety cap with no fan-out (in which case {@link ParallelStepDriver} throws
+     *       "derived <2"). If the kickoff already carries the fan-out, the serial phase is skipped.</li>
+     *   <li><b>Parallel phase</b> — {@link ParallelStepDriver} derives child conversation ids from the
+     *       fan-out round (the last serial step) and drives each child concurrently, resuming per child
+     *       through {@link Conversation#postResume} (parts[0].metadata.toolCallId = the child's id).</li>
+     * </ol>
+     *
+     * <p>{@code maxInteractions} bounds the serial phase (serial rounds) AND is applied per child (per-child
+     * resume cap) — independent counters. Each parallel round is logged to stdout
+     * ({@code [parallel-serial] ...}) so a hardware run reveals the balance→fan-out transition and the
+     * exact manual-step sequence.
+     *
+     * @throws IllegalStateException if {@link #driveMode(DriveMode)} was not set to a ParallelStepUi.
+     *         The guard fires <em>before</em> the kickoff POST, so a non-parallel mode never posts.
+     */
+    public ParallelTurnResult runParallel() {
+        if (!(mode instanceof DriveMode.ParallelStepUi p)) {
+            throw new IllegalStateException(
+                    "runParallel() requires DriveMode.parallelStepUi(...), got " + mode);
+        }
+        // ---- Step 0: kick-off (same body as run()'s Step 0). In the parallel-transfer profile this is
+        // the BALANCE phase (INPUT_REQUIRED), NOT the fan-out — the fan-out appears after balance is
+        // driven forward. ----
+        ConversationRequest body0 = ConversationRequest.from(conv.identity())
+                .query(input).intent(intent).conversationId(conv.cidValue()).build();
+        Step kickOff = post(0, null, null, Map.of(), body0);
+
+        // ---- Serial phase: drive balance forward (step-ui/next-request) until the fan-out round. ----
+        List<Step> serialSteps = driveUntilFanOut(kickOff);
+
+        // ---- Parallel phase: derive children from the fan-out round (last serial step) + fan out. ----
+        ParallelTurnResult result = ParallelStepDriver.drive(
+                conv.cidValue(), serialSteps, p, maxInteractions,
+                conv.mid()::stepUi, conv.mid()::nextRequest, conv::postResume);
+        if (result.capped()) {
+            System.err.println("[turn-safety] parallel turn capped at " + maxInteractions
+                    + " per child; children=" + result.childCount());
+        }
+        conv.recordParallelTurn(result);
+        return result;
+    }
+
+    /**
+     * Serial phase of {@link #runParallel()}: drive the kickoff (and any balance rounds) forward via the
+     * step-ui/next-request loop until a round carries the parallel fan-out (≥2 {@code _remote_invocation}
+     * projections). Returns the full serial prefix (kickoff + driven rounds), with the fan-out round last.
+     *
+     * <p>Reuses the proven {@link #driveStepUi(List)} shape (step-ui → consume selection → next-request →
+     * post), but watches each round for the fan-out instead of driving to a terminal. Manual balance steps
+     * consume from {@code this.selections} positionally (same as the serial STEP_UI path); the parallel
+     * children consume their own copy from {@code ParallelStepUi.sharedSelections} later, so the two
+     * selection lists never collide.
+     */
+    private List<Step> driveUntilFanOut(Step kickOff) {
+        List<Step> steps = new ArrayList<>();
+        steps.add(kickOff);
+        int kickoffTotal = RemoteInvocationProbe.derive(conv.cidValue(), kickOff.events()).size();
+        int kickoffFanOut = RemoteInvocationProbe.fanOutChildren(conv.cidValue(), kickOff.events()).size();
+        // Fast path: the kickoff already carries the fan-out (a ≥2-member batch) — no serial balance phase.
+        if (kickoffFanOut >= 2) {
+            System.out.println("[parallel-serial] kickoff already carries the fan-out "
+                    + "(" + kickoffFanOut + "-member batch) — skipping balance phase");
+            return steps;
+        }
+        System.out.println("[parallel-serial] kickoff projections=" + kickoffTotal
+                + " fanOutBatch=" + kickoffFanOut
+                + " — driving balance phase serially until the fan-out");
+        int idx = 1;
+        int selIdx = 0;
+        while (true) {
+            // Safety guard: a faulty SUT (balance never completes + next-request never null) would loop
+            // forever; cap at maxInteractions and hand off to ParallelStepDriver, which throws a clear
+            // "derived <2 after N serial rounds" so the failure names the round count.
+            if (steps.size() >= maxInteractions) {
+                System.err.println("[turn-safety] parallel serial phase capped at " + maxInteractions
+                        + " rounds without seeing the fan-out (≥2-member batch)");
+                return steps;
+            }
+            StepUI s = conv.mid().stepUi(conv.cidValue());
+            if (s.isWorkflowComplete()) {
+                System.out.println("[parallel-serial] workflow complete after " + steps.size()
+                        + " round(s) — no fan-out seen (parallel-transfer profile did not fan out?)");
+                return steps;
+            }
+            Map<String, String> kv = Map.of();
+            String label = null;
+            if (s.needsSelection()) {
+                DeclaredSelection ds = consumeSelection(selIdx++, s);   // positional balance-step select
+                kv = ds.kv();
+                label = ds.label();
+            }
+            NextRequest nr = conv.mid().nextRequest(conv.cidValue(), kv);
+            if (nr.query() == null) {
+                System.out.println("[parallel-serial] next-request null after " + steps.size()
+                        + " round(s) — workflow end without fan-out");
+                return steps;
+            }
+            ConversationRequest body = ConversationRequest.from(conv.identity())
+                    .query(nr.query()).intent("LATEST").conversationId(conv.cidValue()).build();
+            Step round = post(idx++, s, label, kv, body);
+            steps.add(round);
+            int total = RemoteInvocationProbe.derive(conv.cidValue(), round.events()).size();
+            int fanOut = RemoteInvocationProbe.fanOutChildren(conv.cidValue(), round.events()).size();
+            System.out.println("[parallel-serial] round " + round.index()
+                    + " step=" + (s.stepId() == null || s.stepId().isBlank() ? "(auto)" : s.stepId())
+                    + " needsSel=" + s.needsSelection()
+                    + " projections=" + total + " fanOutBatch=" + fanOut);
+            if (fanOut >= 2) {
+                System.out.println("[parallel-serial] fan-out detected at round " + round.index()
+                        + " (" + fanOut + " children) — switching to parallel driving");
+                return steps;
+            }
+        }
     }
 
     private DriveOutcome driveStepUi(List<Step> steps) {
@@ -154,7 +277,8 @@ public final class Turn {
                 body.toJson(),
                 conv.identity().roleName(),
                 conv.identity().roleId(),
-                String.valueOf(conv.timeout().getSeconds()));
+                String.valueOf(conv.timeout().getSeconds()),
+                null);   // serial path: no toolCallId (no part metadata on the wire)
         conv.transport().send(out, c);
         c.awaitStreamEnd(conv.timeout().toMillis());
         return new Step(index, stepUi, label, kv, body, c.snapshot(), Duration.between(s, Instant.now()));

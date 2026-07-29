@@ -10,9 +10,10 @@ import java.util.Optional;
  * <ul>
  *   <li>{@link StepUi} —— 反应式：每步查中台 step-ui 裁定 auto/manual/终态（默认，本期）。</li>
  *   <li>{@link Script} —— 步计数：按声明的 advance/select 序列推进，不查 step-ui、不依赖外部 YAML。</li>
+ *   <li>{@link ParallelStepUi} —— 并发扇出：kickoff 后从 _remote_invocation 元数据派生子会话 id，并发驱动每个子会话。</li>
  * </ul>
  */
-public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script {
+public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script, DriveMode.ParallelStepUi {
 
     /** 反应式（查 step-ui）。单例即可。 */
     record StepUi() implements DriveMode {}
@@ -25,9 +26,27 @@ public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script {
         public boolean isSelect() { return kv != null && !kv.isEmpty(); }
     }
 
+    /**
+     * 并发扇出：kickoff 后从 kickoff 流的 _remote_invocation 元数据派生子会话 id，并发驱动每个子会话。
+     * sharedSelections 是单一列表，原样应用到每个子会话（每个子会话消费自己的位置序副本）——
+     * 当所有并发腿需要相同的手动步时合法。
+     */
+    record ParallelStepUi(List<DeclaredSelection> sharedSelections) implements DriveMode {
+        public ParallelStepUi {
+            sharedSelections = sharedSelections == null ? List.of() : List.copyOf(sharedSelections);
+        }
+    }
+
     static StepUi stepUi() { return new StepUi(); }
 
     static ScriptBuilder script() { return new ScriptBuilder(); }
+
+    /** 从原始 kv map（label 为 null）构建 ParallelStepUi。 */
+    static ParallelStepUi parallelStepUi(List<Map<String, String>> sharedSelections) {
+        return new ParallelStepUi(sharedSelections.stream()
+                .map(kv -> new DeclaredSelection(null, kv))
+                .toList());
+    }
 
     /** SCRIPT 构建器：advance()/advance(n)/select(kv)/select(label,kv)；终态 stopsAfter(n)/untilDone()→Script。 */
     final class ScriptBuilder {

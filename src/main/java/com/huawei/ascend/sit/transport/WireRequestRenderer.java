@@ -70,6 +70,11 @@ public final class WireRequestRenderer {
     private static String a2aBody(MessageProtocol protocol, OutboundMessage message) {
         Map<String, Object> part = new LinkedHashMap<>();
         part.put("text", message.text() == null ? "" : message.text());
+        // Part-level metadata (the parallel-resume routing channel): parts[0].metadata.toolCallId. Present
+        // only on a per-child resume; the serial path leaves partMetadata null → bare {"text":...}.
+        if (message.partMetadata() != null && !message.partMetadata().isEmpty()) {
+            part.put("metadata", message.partMetadata());
+        }
 
         Map<String, Object> msg = new LinkedHashMap<>();
         msg.put("role", ROLE_USER);

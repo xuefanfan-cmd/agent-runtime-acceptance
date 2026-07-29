@@ -18,21 +18,32 @@ import java.util.Map;
  * @param body       pre-rendered wire body (may be null). The Conversation direct adapter sets the full
  *                   EDPA REST body here; {@code RestQueryTransport} posts it verbatim when non-null,
  *                   else builds its minimal bare-text body. Unused by the A2A transports.
+ * @param partMetadata part-level A2A metadata stamped onto {@code params.message.parts[0]} (may be null).
+ *                   The Conversation direct adapter sets {@code {toolCallId: <child>}} on a per-child
+ *                   parallel resume so the runtime's {@code RemoteInvocationBatchCoordinator} routes the
+ *                   round's input to that child; the serial path and REST leave it null. Only the A2A
+ *                   transport consumes it — REST ignores it.
  */
 public record OutboundMessage(
         String text,
         Map<String, Object> metadata,
         String taskId,
         String contextId,
-        String body) {
+        String body,
+        Map<String, Object> partMetadata) {
 
-    /** Convenience for the InteractionFlow bare-text path (no pre-rendered body). */
+    /** Convenience for the InteractionFlow bare-text path (no pre-rendered body, no part metadata). */
     public OutboundMessage(String text, Map<String, Object> metadata, String taskId, String contextId) {
-        this(text, metadata, taskId, contextId, null);
+        this(text, metadata, taskId, contextId, null, null);
+    }
+
+    /** Convenience with a pre-rendered body but no part metadata (the REST family / serial A2A path). */
+    public OutboundMessage(String text, Map<String, Object> metadata, String taskId, String contextId, String body) {
+        this(text, metadata, taskId, contextId, body, null);
     }
 
     /** Copy with a resolved context id (transports use this to stamp the real conversation_id pre-send). */
     public OutboundMessage withContextId(String contextId) {
-        return new OutboundMessage(text, metadata, taskId, contextId, body);
+        return new OutboundMessage(text, metadata, taskId, contextId, body, partMetadata);
     }
 }

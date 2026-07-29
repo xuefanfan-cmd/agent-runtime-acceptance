@@ -683,7 +683,7 @@ class CustomRestReactAgentBlackboxTest {
                 new InvalidRequestCase("非法 JSON", "{bad", "application/json", "application/json", 400,
                         "invalid_json", false),
                 new InvalidRequestCase("非 object JSON", "[]", "application/json", "application/json", 400,
-                        "invalid_json", false),
+                        "invalid_custom_request", false),
                 new InvalidRequestCase("空 conversationId", "{\"input\":\"hello\",\"stream\":false}",
                         "application/json", "application/json", 400, "invalid_custom_request", true),
                 new InvalidRequestCase("SSE 不可接受", "{\"input\":\"hello\",\"stream\":true}",

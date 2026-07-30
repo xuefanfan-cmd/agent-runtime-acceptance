@@ -770,7 +770,9 @@ class CustomRestReactAgentBlackboxTest {
                 throw new IllegalStateException("compiled FEAT-022 test classes not found at " + testClasses);
             }
 
-            int port = agentConfig.port() > 0 ? agentConfig.port() : freePort();
+            // This class starts multiple mainplan instances in one JVM. A configured fixed port
+            // would let an existing instance satisfy readiness for a newly launched process.
+            int port = freePort();
             agentConfig.port(port);
             fillMissingRemoteUrl(agentConfig);
             Path log = Path.of(System.getProperty("basedir", System.getProperty("user.dir")), "target", "sit-logs",

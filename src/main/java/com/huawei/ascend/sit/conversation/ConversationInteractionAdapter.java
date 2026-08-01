@@ -9,6 +9,7 @@ import com.huawei.ascend.sit.transport.InboundExchange;
 import com.huawei.ascend.sit.transport.MessageProtocol;
 import com.huawei.ascend.sit.transport.MessageTransport;
 import com.huawei.ascend.sit.transport.OutboundMessage;
+import com.huawei.ascend.sit.transport.OutboundPart;
 import com.huawei.ascend.sit.transport.RestGatewayTransport;
 import com.huawei.ascend.sit.transport.RestExchange;
 import com.huawei.ascend.sit.transport.RestQueryTransport;
@@ -38,7 +39,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A {@link ConversationTransport} that drives the plan-agent <b>directly</b> — bypassing the
@@ -75,17 +75,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * from server responses; {@code contextId} is always the pinned cid — the
  * {@code InteractionFlow.withContextId(cid)} model.
  *
- * <p><b>Parallel resumes are isolated from that serial state machine.</b> When a {@code send} carries a
- * non-null {@code toolCallId} (a per-child parallel resume from {@link Conversation#postResume}), it pins
- * the kickoff's {@code taskId} read-only and does NOT touch {@code prevTaskId}/{@code prevState}. This
- * lets {@link ParallelStepDriver} fan out N concurrent resumes on this one adapter without the children
- * racing the continuation slots or leaking a sibling's {@code taskId}. The kickoff {@code send} (serial,
- * before fan-out) is what seeds {@code prevTaskId} with the parent task; every child resume reuses it.
- * Per-child routing is via {@code params.message.parts[0].metadata.toolCallId} (NOT
+ * <p><b>Batch resumes flow through the serial continuation path.</b> The batch resume
+ * ({@link Conversation#sendBatchResume}, non-null {@code resumeParts} + null {@code toolCallId}) flows
+ * through the normal serial continuation path below — it threads the prior {@code taskId} like any
+ * continuation. {@link ParallelStepDriver} sends ONE multi-part resume per round on this single thread
+ * (no fan-out, no concurrency), so there is no race on {@code prevTaskId}/{@code prevState} to protect
+ * against. Per-child routing is via each part's {@code metadata.toolCallId} (NOT
  * {@code metadata.runtime.remoteToolInputs}); {@code metadata.body.conversation_id} stays the parent cid.
- * (Whether the runtime expects the kickoff taskId, no taskId, or a child-specific taskId on a parallel
- * resume is a Phase-0 wire-contract calibration point — pinning the kickoff taskId is the conservative
- * default and strictly dominates threading a sibling's.)
+ * (Whether the runtime expects the kickoff taskId, no taskId, or a child-specific taskId on a batch
+ * resume is a Phase-0 wire-contract calibration point — threading the kickoff taskId is the conservative
+ * default.)
  *
  * <p><b>Wire-contract calibration points</b> (cannot be verified without a real plan-agent + LLM
  * run): (1) the rebuilt envelope matches what the plan-agent's {@code VersatileRequestExtractor}
@@ -123,11 +122,9 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
     // PlanAgentDirectStreamingTest's wire). Null → resolved from config on first send(); test-injected
     // otherwise (see withWireLogger).
     private WireLogger wireLogger;
-    // AtomicInteger: the parallel path fans out N concurrent send() calls on this one adapter, so the
-    // round counter is incremented from multiple threads — a plain int ++ would be a JMM data race
-    // (lost increments). incrementAndGet() is race-free; the wire-log round numbers interleave under
-    // concurrency, which is fine (and useful — every resume is logged).
-    private final AtomicInteger round = new AtomicInteger();
+    // Per-adapter round counter for the wire log (sequential — the batch driver sends one round at a time
+    // on this thread, so no concurrency to guard against).
+    private int round = 0;
 
     // Continuation state across sends — mirrors InteractionFlow.execute's lastTaskId/lastState.
     // contextId is pinned to the conversation cid (read per-send from out.conversationId()), not tracked here.
@@ -336,20 +333,11 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
                 transport = transportFor(out, disabledQueryParams);
             }
             // Serial continuation: thread the prior taskId when the prior round did not reach a terminal
-            // (A2A contract). Parallel resumes (a non-null toolCallId) are ISOLATED from this serial state
-            // machine: they pin the kickoff's taskId read-only and never mutate prevTaskId/prevState, so
-            // concurrent children can neither clobber each other's slot nor leak a sibling's taskId into the
-            // next resume. The kickoff runs single-threaded before ParallelStepDriver fans out, so its write
-            // of prevTaskId happens-before every child read (safe publication via program order).
-            boolean parallelResume = out.toolCallId() != null && !out.toolCallId().isBlank();
-            String taskId;
-            if (parallelResume) {
-                taskId = prevTaskId;   // pin the kickoff task — routing to the child is by parts[0].metadata.toolCallId
-            } else {
-                boolean continuation = prevTaskId != null && !prevTaskId.isEmpty()
-                        && prevState != null && !prevState.isFinal();
-                taskId = continuation ? prevTaskId : null;
-            }
+            // (A2A contract). The batch resume uses this same path — one multi-part send per round,
+            // single-threaded, so prevTaskId/prevState are updated sequentially with no race.
+            boolean continuation = prevTaskId != null && !prevTaskId.isEmpty()
+                    && prevState != null && !prevState.isFinal();
+            String taskId = continuation ? prevTaskId : null;
             String contextId = out.conversationId();   // pin the cid on every round (one conversation)
             OutboundMessage message = buildOutbound(out, taskId, contextId);
 
@@ -389,20 +377,25 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
                     } else if (ris.size() > 1) {
                         data.put("_remote_invocation", ris);
                     }
+                    // Parallel-reply demux: stamp this event's child toolCallId onto data when the source
+                    // event's parts carry one (the runtime tags each per-child reply — confirmed). Lets
+                    // ParallelStepDriver.groupByToolCallId demux a combined batch reply per child. Absent
+                    // on the serial path (no toolCallId) — nothing asserts the absence of keys.
+                    String tcid = toolCallIdOf(e.raw());
+                    if (tcid != null) {
+                        data.put("toolCallId", tcid);
+                    }
                     collector.add(new SseEvent(e.kind().name().toLowerCase(Locale.ROOT), data));
                 }
             }
 
-            // Remember A2A continuation — serial path only. Parallel resumes are isolated (they pinned the
-            // kickoff taskId above), so they never mutate this shared state; concurrent children thus can't
-            // race the prevTaskId/prevState slots. The server-assigned taskId is blank for REST (no taskId).
-            if (!parallelResume) {
-                String observedTaskId = exchange.taskId();
-                if (observedTaskId != null && !observedTaskId.isEmpty()) {
-                    prevTaskId = observedTaskId;
-                }
-                prevState = resolved;
+            // Remember A2A continuation — thread the server-assigned taskId so the next round continues
+            // this task. The server-assigned taskId is blank for REST (no taskId).
+            String observedTaskId = exchange.taskId();
+            if (observedTaskId != null && !observedTaskId.isEmpty()) {
+                prevTaskId = observedTaskId;
             }
+            prevState = resolved;
 
             // Wire log: record this round now that the exchange has settled (the await above is the
             // synchronization point) — mirrors InteractionFlow.executeRound. The same A2A async-delivery
@@ -418,7 +411,7 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
                 String endpoint = (client == null && baseUrl == null)
                         ? null : endpointFor(out, disabledQueryParams);
                 String wireRequest = WireRequestRenderer.render(protocol, message, endpoint);
-                wireLogger.logRound(protocol.name(), round.incrementAndGet(), sessionIdOf(message), message,
+                wireLogger.logRound(protocol.name(), ++round, sessionIdOf(message), message,
                         exchange.events(), wireRequest);
             }
         } finally {
@@ -426,30 +419,9 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         }
     }
 
-    /**
-     * Session id for the wire-log filename: JUnit invocation label → contextId → {@code "nosession"},
-     * with a {@code -tc-<toolCallId>} tag appended on a per-child parallel resume.
-     *
-     * <p>Why the tag: the parallel path fans out N concurrent resumes on virtual threads where the
-     * SessionLabels ThreadLocal is absent, so every child's base name collapses to the shared parent
-     * contextId — one child's rounds are indistinguishable from another's by filename alone. The tag
-     * folds in {@code parts[0].metadata.toolCallId} (the per-child routing key, also present in the file
-     * body) so concurrent legs sort apart on disk. Serial rounds carry no part metadata → no tag → the
-     * existing serial wire-log filenames are unchanged.
-     */
+    /** Flow identity for wire-log file naming: JUnit label > contextId > "nosession". */
     private static String sessionIdOf(OutboundMessage m) {
-        String base = SessionLabels.resolveLogName(m.contextId());
-        String toolCallId = partToolCallId(m.partMetadata());
-        return (toolCallId == null) ? base : base + "-tc-" + toolCallId;
-    }
-
-    /** The per-child routing key from part metadata, or {@code null} on the serial path (no part metadata). */
-    private static String partToolCallId(Map<String, Object> partMetadata) {
-        if (partMetadata == null || partMetadata.isEmpty()) {
-            return null;
-        }
-        Object v = partMetadata.get("toolCallId");
-        return (v instanceof String s && !s.isBlank()) ? s : null;
+        return SessionLabels.resolveLogName(m.contextId());
     }
 
     /**
@@ -495,25 +467,51 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
      * why a 2-member fan-out batch surfaced only 1). Empty list when {@code raw} is null, an unrelated
      * type, an event subtype without parts, or no part carries a projection.
      *
-     * <p>Navigates the A2A SDK hierarchy exactly as {@code A2aEventMapping#toEventList} does —
-     * {@link TaskUpdateEvent#getUpdateEvent()} → {@link TaskArtifactUpdateEvent#artifact()} →
-     * {@link Artifact#parts()} (and {@link MessageEvent#getMessage()} → {@link Message#parts()} for
-     * message events) — then walks every {@link TextPart} for a {@code _remote_invocation} entry. The
-     * raw is the SDK {@link org.a2aproject.sdk.client.ClientEvent} for A2A events and something else
-     * (or null) for REST/synthesised events — non-SDK inputs return an empty list.
+     * <p>Delegates the SDK hierarchy walk to {@link #partsOf(Object)} (the single shared walk over
+     * {@link TaskUpdateEvent}/{@link MessageEvent} → artifact/message → {@code parts()}) and the per-part
+     * projection to {@link #remoteInvocationsFromParts(List)}. The raw is the SDK
+     * {@link org.a2aproject.sdk.client.ClientEvent} for A2A events and something else (or null) for
+     * REST/synthesised events — non-SDK inputs return an empty list.
      */
     private static List<Map<String, Object>> remoteInvocationsFrom(Object raw) {
-        if (raw instanceof TaskUpdateEvent tue) {
-            if (!(tue.getUpdateEvent() instanceof TaskArtifactUpdateEvent aue) || aue.artifact() == null) {
-                return List.of();
+        return remoteInvocationsFromParts(partsOf(raw));
+    }
+
+    /**
+     * The child {@code toolCallId} a batch-reply event is tagged with, or {@code null} if the event's parts
+     * carry none. Reads parts via the shared {@link #partsOf(Object)} walk and inspects each part's
+     * {@code metadata.toolCallId} (the runtime's per-child reply tag — confirmed). Used by the bridge loop
+     * to stamp each emitted {@link SseEvent}'s {@code data.toolCallId} so
+     * {@link ParallelStepDriver#groupByToolCallId(List)} can demux a combined batch reply per child.
+     */
+    static String toolCallIdOf(Object raw) {
+        List<Part<?>> parts = partsOf(raw);
+        if (parts == null) return null;
+        for (Part<?> p : parts) {
+            Map<String, Object> md = partMetadata(p);
+            if (md != null && md.get("toolCallId") instanceof String s && !s.isBlank()) {
+                return s;
             }
-            return remoteInvocationsFromParts(aue.artifact().parts());
         }
-        if (raw instanceof MessageEvent me) {
+        return null;
+    }
+
+    /**
+     * The {@code parts()} list carried by an A2A event's artifact/message, or {@code null}. This is the
+     * single source of truth for the SDK hierarchy walk — both {@link #toolCallIdOf(Object)} and
+     * {@link #remoteInvocationsFrom(Object)} read parts through this channel, so any change to the
+     * {@link TaskUpdateEvent}/{@link MessageEvent} accessor chain lands here once.
+     */
+    private static List<Part<?>> partsOf(Object raw) {
+        if (raw instanceof TaskUpdateEvent tue) {
+            if (tue.getUpdateEvent() instanceof TaskArtifactUpdateEvent aue && aue.artifact() != null) {
+                return aue.artifact().parts();
+            }
+        } else if (raw instanceof MessageEvent me) {
             Message m = me.getMessage();
-            return m == null ? List.of() : remoteInvocationsFromParts(m.parts());
+            return m == null ? null : m.parts();
         }
-        return List.of();
+        return null;
     }
 
     /**
@@ -571,8 +569,17 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         EdpaEnvelope env = EdpaEnvelope.parse(out.jsonBody());
         String textPart = queryIntentJson(env.query, env.intent);
         return switch (protocol) {
-            case A2A_STREAM -> new OutboundMessage(textPart, a2aMetadata(out, env, disabledQueryParams),
-                    taskId, contextId, null, partMetadata(out));
+            case A2A_STREAM -> {
+                // Batch resume path: when out carries per-child resumeParts, render one OutboundPart per
+                // child (text = child's {query,intent} JSON, metadata = {toolCallId:<child>}) and pass them
+                // as the 7th `parts` arg — the A2A transport builds one TextPart each into Message.parts.
+                // Null on the single-part path (resumeParts absent) → the 6-arg/7-arg ctor are byte-identical
+                // here (both pass parts=null), so the serial A2A behavior is unchanged.
+                List<OutboundPart> batch = (out.resumeParts() == null || out.resumeParts().isEmpty())
+                        ? null : toBatchParts(env, out.resumeParts());
+                yield new OutboundMessage(textPart, a2aMetadata(out, env, disabledQueryParams),
+                        taskId, contextId, null, partMetadata(out), batch);
+            }
             case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC ->
                     new OutboundMessage(null, null, taskId, contextId,
                             restBody(out, env, textPart, isStreaming(protocol)));
@@ -675,12 +682,34 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
         return JsonUtils.toJsonCompact(m);
     }
 
+    /**
+     * Render a batch resume's per-child A2A parts: one {@link OutboundPart} per {@link ResumePart},
+     * each {@code text} the child's rendered {@code {query,intent}} JSON (intent shared from the envelope)
+     * and {@code metadata = {toolCallId: <child>}}. The A2A transport turns each into a {@code TextPart}
+     * inside {@code Message.parts}. The intent is shared across all parts (it is the round's intent, not
+     * per-child); only the query varies per child.
+     */
+    static List<OutboundPart> toBatchParts(EdpaEnvelope env, List<ResumePart> resumeParts) {
+        List<OutboundPart> out = new ArrayList<>();
+        for (ResumePart rp : resumeParts) {
+            out.add(new OutboundPart(queryIntentJson(rp.query(), env.intent),
+                    Map.of("toolCallId", rp.toolCallId())));
+        }
+        return out;
+    }
+
     /** REST demo placeholders — {@code user_id}/{@code space_id} are not carried in {@code ConversationIdentity}. */
     private static final String REST_USER_ID = "demo-user";
     private static final String REST_SPACE_ID = "demo-space";
 
-    /** Parsed EDPA source body: the {@code inputs}/{@code headers} maps plus this round's query/intent. */
-    private static final class EdpaEnvelope {
+    /**
+     * Parsed EDPA source body: the {@code inputs}/{@code headers} maps plus this round's query/intent.
+     * Package-private (not private) so the unit test in this package can call {@link #parse(String)} and
+     * pass the envelope to {@link #toBatchParts(EdpaEnvelope, List)} — the only test seam that needs the
+     * type. All fields are package-private as well ({@link #toBatchParts} reads {@link #intent} from the
+     * enclosing class, which would reach them regardless of modifier).
+     */
+    static final class EdpaEnvelope {
         final Map<String, Object> inputs;
         final Map<String, Object> headers;
         final String query;

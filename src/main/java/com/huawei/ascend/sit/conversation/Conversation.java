@@ -1,12 +1,10 @@
 package com.huawei.ascend.sit.conversation;
 
 import com.huawei.ascend.sit.conversation.mid.MidConversationSupport;
-import com.huawei.ascend.sit.conversation.mid.dto.StepUI;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.huawei.ascend.sit.transport.MessageProtocol;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -70,27 +68,19 @@ public final class Conversation implements AutoCloseable {
     MidConversationSupport mid() { return mid; }
 
     /**
-     * POST a per-child resume for parallel driving: sends {@code query} on the parent conversation
-     * ({@code body.conversation_id} = the parent cid — children share it) carrying the child's
-     * {@code toolCallId} so the adapter stamps {@code params.message.parts[0].metadata.toolCallId}, routing
-     * the resume input to that specific child member via the runtime's
-     * {@code RemoteInvocationBatchCoordinator.resumeWaitingBatch}. NO {@code metadata.runtime.remoteToolInputs}
-     * is carried on the wire. Returns the resulting Step (SSE events + timing). Mirrors {@link Turn}'s
-     * serial post(), but carries the per-child resume routing key.
-     *
-     * @param parentCid   the parent conversation id (conversationId on the wire — children share it)
-     * @param toolCallId  the remote-invocation toolCallId identifying the child to resume
-     * @param query       the resume input text for that child
-     * @param selectionKv the manual-step form inputs that produced this resume (captured on the Step for diagnostics)
-     * @param index       the step index for this child
-     * @param stepUi      the StepUI snapshot that triggered this resume (captured on the Step; may be null)
+     * Send ONE multi-part batch resume for all active children this round, await the single combined
+     * reply, and demultiplex its events per child by {@code toolCallId}. One in-flight request — the
+     * server only allows one awaiting-answer request per conversation (N parallel single-child resumes
+     * would have N-1 rejected with {@code REMOTE_BATCH_ALREADY_ACTIVE} — so all children's input goes in
+     * ONE multi-part message). Each {@link ResumePart} becomes one A2A {@code TextPart} routed by
+     * {@code metadata.toolCallId}.
      */
-    Step postResume(String parentCid, String toolCallId, String query,
-                    Map<String, String> selectionKv, int index, StepUI stepUi) {
+    Map<String, List<SseEvent>> sendBatchResume(String parentCid, List<ResumePart> parts) {
+        // body-level query is a placeholder; real per-child input is in parts (metadata.toolCallId)
         ConversationRequest body = ConversationRequest.from(identity)
-                .query(query).intent("LATEST").conversationId(parentCid).build();
+                .query(parts.isEmpty() ? "" : parts.get(0).query())
+                .intent("LATEST").conversationId(parentCid).build();
         ConversationEventCollector c = new ConversationEventCollector();
-        Instant s = Instant.now();
         ConversationOutbound out = new ConversationOutbound(
                 gatewayBaseUrl,
                 identity.projectId(),
@@ -101,10 +91,11 @@ public final class Conversation implements AutoCloseable {
                 identity.roleName(),
                 identity.roleId(),
                 String.valueOf(timeout.getSeconds()),
-                toolCallId);   // stamps parts[0].metadata.toolCallId — routes this resume to the child
+                null,          // toolCallId unused on the batch path — routing is per-part
+                parts);        // resumeParts — non-null triggers multi-part buildOutbound
         transport.send(out, c);
         c.awaitStreamEnd(timeout.toMillis());
-        return new Step(index, stepUi, null, selectionKv, body, c.snapshot(), Duration.between(s, Instant.now()));
+        return ParallelStepDriver.groupByToolCallId(c.snapshot());
     }
 
     @Override public void close() {}

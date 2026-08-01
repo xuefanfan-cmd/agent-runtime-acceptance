@@ -82,8 +82,10 @@ public final class Turn {
      *       hits the safety cap with no fan-out (in which case {@link ParallelStepDriver} throws
      *       "derived <2"). If the kickoff already carries the fan-out, the serial phase is skipped.</li>
      *   <li><b>Parallel phase</b> — {@link ParallelStepDriver} derives child conversation ids from the
-     *       fan-out round (the last serial step) and drives each child concurrently, resuming per child
-     *       through {@link Conversation#postResume} (parts[0].metadata.toolCallId = the child's id).</li>
+     *       fan-out round (the last serial step) and drives children in round-synchronized batches via
+     *       {@link Conversation#sendBatchResume} — ONE multi-part POST per round carrying every active
+     *       child's input (each part {@code metadata.toolCallId}-tagged); the combined reply is demuxed
+     *       per child.</li>
      * </ol>
      *
      * <p>{@code maxInteractions} bounds the serial phase (serial rounds) AND is applied per child (per-child
@@ -112,7 +114,7 @@ public final class Turn {
         // ---- Parallel phase: derive children from the fan-out round (last serial step) + fan out. ----
         ParallelTurnResult result = ParallelStepDriver.drive(
                 conv.cidValue(), serialSteps, p, maxInteractions,
-                conv.mid()::stepUi, conv.mid()::nextRequest, conv::postResume);
+                conv.mid()::stepUi, conv.mid()::nextRequest, conv::sendBatchResume);
         if (result.capped()) {
             System.err.println("[turn-safety] parallel turn capped at " + maxInteractions
                     + " per child; children=" + result.childCount());
@@ -129,7 +131,7 @@ public final class Turn {
      * <p>Reuses the proven {@link #driveStepUi(List)} shape (step-ui → consume selection → next-request →
      * post), but watches each round for the fan-out instead of driving to a terminal. Manual balance steps
      * consume from {@code this.selections} positionally (same as the serial STEP_UI path); the parallel
-     * children consume their own copy from {@code ParallelStepUi.sharedSelections} later, so the two
+     * children look up selections by step_id from {@code ParallelStepUi.selectionByStepId} later, so the two
      * selection lists never collide.
      */
     private List<Step> driveUntilFanOut(Step kickOff) {
@@ -278,7 +280,8 @@ public final class Turn {
                 conv.identity().roleName(),
                 conv.identity().roleId(),
                 String.valueOf(conv.timeout().getSeconds()),
-                null);   // serial path: no toolCallId (no part metadata on the wire)
+                null,   // serial path: no toolCallId (no part metadata on the wire)
+                null);   // serial path: no resumeParts (batch-only)
         conv.transport().send(out, c);
         c.awaitStreamEnd(conv.timeout().toMillis());
         return new Step(index, stepUi, label, kv, body, c.snapshot(), Duration.between(s, Instant.now()));

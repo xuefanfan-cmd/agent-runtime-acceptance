@@ -10,6 +10,7 @@ allure-results/
 **/__pycache__
 
 # class-level tests
+src/test/java/com/huawei/ascend/sit/base
 src/test/java/com/huawei/ascend/sit/client
 src/test/java/com/huawei/ascend/sit/config
 src/test/java/com/huawei/ascend/sit/conversation

@@ -29,7 +29,9 @@ import com.huawei.ascend.sit.utils.JsonUtils;
  * {@link MessageEvent}s → one event <em>per text part</em>, classified by {@link LlmPayload}: a
  * part whose text is a typed {@code {type,index,payload}} envelope becomes an
  * {@link InboundEvent.Kind#ANSWER}/{@code LLM_OUTPUT}/{@code LLM_REASONING}/{@code LLM_USAGE} event,
- * a plain-text part falls back to {@link InboundEvent.Kind#CONTENT}.
+ * a plain {@link TextPart} (the agent's reply surface) becomes {@link InboundEvent.Kind#ANSWER},
+ * and a plain {@link DataPart} (structured intermediate data) falls back to
+ * {@link InboundEvent.Kind#CONTENT}.
  *
  * <p>This is the A2A-specific half of the unified model. {@link #mergeArtifactText(List)} reproduces
  * the legacy collector's append/replace artifact-text reconstruction over the generic event list via
@@ -198,10 +200,12 @@ public final class A2aEventMapping {
 
     /**
      * One classified event per part: typed {@code {type,index,payload}} envelopes via
-     * {@link LlmPayload}; a plain-text part becomes {@link InboundEvent.Kind#CONTENT} by default (live
-     * streamed chunks are intermediate), or {@link InboundEvent.Kind#ANSWER} when
-     * {@code plainTextAsAnswer} is set — used by {@link #contentEventsOf}, where every text a settled
-     * task carries IS its reply. Non-{@link TextPart}s and null texts are skipped.
+     * {@link LlmPayload}; a plain {@link TextPart} (no envelope) becomes {@link InboundEvent.Kind#ANSWER}
+     * — it is the agent's reply surface (a streamed artifact/message carrying the final answer as plain
+     * text IS the reply) — while a plain {@link DataPart} (structured intermediate data, e.g.
+     * {@code _remote_invocation} progress) becomes {@link InboundEvent.Kind#CONTENT}. {@code
+     * plainTextAsAnswer} forces ANSWER regardless of part type: used by {@link #contentEventsOf}, where
+     * every text a settled task carries IS its reply. Parts whose text is {@code null} are skipped.
      *
      * <p>{@link DataPart}s (structured part payloads the runtime emits for non-textual chunks, per
      * {@code ChunkMapper}) are <em>not</em> skipped: their {@code data} is stringified and run through the
@@ -231,7 +235,16 @@ public final class A2aEventMapping {
             if (typed != null) {
                 out.add(typed);
             } else {
-                out.add(plainTextAsAnswer
+                // A plain (untyped) TextPart is the agent's reply surface → ANSWER: a streamed artifact
+                // or message that carries the final answer as plain text (no typed envelope) IS the
+                // reply, so exchange.answerText() (Kind.ANSWER only) must see it — the streaming path
+                // has no terminal contentEventsOf re-extraction to rescue it (unlike A2aSyncTransport).
+                // A plain DataPart is structured intermediate data (e.g. _remote_invocation progress in
+                // a parallel fan-out) → CONTENT, NOT a reply. plainTextAsAnswer (the terminal
+                // contentEventsOf path) forces ANSWER regardless of part type: there, every text a
+                // settled task carries is its reply.
+                boolean asAnswer = plainTextAsAnswer || part instanceof TextPart;
+                out.add(asAnswer
                         ? InboundEvent.answer(text, raw)
                         : InboundEvent.content(text, raw));
             }

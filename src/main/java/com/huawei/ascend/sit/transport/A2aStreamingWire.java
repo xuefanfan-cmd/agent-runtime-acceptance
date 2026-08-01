@@ -4,8 +4,10 @@ import org.a2aproject.sdk.A2A;
 import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.Part;
 import org.a2aproject.sdk.spec.TextPart;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -73,6 +75,29 @@ public final class A2aStreamingWire {
         Message.Builder builder = Message.builder()
                 .role(Message.Role.ROLE_USER)
                 .parts(List.of(part));
+        if (taskId != null && !taskId.isBlank()) {
+            builder.taskId(taskId);
+        }
+        if (contextId != null && !contextId.isBlank()) {
+            builder.contextId(contextId);
+        }
+        return builder.build();
+    }
+
+    /**
+     * Build the A2A user {@link Message} for a multi-part (batch) resume — one {@link TextPart} per
+     * {@link OutboundPart}, each carrying its own {@code metadata.toolCallId} so the runtime's
+     * {@code RemoteInvocationBatchCoordinator.resumeWaitingBatch} routes that part's input to the matching
+     * child. {@code taskId}/{@code contextId} set only when non-blank.
+     */
+    public static Message buildMessage(List<OutboundPart> parts, String taskId, String contextId) {
+        List<Part<?>> textParts = new ArrayList<>();
+        for (OutboundPart p : parts) {
+            textParts.add(new TextPart(p.text(), p.metadata() == null ? Map.of() : p.metadata()));
+        }
+        Message.Builder builder = Message.builder()
+                .role(Message.Role.ROLE_USER)
+                .parts(textParts);
         if (taskId != null && !taskId.isBlank()) {
             builder.taskId(taskId);
         }

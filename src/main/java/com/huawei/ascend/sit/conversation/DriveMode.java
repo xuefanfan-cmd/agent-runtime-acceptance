@@ -28,12 +28,17 @@ public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script, Dr
 
     /**
      * 并发扇出：kickoff 后从 kickoff 流的 _remote_invocation 元数据派生子会话 id，并发驱动每个子会话。
-     * sharedSelections 是单一列表，原样应用到每个子会话（每个子会话消费自己的位置序副本）——
-     * 当所有并发腿需要相同的手动步时合法。
+     *
+     * <p>选择按 <b>step_id 键控</b>：{@code selectionByStepId} 把每个需选择的人工步 step_id 映射到要注入的
+     * kv。每个子会话在自己当前的 step 上按 step_id 查表取 kv——与腿序无关。这样当并发腿<b>非对称</b>时
+     * （例如 parallel-transfer 里一腿因收款人未预解析而多一个 on_paycard_input 选卡步，另一腿没有），
+     * 每条腿仍拿到<b>该步</b>正确的选择值，而不是被位置序错配（旧的位置序模型会把 accIndex 喂给一腿的
+     * 确认步、把列表提前耗尽）。step_id 重复出现（选择未被推进而重提）也安全：同一 step_id → 同一 kv，
+     * 由 maxPerChild 上限兜底。
      */
-    record ParallelStepUi(List<DeclaredSelection> sharedSelections) implements DriveMode {
+    record ParallelStepUi(Map<String, Map<String, String>> selectionByStepId) implements DriveMode {
         public ParallelStepUi {
-            sharedSelections = sharedSelections == null ? List.of() : List.copyOf(sharedSelections);
+            selectionByStepId = selectionByStepId == null ? Map.of() : Map.copyOf(selectionByStepId);
         }
     }
 
@@ -41,11 +46,9 @@ public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script, Dr
 
     static ScriptBuilder script() { return new ScriptBuilder(); }
 
-    /** 从原始 kv map（label 为 null）构建 ParallelStepUi。 */
-    static ParallelStepUi parallelStepUi(List<Map<String, String>> sharedSelections) {
-        return new ParallelStepUi(sharedSelections.stream()
-                .map(kv -> new DeclaredSelection(null, kv))
-                .toList());
+    /** 按 step_id 键控构建 ParallelStepUi：step_id → 该步注入的 kv。 */
+    static ParallelStepUi parallelStepUi(Map<String, Map<String, String>> selectionByStepId) {
+        return new ParallelStepUi(selectionByStepId);
     }
 
     /** SCRIPT 构建器：advance()/advance(n)/select(kv)/select(label,kv)；终态 stopsAfter(n)/untilDone()→Script。 */

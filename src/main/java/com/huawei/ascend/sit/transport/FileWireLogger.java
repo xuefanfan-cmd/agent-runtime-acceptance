@@ -18,12 +18,17 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A {@link WireLogger} that writes one human-readable file per round to
- * {@code <baseDir>/<runId>/<sessionId>-r<round>-<protocol>.log}. The per-run {@code runId} subdir
+ * {@code <baseDir>/<runId>/<sessionId>[-<protocol>]-r<round>.log} (the protocol is shown once,
+ * skipped when the session already ends with it). The per-run {@code runId} subdir
  * groups one JVM/test-run so repeated runs do not interleave. Each file has a REQUEST section (the
  * {@link OutboundMessage}: text, metadata, continuation ids, and — for {@code REST_QUERY}, which
  * carries the whole payload as a pre-rendered body — that body, pretty-printed) and a RESPONSE
@@ -49,6 +54,9 @@ public final class FileWireLogger implements WireLogger {
 
     /** Max chars written for any single text or raw field; the rest is dropped with a marker. */
     static final int MAX_FIELD_CHARS = 262_144;   // 256 KB per field
+
+    /** Extracts the {@code NN} index from a per-child {@code toolCallId} of shape {@code call_NN_<id>}. */
+    private static final Pattern CALL_INDEX = Pattern.compile("call_(\\d+)");
 
     /**
      * Mapper for {@code raw} frames: the shared {@link JsonUtils} mapper plus an {@link OffsetDateTime}
@@ -97,7 +105,12 @@ public final class FileWireLogger implements WireLogger {
                          OutboundMessage request, List<InboundEvent> response,
                          String wireRequest, WireTiming timing) {
         String session = (sessionId == null || sessionId.isBlank()) ? "nosession" : sessionId;
-        String name = sanitize(session) + "-r" + round + "-" + sanitize(protocol) + ".log";
+        String safeSession = sanitize(session);
+        String safeProto = sanitize(protocol);
+        // Protocol appears exactly once: skip when the session already ends with it (a parameterized
+        // test whose label carries the protocol token), append otherwise (a non-parameterized test).
+        String protoPart = safeSession.endsWith("-" + safeProto) ? "" : "-" + safeProto;
+        String name = safeSession + protoPart + "-r" + round + tcSuffix(request) + ".log";
         Path file = baseDir.resolve(runId).resolve(name);
         try {
             Files.createDirectories(file.getParent());
@@ -301,6 +314,35 @@ public final class FileWireLogger implements WireLogger {
                     || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' ? c : '-');
         }
         return sb.toString();
+    }
+
+    /** Short per-child discriminator for concurrent rounds: {@code call_NN_<id>} → {@code -tcNN};
+     *  any other shape → {@code -tc-<first 8 safe chars of the tail>}. Empty when there is no
+     *  part metadata (the serial path) or no toolCallId. Placed AFTER the round in the filename. */
+    private static String tcSuffix(OutboundMessage req) {
+        Map<String, Object> pm = req.partMetadata();
+        if (pm == null) {
+            return "";
+        }
+        Object v = pm.get("toolCallId");
+        if (!(v instanceof String s) || s.isBlank()) {
+            return "";
+        }
+        Matcher m = CALL_INDEX.matcher(s);
+        if (m.find()) {
+            try {
+                // Locale.ROOT keeps ASCII digits regardless of the default locale; parseInt is guarded
+                // so a pathological digit run can never break logRound (this runs before its IOException
+                // catch) — on overflow we fall through to the safe tail form below.
+                return "-tc" + String.format(Locale.ROOT, "%02d", Integer.parseInt(m.group(1)));
+            } catch (NumberFormatException overflow) {
+                // digit run too large for int — fall through to the tail-based form
+            }
+        }
+        String tail = s.contains("_") ? s.substring(s.lastIndexOf('_') + 1) : s;
+        String safe = sanitize(tail);
+        String short8 = safe.length() > 8 ? safe.substring(0, 8) : safe;
+        return short8.isBlank() ? "" : "-tc-" + short8;
     }
 
     /**

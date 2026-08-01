@@ -25,8 +25,8 @@ import java.util.concurrent.ConcurrentMap;
  * {@code "FEAT-001.<slug>: …"}); without a colon it is used whole, truncated at 48 chars.
  * (2) Otherwise the method name's first two camelCase words. A test-template invocation
  * (parameterized/repeated; detected via {@code [test-template-invocation:} in the uniqueId)
- * appends its rendered display name normalized to filesystem-safe dashes
- * ({@code "[1] A2A_STREAM"} → {@code "1-A2A_STREAM"}).
+ * appends its rendered display name normalized to filesystem-safe dashes with the leading
+ * invocation index dropped ({@code "[1] A2A_STREAM"} → {@code "A2A_STREAM"}).
  *
  * <p><b>Collision net (spec §3.5).</b> Label must be unique per JVM run — SUT sessions (e.g.
  * Redis checkpointer) can persist across tests, and two cases sharing a label would silently
@@ -78,13 +78,26 @@ public final class SessionLabelExtension implements BeforeEachCallback, AfterEac
         return firstTwoCamelWords(method.getName());
     }
 
-    /** Rule 4: {@code "-"} + normalized rendered invocation name for template invocations, else "". */
+    /** Normalize a rendered template-invocation display name to filesystem-safe dashes, dropping the
+     *  leading JUnit invocation index so the label ends with the parameter token:
+     *  {@code "[1] A2A_STREAM"} → {@code "A2A_STREAM"},
+     *  {@code "[1] scenarioFoo, A2A_STREAM"} → {@code "scenarioFoo-A2A_STREAM"}.
+     *  Package-private for testing. */
+    static String normalizeTemplateParams(String displayName) {
+        String norm = displayName.replaceAll("[^A-Za-z0-9._-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        // Drop the leading invocation index (e.g. "[1]" → "1"); it is always the first token in
+        // JUnit's "[N] <params>" form. Only a digit-run followed by '-' is removed, so a param value
+        // starting with a digit (e.g. "2param") is preserved.
+        return norm.replaceFirst("^\\d+-", "");
+    }
+
+    /** Rule 4: {@code "-"} + normalized rendered invocation name (index dropped) for template invocations, else "". */
     static String templateSuffix(ExtensionContext ctx) {
         if (!ctx.getUniqueId().contains("[test-template-invocation:")) {
             return "";
         }
-        String norm = ctx.getDisplayName().replaceAll("[^A-Za-z0-9._-]+", "-")
-                .replaceAll("^-+|-+$", "");
+        String norm = normalizeTemplateParams(ctx.getDisplayName());
         return "-" + (norm.isEmpty() ? "x" : norm);
     }
 

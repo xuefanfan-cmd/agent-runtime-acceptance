@@ -3,6 +3,7 @@ package com.huawei.ascend.sit.transport;
 import com.huawei.ascend.sit.utils.JsonUtils;
 import org.a2aproject.sdk.spec.A2AMethods;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,14 +67,35 @@ public final class WireRequestRenderer {
      * The A2A JSON-RPC envelope, hand-built to match the SDK's Gson wire shape (see class javadoc).
      * Continuation hints ({@code taskId}/{@code contextId}) and {@code metadata} are included only when
      * present, mirroring {@link A2aStreamingWire#buildMessage}'s own conditional setting.
+     *
+     * <p>When {@code message.parts()} is present (a multi-part batch resume), one {@code {"text",...}}
+     * entry is rendered per {@link OutboundPart} — each carrying its own {@code metadata.toolCallId} — so
+     * the rendered body faithfully mirrors {@link A2aStreamingWire#buildMessage(List, String, String)}
+     * (which builds one {@code TextPart} per part). Otherwise a single part is rendered from the body-level
+     * {@code text}/{@code partMetadata} (the serial / single-part path).
      */
     private static String a2aBody(MessageProtocol protocol, OutboundMessage message) {
-        Map<String, Object> part = new LinkedHashMap<>();
-        part.put("text", message.text() == null ? "" : message.text());
-        // Part-level metadata (the parallel-resume routing channel): parts[0].metadata.toolCallId. Present
-        // only on a per-child resume; the serial path leaves partMetadata null → bare {"text":...}.
-        if (message.partMetadata() != null && !message.partMetadata().isEmpty()) {
-            part.put("metadata", message.partMetadata());
+        List<Map<String, Object>> parts;
+        if (message.parts() != null && !message.parts().isEmpty()) {
+            // Multi-part (batch) resume: one part per OutboundPart, each its own text + metadata.toolCallId.
+            parts = new ArrayList<>();
+            for (OutboundPart p : message.parts()) {
+                Map<String, Object> part = new LinkedHashMap<>();
+                part.put("text", p.text() == null ? "" : p.text());
+                if (p.metadata() != null && !p.metadata().isEmpty()) {
+                    part.put("metadata", p.metadata());
+                }
+                parts.add(part);
+            }
+        } else {
+            Map<String, Object> part = new LinkedHashMap<>();
+            part.put("text", message.text() == null ? "" : message.text());
+            // Part-level metadata (the parallel-resume routing channel): parts[0].metadata.toolCallId. Present
+            // only on a per-child resume; the serial path leaves partMetadata null → bare {"text":...}.
+            if (message.partMetadata() != null && !message.partMetadata().isEmpty()) {
+                part.put("metadata", message.partMetadata());
+            }
+            parts = List.of(part);
         }
 
         Map<String, Object> msg = new LinkedHashMap<>();
@@ -85,7 +107,7 @@ public final class WireRequestRenderer {
         if (message.taskId() != null && !message.taskId().isBlank()) {
             msg.put("taskId", message.taskId());
         }
-        msg.put("parts", List.of(part));
+        msg.put("parts", parts);
 
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("message", msg);

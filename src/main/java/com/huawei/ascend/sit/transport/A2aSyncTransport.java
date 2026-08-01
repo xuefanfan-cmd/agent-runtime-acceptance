@@ -33,8 +33,9 @@ public final class A2aSyncTransport implements MessageTransport {
     @Override
     public InboundExchange send(OutboundMessage message) {
         InboundExchange exchange = new InboundExchange();
-        Message sdkMessage = A2aStreamingWire.buildMessage(
-                message.text(), message.taskId(), message.contextId());
+        Message sdkMessage = (message.parts() != null && !message.parts().isEmpty())
+                ? A2aStreamingWire.buildMessage(message.parts(), message.taskId(), message.contextId())
+                : A2aStreamingWire.buildMessage(message.text(), message.taskId(), message.contextId());
         // A settled state — final (COMPLETED/FAILED/...) or INPUT_REQUIRED — means the round's reply is
         // ready. The SDK may re-deliver the cumulative snapshot on several consecutive callbacks, so
         // surface the reply at most ONCE (compareAndSet): both to avoid re-emitting the whole artifact

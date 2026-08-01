@@ -95,7 +95,7 @@ abstract class AbstractExpenseReviewAcceptanceTest extends BaseManagedStackTest 
      */
     @ParameterizedTest(name = "[{index}] {0}")
     @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
-            names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC"})
+            names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC", "REST_REACTIVE", "REST_REACTIVE_SYNC"})
     @DisplayName("场景1: 超标报销 → INPUT_REQUIRED → 续接 approved → COMPLETED（Path A）")
     protected final void overLimitExpenseRequiresApprovalThenCompletesOnApprove(MessageProtocol protocol) {
         InteractionFlow.of(client(ENTRY_AGENT))
@@ -133,7 +133,7 @@ abstract class AbstractExpenseReviewAcceptanceTest extends BaseManagedStackTest 
      */
     @ParameterizedTest(name = "[{index}] {0}")
     @EnumSource(value = MessageProtocol.class, mode = EnumSource.Mode.INCLUDE,
-            names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC"})
+            names = {"A2A_STREAM", "A2A_SYNC", "REST_QUERY", "REST_QUERY_SYNC", "REST_REACTIVE", "REST_REACTIVE_SYNC"})
     @DisplayName("场景2: 合规报销 → 自动通过 COMPLETED（Path B）")
     protected final void compliantExpenseAutoApprovesAndCompletes(MessageProtocol protocol) {
         InteractionFlow.of(client(ENTRY_AGENT))

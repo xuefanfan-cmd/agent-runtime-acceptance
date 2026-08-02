@@ -41,10 +41,30 @@ public final class A2aStreamingWire {
                   Consumer<Throwable> errorHandler);
     }
 
+    /**
+     * The SDK subscribe action the wire drives — {@code A2aServiceClient::subscribeTask} in production
+     * (a streaming=true SDK Client → SSE {@code SubscribeToTask}). Same {@code ClientEvent} sink shape
+     * as {@link MessageSender}; the only difference is the input is a {@code taskId}, not a {@link Message}.
+     */
+    @FunctionalInterface
+    public interface SubscribeSender {
+        void subscribe(String taskId,
+                       List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                       Consumer<Throwable> errorHandler);
+    }
+
     private final MessageSender sender;
+    private final SubscribeSender subscribeSender;
 
     public A2aStreamingWire(MessageSender sender) {
         this.sender = sender;
+        this.subscribeSender = null;
+    }
+
+    /** Subscribe-only construction — {@code A2A_SUBSCRIBE} binds {@code A2aServiceClient::subscribeTask} here. */
+    public A2aStreamingWire(SubscribeSender subscribeSender) {
+        this.sender = null;
+        this.subscribeSender = subscribeSender;
     }
 
     /**
@@ -120,5 +140,19 @@ public final class A2aStreamingWire {
         Consumer<Throwable> errorHandler = error ->
                 LOG.warning("A2A stream error: " + error.getMessage());
         sender.send(message, metadata, List.of(sink), errorHandler);
+    }
+
+    /**
+     * Drive the A2A subscribe: feed every streamed task event into the neutral {@code sink}, and log
+     * any stream error. The single sink is wrapped into a one-element consumer list to match
+     * {@link SubscribeSender} — exactly mirroring {@link #send}.
+     *
+     * @param taskId the existing, non-terminal task id to observe
+     * @param sink   the neutral event sink
+     */
+    public void subscribe(String taskId, BiConsumer<ClientEvent, AgentCard> sink) {
+        Consumer<Throwable> errorHandler = error ->
+                LOG.warning("A2A subscribe stream error: " + error.getMessage());
+        subscribeSender.subscribe(taskId, List.of(sink), errorHandler);
     }
 }

@@ -12,6 +12,7 @@ import java.util.Set;
  * <ul>
  *   <li>{@link #A2A_STREAM} — JSON-RPC {@code SendStreamingMessage} SSE (InteractionFlow default).</li>
  *   <li>{@link #A2A_SYNC} — JSON-RPC {@code message/send} blocking.</li>
+ *   <li>{@link #A2A_SUBSCRIBE} — JSON-RPC {@code SubscribeToTask} SSE (observe an existing non-terminal task by id).</li>
  *   <li>{@link #REST_QUERY} — REST {@code POST /v1/query} with {@code stream:true} (SSE).</li>
  *   <li>{@link #REST_QUERY_SYNC} — REST {@code POST /v1/query} with {@code stream:false} (JSON).</li>
  *   <li>{@link #REST_VERSATILE} — low-code gateway
@@ -27,6 +28,7 @@ import java.util.Set;
 public enum MessageProtocol {
     A2A_STREAM,
     A2A_SYNC,
+    A2A_SUBSCRIBE,
     REST_QUERY,
     REST_QUERY_SYNC,
     REST_VERSATILE,
@@ -37,7 +39,7 @@ public enum MessageProtocol {
     DIRECT_REST;
 
     private static final Set<MessageProtocol> IMPLEMENTED = Set.of(
-            A2A_STREAM, A2A_SYNC, REST_QUERY, REST_QUERY_SYNC, REST_VERSATILE,
+            A2A_STREAM, A2A_SYNC, A2A_SUBSCRIBE, REST_QUERY, REST_QUERY_SYNC, REST_VERSATILE,
             REST_REACTIVE, REST_REACTIVE_SYNC, REST_GATEWAY);
 
     /** True once the transport adapter for this protocol exists. */

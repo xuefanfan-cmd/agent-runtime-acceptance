@@ -4,6 +4,7 @@ import com.huawei.ascend.sit.client.A2aServiceClient;
 import com.huawei.ascend.sit.client.WireLoggerResolver;
 import com.huawei.ascend.sit.transport.A2aStreamingTransport;
 import com.huawei.ascend.sit.transport.A2aStreamingWire;
+import com.huawei.ascend.sit.transport.A2aSubscribeTransport;
 import com.huawei.ascend.sit.transport.InboundEvent;
 import com.huawei.ascend.sit.transport.InboundExchange;
 import com.huawei.ascend.sit.transport.MessageProtocol;
@@ -220,6 +221,7 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             // client::sendMessage is the legacy sync default and would make A2A_STREAM wire-identical
             // to sync.
             case A2A_STREAM -> new A2aStreamingTransport(new A2aStreamingWire(client::sendMessageStreaming));
+            case A2A_SUBSCRIBE -> new A2aSubscribeTransport(new A2aStreamingWire(client::subscribeTask));
             case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC -> {
                 URI ep = isReactive(protocol)
                         ? restReactiveEndpoint(base, workspaceId, disabled)

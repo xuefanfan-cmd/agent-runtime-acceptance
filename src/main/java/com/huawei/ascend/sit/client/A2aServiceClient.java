@@ -13,6 +13,7 @@ import org.a2aproject.sdk.spec.CancelTaskParams;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.MessageSendParams;
 import org.a2aproject.sdk.spec.Task;
+import org.a2aproject.sdk.spec.TaskIdParams;
 import org.a2aproject.sdk.spec.TaskQueryParams;
 
 import java.util.List;
@@ -194,6 +195,19 @@ public class A2aServiceClient {
                                      List<BiConsumer<ClientEvent, AgentCard>> consumers,
                                      Consumer<Throwable> errorHandler) {
         sendWith(sdkClient(true), message, metadata, consumers, errorHandler);
+    }
+
+    /**
+     * Subscribe to an existing, non-terminal task over the A2A-streaming wire: the same streaming=true
+     * SDK Client as {@link #sendMessageStreaming}, but issuing {@code SubscribeToTask} for the given
+     * {@code taskId} instead of {@code SendStreamingMessage}. Delivered task events (snapshot → status /
+     * artifact updates until terminal) flow through the same {@code ClientEvent} consumers as a send.
+     * For {@link com.huawei.ascend.sit.client.InteractionFlow} protocol {@code A2A_SUBSCRIBE}.
+     */
+    public void subscribeTask(String taskId,
+                              List<BiConsumer<ClientEvent, AgentCard>> consumers,
+                              Consumer<Throwable> errorHandler) {
+        sdkClient(true).subscribeToTask(new TaskIdParams(taskId, null), consumers, errorHandler, null);
     }
 
     /**

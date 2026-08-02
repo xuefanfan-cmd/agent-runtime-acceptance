@@ -2,6 +2,7 @@ package com.huawei.ascend.sit.client;
 
 import com.huawei.ascend.sit.transport.A2aStreamingTransport;
 import com.huawei.ascend.sit.transport.A2aStreamingWire;
+import com.huawei.ascend.sit.transport.A2aSubscribeTransport;
 import com.huawei.ascend.sit.transport.A2aSyncTransport;
 import com.huawei.ascend.sit.transport.InboundEvent;
 import com.huawei.ascend.sit.transport.InboundExchange;
@@ -76,6 +77,8 @@ public class InteractionFlow {
     private long timeoutMs = 30_000;
     private Map<String, Object> defaultMetadata;
     private String fixedContextId;
+    private String fixedTaskId;
+    private int roundOffset;          // added to each round no. for wire-log naming (continuation-flow offset)
     private MessageProtocol protocolOverride;
 
     private InteractionFlow(A2aServiceClient client, MessageTransport transport) {
@@ -132,6 +135,34 @@ public class InteractionFlow {
         return this;
     }
 
+    /**
+     * Pin a {@code taskId} stamped on a round whenever no continuation taskId was resolved for it —
+     * i.e. seed a continuation so a <em>fresh</em> flow (whose {@code lastTaskId} is null) resumes a
+     * specific existing, non-terminal task rather than starting a new one. Mirrors {@link #withContextId}:
+     * the continuation heuristic is bypassed for the pinned value. Used by the SUBSCRIBE acceptance
+     * scenario to continue the paused task on a second flow instance after a subscribe side-channel.
+     */
+    public InteractionFlow withTaskId(String taskId) {
+        this.fixedTaskId = taskId;
+        return this;
+    }
+
+    /**
+     * Add {@code offset} to every round number this flow reports — the console log, the
+     * {@code roundLabel} in assertion errors, and crucially the wire-log filename
+     * ({@code <session>-<protocol>-r<round>.log}). Stays {@code 0} for a self-contained flow; set it
+     * when a test drives a <em>continuation flow</em> that resumes the same session as an earlier
+     * flow instance, so the later flow's rounds do not collide with — and silently overwrite, since
+     * {@code FileWireLogger} truncates — the earlier flow's round files. Example: a subscribe
+     * side-channel sits between two flow instances; the second flow (the APPROVE driver) sets the
+     * offset to the count of prior logical rounds so it logs as {@code r3} instead of overwriting the
+     * first flow's {@code r1}. Pure naming — does not change send/await/continuation behaviour.
+     */
+    public InteractionFlow withRoundOffset(int offset) {
+        this.roundOffset = offset;
+        return this;
+    }
+
     /** Builder override for the wire protocol (precedence: builder > env > default A2A_STREAM). */
     public InteractionFlow protocol(MessageProtocol protocol) {
         this.protocolOverride = protocol;
@@ -164,6 +195,7 @@ public class InteractionFlow {
         return switch (resolvedProtocol()) {
             case A2A_STREAM   -> new A2aStreamingTransport(new A2aStreamingWire(client::sendMessageStreaming));
             case A2A_SYNC     -> new A2aSyncTransport(client::sendMessageSync);
+            case A2A_SUBSCRIBE -> new A2aSubscribeTransport(new A2aStreamingWire(client::subscribeTask));
             case REST_QUERY   -> new RestQueryTransport(new RestExchange(),
                     URI.create(client.getBaseUrl() + "/v1/query"), true);
             case REST_QUERY_SYNC -> new RestQueryTransport(new RestExchange(),
@@ -230,7 +262,7 @@ public class InteractionFlow {
 
         for (int i = 0; i < rounds.size(); i++) {
             RoundDefinition round = rounds.get(i);
-            LOG.info("  → Round " + (i + 1) + ": send \"" + truncate(round.inputText, 50) + "\"");
+            LOG.info("  → Round " + (i + 1 + roundOffset) + ": send \"" + truncate(round.inputText, 50) + "\"");
 
             // 续轮判定（A2A 协议契约）：
             //   上一轮存在且未到终态（如 INPUT_REQUIRED —— 任务仍开放、可补输入）
@@ -240,7 +272,7 @@ public class InteractionFlow {
             //     result 里的 taskId/contextId 即为服务端新生成的值，用来覆盖本地缓存。
             boolean continuation = lastTaskId != null && !lastTaskId.isEmpty()
                     && lastState != null && !lastState.isFinal();
-            RoundResult result = executeRound(round, timeoutMs, i + 1,
+            RoundResult result = executeRound(round, timeoutMs, i + 1 + roundOffset,
                     continuation ? lastTaskId : null,
                     continuation ? lastContextId : null);
             results.add(result);
@@ -271,13 +303,17 @@ public class InteractionFlow {
 
         // 续轮：携带上一轮的 taskId + contextId（A2A 协议要求两者都带方可在原任务上继续）。
         // 非续轮：两者都不带，由服务端新生成；contextId 若有 flow 级固定值（withContextId）则始终携带。
+        // taskId 若有 flow 级固定值（withTaskId）则在非续轮时作为兜底——让一个全新 flow（lastTaskId=null）
+        // 也能续传一个已存在的特定任务（SUBSCRIBE 场景：在第二个 flow 实例上续传被暂停的任务）。
         String effectiveContextId = (continuationContextId != null && !continuationContextId.isEmpty())
                 ? continuationContextId : fixedContextId;
+        String effectiveTaskId = (continuationTaskId != null && !continuationTaskId.isEmpty())
+                ? continuationTaskId : fixedTaskId;
 
         OutboundMessage outbound = new OutboundMessage(
                 round.inputText,
                 effectiveMetadata,
-                (continuationTaskId != null && !continuationTaskId.isEmpty()) ? continuationTaskId : null,
+                effectiveTaskId,
                 effectiveContextId);
 
         // Let the transport stamp transport-specific request identity (e.g. the REST conversation_id)
@@ -442,7 +478,7 @@ public class InteractionFlow {
     private static String endpointFor(MessageProtocol protocol, A2aServiceClient client,
                                       String conversationId) {
         return switch (protocol) {
-            case A2A_STREAM, A2A_SYNC -> {
+            case A2A_STREAM, A2A_SYNC, A2A_SUBSCRIBE -> {
                 String url = client.getAgentCard() == null ? null : client.getAgentCard().url();
                 yield (url == null || url.isBlank()) ? client.getBaseUrl() : url;
             }

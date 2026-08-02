@@ -125,6 +125,16 @@ sut:
       group: com.openjiuwen.example
       artifact: agent-deep-research
       version: 0.1.0
+    deep-research-auto:
+      group: com.openjiuwen.example
+      artifact: agent-deep-research
+      version: 0.1.0
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "search-agent"
+          openjiuwen.service.a2a.remote-agents[0].streaming: true
+          openjiuwen.service.a2a.remote-agents[1].name: "verify-agent"
     # FEAT-005 SkillHub DeepAgent 黑盒:与 deep-research 同坐标,别名隔离供 SkillHubDeepAgentBlackboxTest
     # 独立启动。不注入 SEARCH_AGENT_URL,让 planner 直接用 skill 回答,避开 sub-agent 干扰。
     deep-research-skillhub:
@@ -138,6 +148,10 @@ sut:
     agent-search:
       group: com.openjiuwen.example
       artifact: agent-search
+      version: 0.1.0
+    verify:
+      group: com.openjiuwen.example
+      artifact: agent-verify
       version: 0.1.0
     # workflow scenario
     expense-review-workflow:

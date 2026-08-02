@@ -57,10 +57,29 @@ public final class WireRequestRenderer {
     public static String render(MessageProtocol protocol, OutboundMessage message, String endpointUrl) {
         return switch (protocol) {
             case A2A_STREAM, A2A_SYNC -> httpBlock(endpointUrl, a2aBody(protocol, message));
+            case A2A_SUBSCRIBE -> httpBlock(endpointUrl, subscribeBody(message));
             case REST_QUERY, REST_QUERY_SYNC, REST_REACTIVE, REST_REACTIVE_SYNC, REST_GATEWAY, REST_VERSATILE ->
                     httpBlock(endpointUrl, restBody(protocol, message));
             default -> throw new IllegalArgumentException("Unsupported protocol: " + protocol);
         };
+    }
+
+    /**
+     * The A2A {@code SubscribeToTask} JSON-RPC envelope for the wire-log. Unlike {@link #a2aBody}
+     * ({@code {message, metadata}}), subscribe params are {@code TaskIdParams}: {@code {id, tenant}}.
+     * {@code tenant} is optional and sit does not derive it, so it renders as {@code null}.
+     */
+    private static String subscribeBody(OutboundMessage message) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("id", message.taskId() == null ? "" : message.taskId());
+        params.put("tenant", null);
+
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("jsonrpc", "2.0");
+        envelope.put("id", UUID.randomUUID().toString());
+        envelope.put("method", A2AMethods.SUBSCRIBE_TO_TASK_METHOD);   // "SubscribeToTask"
+        envelope.put("params", params);
+        return JsonUtils.toPrettyJson(envelope);
     }
 
     /**

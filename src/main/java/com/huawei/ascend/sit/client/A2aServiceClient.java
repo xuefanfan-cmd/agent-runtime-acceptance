@@ -11,9 +11,11 @@ import org.a2aproject.sdk.client.transport.jsonrpc.JSONRPCTransportConfig;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.CancelTaskParams;
 import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.MessageSendConfiguration;
 import org.a2aproject.sdk.spec.MessageSendParams;
 import org.a2aproject.sdk.spec.Task;
 import org.a2aproject.sdk.spec.TaskIdParams;
+import org.a2aproject.sdk.spec.TaskPushNotificationConfig;
 import org.a2aproject.sdk.spec.TaskQueryParams;
 
 import java.util.List;
@@ -181,7 +183,7 @@ public class A2aServiceClient {
                             Map<String, Object> metadata,
                             List<BiConsumer<ClientEvent, AgentCard>> consumers,
                             Consumer<Throwable> errorHandler) {
-        sendWith(a2aClient, message, metadata, consumers, errorHandler);
+        sendWith(a2aClient, message, metadata, null, null, consumers, errorHandler);
     }
 
     /**
@@ -189,12 +191,17 @@ public class A2aServiceClient {
      * internal {@code sendStreamingMessage} (SSE / {@code message/stream}) when the agent card also
      * advertises streaming. For {@link com.huawei.ascend.sit.client.InteractionFlow} protocol
      * {@code A2A_STREAM}.
+     *
+     * @param cfg inline A2A push-notification config (may be null) — threaded into
+     *            {@code MessageSendConfiguration.taskPushNotificationConfig} so the SUT persists it and
+     *            POSTs the terminal Task to the registered callback URL.
      */
     public void sendMessageStreaming(Message message,
                                      Map<String, Object> metadata,
+                                     TaskPushNotificationConfig cfg,
                                      List<BiConsumer<ClientEvent, AgentCard>> consumers,
                                      Consumer<Throwable> errorHandler) {
-        sendWith(sdkClient(true), message, metadata, consumers, errorHandler);
+        sendWith(sdkClient(true), message, metadata, cfg, null, consumers, errorHandler);
     }
 
     /**
@@ -214,24 +221,43 @@ public class A2aServiceClient {
      * Send over the A2A-sync wire: a streaming=false SDK Client, which dispatches to the SDK's
      * blocking {@code message/send} (the call returns the terminal task). For
      * {@link com.huawei.ascend.sit.client.InteractionFlow} protocol {@code A2A_SYNC}.
+     *
+     * @param cfg inline A2A push-notification config (may be null); see {@link #sendMessageStreaming}.
+     * @param returnImmediately A2A non-blocking flag (may be null) — threaded into
+     *            {@code MessageSendConfiguration.returnImmediately} so the SUT returns on the first Task
+     *            event (SUBMITTED) instead of blocking to completion. The canonical pattern for push
+     *            delivery: register the callback, return immediately, then observe COMPLETED via the push.
      */
     public void sendMessageSync(Message message,
                                 Map<String, Object> metadata,
+                                TaskPushNotificationConfig cfg,
+                                Boolean returnImmediately,
                                 List<BiConsumer<ClientEvent, AgentCard>> consumers,
                                 Consumer<Throwable> errorHandler) {
-        sendWith(sdkClient(false), message, metadata, consumers, errorHandler);
+        sendWith(sdkClient(false), message, metadata, cfg, returnImmediately, consumers, errorHandler);
     }
 
     private void sendWith(Client client,
                           Message message,
                           Map<String, Object> metadata,
+                          TaskPushNotificationConfig cfg,
+                          Boolean returnImmediately,
                           List<BiConsumer<ClientEvent, AgentCard>> consumers,
                           Consumer<Throwable> errorHandler) {
-        MessageSendParams params = MessageSendParams.builder()
+        MessageSendParams.Builder builder = MessageSendParams.builder()
                 .message(message)
-                .metadata(metadata)
-                .build();
-        client.sendMessage(params, consumers, errorHandler, null);
+                .metadata(metadata);
+        if (cfg != null || returnImmediately != null) {
+            MessageSendConfiguration.Builder cfgBuilder = MessageSendConfiguration.builder();
+            if (cfg != null) {
+                cfgBuilder.taskPushNotificationConfig(cfg);
+            }
+            if (returnImmediately != null) {
+                cfgBuilder.returnImmediately(returnImmediately);
+            }
+            builder.configuration(cfgBuilder.build());
+        }
+        client.sendMessage(builder.build(), consumers, errorHandler, null);
     }
 
     /**

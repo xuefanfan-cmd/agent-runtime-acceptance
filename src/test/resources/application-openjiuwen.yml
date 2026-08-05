@@ -68,6 +68,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.mainplan.llm.api-key
       port: 8095
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
@@ -77,6 +78,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.mainplan.llm.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
@@ -89,6 +91,7 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-trip
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.trip.llm.api-key
       port: 8094
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
@@ -99,17 +102,20 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       port: 8093
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
     hotel-skillhub:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       profile: skillhub-remote
     hotel-sandbox:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       service-bindings:
         jiuwenbox:
@@ -120,15 +126,18 @@ sut:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
       version: 0.1.0
+      llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
     # deepresearch secnario
     deep-research:
       group: com.openjiuwen.example
       artifact: agent-deep-research
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.deep-research.api-key
     deep-research-auto:
       group: com.openjiuwen.example
       artifact: agent-deep-research
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.deep-research.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
@@ -141,32 +150,41 @@ sut:
       group: com.openjiuwen.example
       artifact: agent-deep-research
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.deep-research.api-key
     search:
       group: com.openjiuwen.example
       artifact: agent-search
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.search-agent.api-key
     agent-search:
       group: com.openjiuwen.example
       artifact: agent-search
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.search-agent.api-key
     verify:
       group: com.openjiuwen.example
       artifact: agent-verify
       version: 0.1.0
+      llm-api-key-property: openjiuwen.demo.verify-agent.api-key
     # workflow scenario
     expense-review-workflow:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-expense-review
       version: 0.2.0-SNAPSHOT
+      llm-api-key-property: expense-review.api-key
     expense-review-main:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-expense-review-main
       version: 0.2.0-SNAPSHOT
+      llm-api-key-property: expense-review-main.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "expense-review"
           openjiuwen.service.a2a.remote-agents[0].streaming: true
+          # Enable A2A push-notification capability advertisement on the agent card
+          # (openjiuwen.service.a2a.push-notifications → A2AProperties.isPushNotifications, relaxed binding).
+          openjiuwen.service.a2a.push-notifications: "true"
     edpa-gateway:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-gateway
@@ -177,6 +195,7 @@ sut:
       group: com.openjiuwen.example
       artifact: versatile-orch-demo-plan-agent
       version: 0.2.0-SNAPSHOT
+      llm-api-key-property: plan-agent.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
         properties:
@@ -203,6 +222,11 @@ sut:
         envexplorer:
           url-key: openjiuwen.service.versatile.url-template
           url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+  # Per-agent LLM api-key injection: an agent that declares `llm-api-key-property: <spring-key>`
+  # gets the global LLM_API_KEY value (below) injected at launch as `--<spring-key>=<LLM_API_KEY>`,
+  # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works
+  # even where code-scanning blanked the agent's `${LLM_API_KEY}` placeholder. The secret value lives
+  # ONLY here; each agent entry below carries just the property-key pointer, not the value.
   java:
     system-properties:
 #      LLM_API_BASE:

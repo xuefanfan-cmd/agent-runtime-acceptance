@@ -296,7 +296,15 @@ abstract class AbstractExpenseReviewAcceptanceTest extends BaseManagedStackTest 
                                 A2aEventMapping.toEventList(ev).forEach(subscribed::add);
                             }),
                             error -> {
-                                // 异步错因（SSE 读 / SDK 行读超 64KB / 服务端以 JSON-RPC error 顶替 SSE / parse）：
+                                // SDK 的 handleEvent 在收到 final 事件后 future.cancel(true) 自动关流防泄漏
+                                // （见 isBenignStreamClose），final 事件已在 cancel 前投递给 consumer——属预期的
+                                // 终态关流、非错误：降级为 INFO，不污染 subscribeError。
+                                if (isBenignStreamClose(error)) {
+                                    LOG.info("A2A_SUBSCRIBE: SDK 在终态事件后自动关流（CancellationException，预期）taskId="
+                                            + taskId);
+                                    return;
+                                }
+                                // 其余异步错因（SDK 行读超 64KB / 服务端以 JSON-RPC error 顶替 SSE / parse / 真 IO）：
                                 // 不吞——落日志 + 存证，供下方快照断言随失败信息一起抛出。
                                 LOG.log(Level.SEVERE, "A2A_SUBSCRIBE 通道报错（taskId=" + taskId + "）", error);
                                 subscribeError.set(error);
@@ -357,6 +365,24 @@ abstract class AbstractExpenseReviewAcceptanceTest extends BaseManagedStackTest 
             logSubscribeWire(taskId, contextId, entry, subscribed);
             exec.shutdownNow();
         }
+    }
+
+    /**
+     * SDK 的 {@code AbstractSSEEventListener.handleEvent} 在收到 final 事件后 {@code future.cancel(true)} 自动关流
+     * （防泄漏），经 HttpClient 回传成 {@link java.util.concurrent.CancellationException}（cause 为
+     * {@code IOException("Request cancelled")}）。final 事件已在 cancel 前投递给消费者，故此异常属预期的终态关流、
+     * 非错误。本判断沿 cause 链识别这两种形态（对 JDK 不同传播路径鲁棒）。
+     */
+    private static boolean isBenignStreamClose(Throwable error) {
+        for (Throwable c = error; c != null; c = c.getCause()) {
+            if (c instanceof java.util.concurrent.CancellationException) {
+                return true;
+            }
+            if (c instanceof java.io.IOException && "Request cancelled".equals(c.getMessage())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---- helpers（与 StreamingTravelPlanningTest 同风格）----

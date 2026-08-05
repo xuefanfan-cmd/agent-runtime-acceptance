@@ -2,6 +2,7 @@ package com.huawei.ascend.sit.transport;
 
 import com.huawei.ascend.sit.utils.JsonUtils;
 import org.a2aproject.sdk.spec.A2AMethods;
+import org.a2aproject.sdk.spec.TaskPushNotificationConfig;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -132,6 +133,29 @@ public final class WireRequestRenderer {
         params.put("message", msg);
         if (message.metadata() != null) {
             params.put("metadata", message.metadata());
+        }
+        TaskPushNotificationConfig pushCfg = message.pushNotificationConfig();
+        Boolean returnImmediately = message.returnImmediately();
+        if (pushCfg != null || returnImmediately != null) {
+            // Mirrors the SDK's inline-send shape (MessageSendConfiguration): taskPushNotificationConfig
+            // (id + url, both non-null by ctor; token only when set) and returnImmediately, each emitted
+            // only when present. taskId is null for inline send → omitted (matches Gson, which omits nulls).
+            // Send-path and log-path MUST stay in sync — if a future caller sets authentication/tenant/historyLength,
+            // extend this block too, or the paste-ready log diverges.
+            Map<String, Object> configuration = new LinkedHashMap<>();
+            if (pushCfg != null) {
+                Map<String, Object> pcMap = new LinkedHashMap<>();
+                pcMap.put("id", pushCfg.id());              // SDK ctor enforces id non-null → Gson always emits it
+                pcMap.put("url", pushCfg.url());
+                if (pushCfg.token() != null) {
+                    pcMap.put("token", pushCfg.token());
+                }
+                configuration.put("taskPushNotificationConfig", pcMap);
+            }
+            if (returnImmediately != null) {
+                configuration.put("returnImmediately", returnImmediately);
+            }
+            params.put("configuration", configuration);
         }
 
         Map<String, Object> envelope = new LinkedHashMap<>();

@@ -24,7 +24,7 @@ public final class A2aStreamingTransport implements MessageTransport {
                 ? A2aStreamingWire.buildMessage(message.parts(), message.taskId(), message.contextId())
                 : A2aStreamingWire.buildMessage(
                         message.text(), message.partMetadata(), message.taskId(), message.contextId());
-        wire.send(sdkMessage, message.metadata(), (clientEvent, card) -> {
+        wire.send(sdkMessage, message.metadata(), message.pushNotificationConfig(), (clientEvent, card) -> {
             // An artifact/message event may carry several parts → several events (one per typed
             // envelope or plain-text chunk); STATE events yield one. Add them all in order.
             for (InboundEvent e : A2aEventMapping.toEventList(clientEvent)) {

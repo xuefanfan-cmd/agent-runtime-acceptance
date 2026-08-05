@@ -18,6 +18,7 @@ import com.huawei.ascend.sit.transport.SessionLabels;
 import com.huawei.ascend.sit.transport.WireLogger;
 import com.huawei.ascend.sit.transport.WireRequestRenderer;
 
+import org.a2aproject.sdk.spec.TaskPushNotificationConfig;
 import org.a2aproject.sdk.spec.TaskState;
 
 import java.net.URI;
@@ -76,6 +77,8 @@ public class InteractionFlow {
     private final List<RoundDefinition> rounds = new ArrayList<>();
     private long timeoutMs = 30_000;
     private Map<String, Object> defaultMetadata;
+    private TaskPushNotificationConfig defaultPushConfig;
+    private Boolean defaultReturnImmediately;
     private String fixedContextId;
     private String fixedTaskId;
     private int roundOffset;          // added to each round no. for wire-log naming (continuation-flow offset)
@@ -116,6 +119,46 @@ public class InteractionFlow {
      */
     public InteractionFlow withMetadata(Map<String, Object> metadata) {
         this.defaultMetadata = metadata;
+        return this;
+    }
+
+    /**
+     * Set a flow-level default inline push-notification config stamped on every round's outbound message.
+     *
+     * <p>The A2A transports thread it into {@code MessageSendConfiguration.taskPushNotificationConfig} so
+     * the SUT persists it (DefaultRequestHandler send-time inline config) and POSTs the terminal Task to
+     * the registered callback URL on COMPLETED/FAILED. Null (the default) means no callback is registered
+     * and no push config is sent.
+     *
+     * <p><b>Honored by {@code A2A_STREAM}/{@code A2A_SYNC} only.</b> The REST family and the Conversation
+     * direct adapter re-build the outbound without this field (push is an A2A-native concept, meaningless
+     * over those wires), so setting it on those flows is a silent no-op.
+     *
+     * @param pushNotificationConfig inline A2A push-notification config (may be null)
+     */
+    public InteractionFlow withPushNotificationConfig(TaskPushNotificationConfig pushNotificationConfig) {
+        this.defaultPushConfig = pushNotificationConfig;
+        return this;
+    }
+
+    /**
+     * Set a flow-level default for the A2A {@code message/send} non-blocking flag, stamped on every
+     * round's outbound message.
+     *
+     * <p>When true the SUT returns on the first Task event (SUBMITTED) instead of blocking to completion
+     * — the canonical pattern for push delivery: register the callback, return immediately, then observe
+     * COMPLETED via the terminal push (the task completes in the SUT's background). Pair with a
+     * non-terminal {@code mayReachState(TASK_STATE_SUBMITTED)} so {@code execute()} returns on that first
+     * event rather than awaiting a terminal state that the early return will not deliver.
+     *
+     * <p><b>Honored by {@code A2A_SYNC} only.</b> {@code A2A_STREAM} is inherently incremental (the flag
+     * is meaningless over a stream), and the REST family re-builds the outbound without this field, so
+     * setting it on those flows is a silent no-op.
+     *
+     * @param returnImmediately true for non-blocking {@code message/send}
+     */
+    public InteractionFlow withReturnImmediately(boolean returnImmediately) {
+        this.defaultReturnImmediately = returnImmediately;
         return this;
     }
 
@@ -315,6 +358,20 @@ public class InteractionFlow {
                 effectiveMetadata,
                 effectiveTaskId,
                 effectiveContextId);
+
+        // Stamp the flow-level push config (callback URL) so every round registers it inline and the SUT
+        // fires the terminal push. Applied before resolveOutbound, which preserves the field (withContextId
+        // and the default identity resolve both carry pushNotificationConfig through).
+        if (defaultPushConfig != null) {
+            outbound = outbound.withPushNotificationConfig(defaultPushConfig);
+        }
+
+        // Stamp the flow-level returnImmediately (A2A_SYNC non-blocking flag) so a round can early-return
+        // on the first Task event and let the terminal COMPLETED be observed via the push. Applied before
+        // resolveOutbound, which preserves the field (withContextId / withPushNotificationConfig carry it).
+        if (defaultReturnImmediately != null) {
+            outbound = outbound.withReturnImmediately(defaultReturnImmediately);
+        }
 
         // Let the transport stamp transport-specific request identity (e.g. the REST conversation_id)
         // BEFORE send, so the wire-log's paste-ready request carries the exact bytes that will go out —

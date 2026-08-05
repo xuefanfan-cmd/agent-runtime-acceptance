@@ -5,6 +5,7 @@ import org.a2aproject.sdk.client.ClientEvent;
 import org.a2aproject.sdk.spec.AgentCard;
 import org.a2aproject.sdk.spec.Message;
 import org.a2aproject.sdk.spec.Part;
+import org.a2aproject.sdk.spec.TaskPushNotificationConfig;
 import org.a2aproject.sdk.spec.TextPart;
 
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ public final class A2aStreamingWire {
     @FunctionalInterface
     public interface MessageSender {
         void send(Message message, Map<String, Object> metadata,
+                  TaskPushNotificationConfig cfg,
                   List<BiConsumer<ClientEvent, AgentCard>> consumers,
                   Consumer<Throwable> errorHandler);
     }
@@ -133,13 +135,16 @@ public final class A2aStreamingWire {
      *
      * @param message  the SDK {@link Message} (build with {@link #buildMessage})
      * @param metadata per-request A2A metadata (may be null)
+     * @param cfg      inline A2A push-notification config (may be null) — the receiver URL the SUT
+     *                 posts to on terminal task state; forwarded to the SDK send unchanged
      * @param sink     the neutral event sink (e.g. {@code A2aEventCollector.createConsumer()})
      */
     public void send(Message message, Map<String, Object> metadata,
+                     TaskPushNotificationConfig cfg,
                      BiConsumer<ClientEvent, AgentCard> sink) {
         Consumer<Throwable> errorHandler = error ->
                 LOG.warning("A2A stream error: " + error.getMessage());
-        sender.send(message, metadata, List.of(sink), errorHandler);
+        sender.send(message, metadata, cfg, List.of(sink), errorHandler);
     }
 
     /**

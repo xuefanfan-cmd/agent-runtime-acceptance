@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -78,6 +79,8 @@ import java.util.function.Consumer;
  * stopped/started (the framework does not own them).
  */
 public final class SutStack implements AutoCloseable {
+
+    private static final Logger LOG = Logger.getLogger(SutStack.class.getName());
 
     private final SutLauncher launcher;
     private final Map<String, Entry> specs;     // declaration order
@@ -793,6 +796,23 @@ public final class SutStack implements AutoCloseable {
                     .forEach(configOverrides::jvmSystemProperty);
             config.getStringMap("sut.agents." + name + ".spring.properties")
                     .forEach(configOverrides::property);
+            // Per-agent LLM api-key pointer: inject the global (or per-agent-overridden) LLM_API_KEY
+            // value into the Spring property this agent declares as its api-key holder, via a highest-
+            // precedence -- arg (overrides the bundled application.yml, robust to scan-blanked placeholders).
+            String apiKeyProperty = config.getString("sut.agents." + name + ".llm-api-key-property", "");
+            if (!apiKeyProperty.isBlank()) {
+                String llmApiKey = ProcessLauncher.mergeJvmSystemProperties(
+                        config.getStringMap("sut.java.system-properties"),
+                        config.getStringMap("sut.agents." + name + ".java.system-properties"))
+                        .get("LLM_API_KEY");
+                if (llmApiKey != null && !llmApiKey.isBlank()) {
+                    configOverrides.property(apiKeyProperty, llmApiKey);
+                } else {
+                    LOG.warning("Agent '" + name + "' declares llm-api-key-property '" + apiKeyProperty
+                            + "' but LLM_API_KEY is not set in sut.java.system-properties; "
+                            + "skipping injection.");
+                }
+            }
             SutAgent agent = new SutAgent(name, resolvedArtifact, downstreams);
             return new Entry(agent, configOverrides);
         }

@@ -1,6 +1,7 @@
 package com.huawei.ascend.sit.transport;
 
 import org.a2aproject.sdk.spec.Message;
+import org.a2aproject.sdk.spec.TaskPushNotificationConfig;
 
 /**
  * The A2A-sync {@code MessageTransport}: a degenerate-terminal adapter over the sync-configured
@@ -15,10 +16,12 @@ import org.a2aproject.sdk.spec.Message;
  */
 public final class A2aSyncTransport implements MessageTransport {
 
-    /** Mirrors {@code A2aServiceClient.sendMessage(Message, Map, List, Consumer)}. */
+    /** Mirrors {@code A2aServiceClient.sendMessageSync(Message, Map, TaskPushNotificationConfig, Boolean, List, Consumer)}. */
     @FunctionalInterface
     public interface SyncSender {
         void send(Message message, java.util.Map<String, Object> metadata,
+                  TaskPushNotificationConfig cfg,
+                  Boolean returnImmediately,
                   java.util.List<java.util.function.BiConsumer<
                           org.a2aproject.sdk.client.ClientEvent, org.a2aproject.sdk.spec.AgentCard>> consumers,
                   java.util.function.Consumer<Throwable> errorHandler);
@@ -43,7 +46,7 @@ public final class A2aSyncTransport implements MessageTransport {
         // isFinal() excludes it) so an INPUT_REQUIRED sync round surfaces its status.message reply the
         // same way a COMPLETED round surfaces its artifacts.
         java.util.concurrent.atomic.AtomicBoolean surfaced = new java.util.concurrent.atomic.AtomicBoolean();
-        sender.send(sdkMessage, message.metadata(),
+        sender.send(sdkMessage, message.metadata(), message.pushNotificationConfig(), message.returnImmediately(),
                 java.util.List.of((clientEvent, card) -> {
                     java.util.List<InboundEvent> es = A2aEventMapping.toEventList(clientEvent);
                     boolean settled = es.stream().anyMatch(A2aSyncTransport::isSettledState);

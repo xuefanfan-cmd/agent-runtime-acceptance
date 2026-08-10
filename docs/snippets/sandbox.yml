@@ -1,0 +1,39 @@
+# 沙箱增量片段：叠加到现有 agent 服务工程时，只需并入下方
+# openjiuwen.service.external.sandbox 块，Java 侧通过
+# ObjectProvider<AgentCoreSandboxClientFactory> 取工厂（见 how-to/sandbox.md）；
+# 其余行（server / spring.application.name / llm / agent-id / handler /
+# a2a.skills）仅在把本文件当作独立工程的完整 application.yml 时才需要——
+# 叠加时保留你工程原有的对应配置。
+server:
+  port: 18093
+
+spring:
+  application:
+    name: sandbox-example
+
+llm:
+  api-key: ${OPENJIUWEN_SERVICE_LLM_API_KEY:}
+  api-base: ${OPENJIUWEN_SERVICE_LLM_API_BASE:}
+  model: ${OPENJIUWEN_SERVICE_LLM_MODEL_NAME:gpt-4o-mini}
+
+openjiuwen:
+  service:
+    agent-id: assistant        # 选中 AgentConfiguration 注册的 agent
+    handler: agentcore         # 基础 handler 自动装配
+    a2a:
+      skills:
+        - id: ask_assistant
+          name: ask_assistant
+          description: "通用问答：回答事实性问题、解释概念"
+    external:
+      sandbox:
+        enabled: true          # 默认 false；false 时工厂 Bean 不存在
+        timeout-ms: 30000      # 单次调用超时（毫秒），默认 30000，必须 > 0
+        servers:               # enabled=true 时必填，否则启动期抛错
+          - server-id: default # create("default") 按此 id 选取
+            service-url: ${SANDBOX_URL:http://127.0.0.1:8321}
+            sandbox-type: jiuwenbox   # 默认 jiuwenbox，不能为空
+            launcher-type: pre_deploy # 默认 pre_deploy
+            on-stop: delete           # 默认 delete
+            root-path: .              # 默认 .
+            idle-ttl-seconds: 300     # 空闲回收 TTL（秒），可选

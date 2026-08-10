@@ -1,0 +1,23 @@
+server:
+  port: ${PIPELINE_PORT:18090}
+
+spring:
+  application:
+    name: pipeline            # A2A 卡片 name 来源；远端 remote-agents[].name 必须匹配
+
+openjiuwen:
+  service:
+    agent-id: pipeline
+    a2a:
+      streaming: true
+      default-input-modes: ["text"]
+      default-output-modes: ["text"]
+      skills:
+        - id: run_pipeline
+          name: run_pipeline
+          description: "执行流水线：LLM 处理 -> 工具校验 -> 分支 -> 人工/自动收尾"
+
+pipeline:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:}
+  model-name: ${LLM_MODEL:gpt-4o-mini}

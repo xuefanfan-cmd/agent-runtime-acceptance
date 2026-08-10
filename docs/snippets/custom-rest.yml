@@ -1,0 +1,24 @@
+server:
+  port: 18095
+
+spring:
+  application:
+    name: custom-rest-example
+
+llm:
+  api-key: ${OPENJIUWEN_SERVICE_LLM_API_KEY:}
+  api-base: ${OPENJIUWEN_SERVICE_LLM_API_BASE:}
+  model: ${OPENJIUWEN_SERVICE_LLM_MODEL_NAME:gpt-4o-mini}
+
+openjiuwen:
+  service:
+    agent-id: assistant
+    custom-rest:
+      # 要暴露的 POST 路径；必须以 / 开头，支持 {pathVariable}（值进 Context.pathVariables()）
+      # 缺省则整个 custom-rest 端点不装配
+      query-path: /v1/chat/{conversation_id}
+    a2a:
+      skills:
+        - id: ask_assistant
+          name: ask_assistant
+          description: "通用问答：回答事实性问题、解释概念"

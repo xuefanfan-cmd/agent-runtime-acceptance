@@ -1,0 +1,21 @@
+server:
+  port: 18094
+
+spring:
+  application:
+    name: skillhub-agent-example
+
+llm:
+  api-key: ${OPENJIUWEN_SERVICE_LLM_API_KEY:}
+  api-base: ${OPENJIUWEN_SERVICE_LLM_API_BASE:}
+  model: ${OPENJIUWEN_SERVICE_LLM_MODEL_NAME:gpt-4o-mini}
+
+openjiuwen:
+  service:
+    middleware:
+      skillhub:
+        enabled: true            # 总开关：true 才装配 provider / installer / manager
+        endpoint: ${SKILLHUB_ENDPOINT:https://swarmskills.openjiuwen.com}
+        auth-type: bearer        # bearer | system-token，按所连 Hub 要求
+        encrypted-token: ${SKILLHUB_ENCRYPTED_TOKEN:}   # 密文；留空 = 匿名访问
+        local-dir: ${SKILLHUB_LOCAL_DIR:./target/skillhub-skills}

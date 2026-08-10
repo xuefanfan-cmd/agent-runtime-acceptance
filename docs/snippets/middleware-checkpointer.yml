@@ -1,0 +1,54 @@
+# 中间件增量片段：叠加到现有 agent 服务工程时，只需并入下方
+# openjiuwen.service.middleware 块（checkpointer + redis 命名端点），
+# Java 侧零改动；其余行（server / spring.application.name / llm /
+# agent-id / handler / a2a.skills）仅在把本文件当作独立工程的完整
+# application.yml 时才需要——叠加时保留你工程原有的对应配置。
+server:
+  port: 18093
+
+spring:
+  application:
+    name: middleware-checkpointer-example
+
+llm:
+  api-key: ${OPENJIUWEN_SERVICE_LLM_API_KEY:}
+  api-base: ${OPENJIUWEN_SERVICE_LLM_API_BASE:}
+  model: ${OPENJIUWEN_SERVICE_LLM_MODEL_NAME:gpt-4o-mini}
+
+openjiuwen:
+  service:
+    agent-id: assistant        # 选中 AgentConfiguration 注册的 agent
+    handler: agentcore         # 基础 handler 自动装配
+    a2a:
+      skills:
+        - id: ask_assistant
+          name: ask_assistant
+          description: "通用问答：回答事实性问题、解释概念"
+    middleware:
+      checkpointer:
+        type: redis            # 默认 in_memory；redis = 会话状态持久化到 Redis
+        redis-ref: default     # 引用下方 redis 命名端点
+        ttl-seconds: 604800    # 状态缓存 TTL（秒），默认 7 天，必须 > 0
+      redis:
+        default:               # 命名端点：standalone 单机
+          type: standalone
+          host: 127.0.0.1
+          port: 6379
+          database: 0
+          timeout-ms: 3000
+          encrypted-password: ""
+        # cluster 端点写法（被 redis-ref 引用时生效）：
+        # cluster-a:
+        #   type: cluster
+        #   nodes:
+        #     - 127.0.0.1:7001
+        #     - 127.0.0.1:7002
+        #   timeout-ms: 3000
+        #   encrypted-password: ""
+      # 长期记忆（默认关闭；开启后容器中出现 MemoryStore Bean）：
+      # memory:
+      #   enabled: true
+      #   provider: mem0                    # mem0 | jiuwen
+      #   endpoint: https://api.mem0.ai
+      #   encrypted-api-key: "<密文>"
+      # session-store / object-storage / vector-store 为 P2 占位项，配置不生效，勿使用

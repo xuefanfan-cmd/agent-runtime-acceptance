@@ -1,0 +1,30 @@
+server:
+  port: ${VERSATILE_AGENT_PORT:18091}
+
+spring:
+  application:
+    name: versatile-agent          # A2A 卡片 name 来源，远端引用要匹配
+
+openjiuwen:
+  service:
+    agent-id: versatile-agent
+    a2a:
+      streaming: true
+      default-input-modes: ["text"]
+      default-output-modes: ["text"]
+      skills:
+        - id: versatile-step
+          name: versatile-step
+          description: "执行一步远端工作流。remoteInput 传 JSON 字符串：{\"query\":\"<子任务>\",\"intent\":\"<意图名>\"}"
+    versatile:
+      # {conversation_id} 占位符由每次调用填充；会话状态由 versatile 侧按 cid 维护
+      url-template: ${VERSATILE_URL:http://127.0.0.1:31113/v1/<projectId>/agents/<agentId>/conversations/{conversation_id}}
+      timeout: 30s
+      headers-template:
+        Content-Type: application/json
+        accept: text/event-stream
+        stream: "true"
+      forward-header-whitelist:       # 入站请求中允许透传到 versatile 的 header
+        - stream
+        - x-language
+      result-node-name: RESULTNODE    # 从 SSE 帧中抽取结果的节点名（按工作流定义填）

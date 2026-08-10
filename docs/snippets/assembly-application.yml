@@ -1,0 +1,24 @@
+server:
+  port: ${ASSISTANT_PORT:18092}
+
+spring:
+  application:
+    name: assistant         # A2A 卡片 name 来源；远端 remote-agents[].name 必须匹配
+
+openjiuwen:
+  service:
+    agent-id: assistant     # 选中已注册的 agent（ResourceMgr 按 ID 解析）
+    handler: agentcore      # 基础 handler 自动装配（默认值；无 AgentHandler Bean 时生效）
+    a2a:
+      streaming: true
+      default-input-modes: ["text"]
+      default-output-modes: ["text"]
+      skills:
+        - id: ask_assistant
+          name: ask_assistant
+          description: "通用问答：回答事实性问题、解释概念"
+
+llm:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:}
+  model: ${LLM_MODEL:gpt-4o-mini}

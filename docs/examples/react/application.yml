@@ -1,0 +1,23 @@
+server:
+  port: ${REACT_PORT:18091}
+
+spring:
+  application:
+    name: notes-react       # A2A 卡片 name 来源；远端 remote-agents[].name 必须匹配
+
+openjiuwen:
+  service:
+    agent-id: notes-react
+    a2a:
+      streaming: true
+      default-input-modes: ["text"]
+      default-output-modes: ["text"]
+      skills:
+        - id: analyze_text
+          name: analyze_text
+          description: "ReAct 推理循环：按需调用 text_stats 工具并给出结论"
+
+react:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:}
+  model-name: ${LLM_MODEL:gpt-4o-mini}

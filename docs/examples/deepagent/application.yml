@@ -1,0 +1,24 @@
+server:
+  port: ${DEEP_PORT:18092}
+
+spring:
+  application:
+    name: notes-deep        # A2A 卡片 name 来源；远端 remote-agents[].name 必须匹配
+
+openjiuwen:
+  service:
+    agent-id: notes-deep
+    a2a:
+      streaming: true
+      default-input-modes: ["text"]
+      default-output-modes: ["text"]
+      skills:
+        - id: maintain_artifacts
+          name: maintain_artifacts
+          description: "任务循环维护工作区交付物：创建/更新/复读检查 Markdown 文件"
+
+deep:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:}
+  model-name: ${LLM_MODEL:gpt-4o-mini}
+  workspace-path: ${DEEP_WORKSPACE:./data/deep-workspace}

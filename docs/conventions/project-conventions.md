@@ -51,7 +51,8 @@ core 层       agent-core-java（ReActAgent / WorkflowAgent / Workflow 组件，
 ## 文档与示例规范
 
 - 示例演示**框架能力**而非业务：一个示例一个能力点，命名中性化。
-- 所有 API 引用必须可 grep 到源码；文档改动涉及行为描述时同步更新 `source-anchors`。
+- 生成代码使用的 API、依赖坐标和版本必须与 [compatibility.md](../compatibility.md)
+  推荐发布件保持一致；不要根据其他版本的示例或上游 README 推断方法签名。
 
 ## See also
 

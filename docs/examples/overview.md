@@ -16,13 +16,13 @@ Java 17 / Spring Boot 工程并生成依赖，再整体复制对应目录的源�
 
 1. **必须是真实且可编译的源码**：Java 含完整 package、import 与类声明，禁止「略」「// ...」式省略；维护时必须使用 compatibility 推荐发布件执行编译校验。
 2. **类型/适配器专属**：一个目录演示一个类型闭环（WorkflowAgent、Versatile 对接、
-   后续 react/、deepagent/ 同），命名中性化，不含业务逻辑。
+   ReAct、DeepAgent），命名中性化，不含业务逻辑。
 3. **不放机制片段**：类型无关的装配片段与叠加能力增量在
    [../snippets/](../snippets/)——那里是单文件片段，不是完整工程。
 4. **被引用而存在**：每个目录至少被一篇 how-to 引用；md 中只摘录关键接线片段，
    完整代码以本目录为唯一来源（避免 md 与代码双副本漂移）。
-5. **依赖说明**：示例不重复维护 pom.xml——工程化（Spring Boot parent、
-   Java 17 编译、fat jar 打包）属通用知识；不重复 pom 不等于放弃编译门禁。版本坐标唯一来源是
+5. **依赖说明**：示例目录不各自携带 pom.xml；三类基础 Agent 共享一份已验证的最小
+   POM 模板（见下节），版本坐标唯一来源是
    [../compatibility.md](../compatibility.md) 的依赖坐标速查表；每个目录需要的 artifact
    见下方「目录 → artifact 映射」。
 
@@ -47,6 +47,27 @@ src/main/resources/
 > LLM 凭据、网络、Redis/SkillHub/远端 Agent 等环境条件，应继续执行对应 how-to 的
 > 「端到端校验」。
 
+## 共享最小 POM
+
+**[minimal-agent-service-pom.xml](minimal-agent-service-pom.xml)** 是三类基础 Agent
+（react / deepagent / workflow）共享的工程基线，已用推荐发布件完成 `mvn package` 与
+fat jar 启动验证。复制为目标工程的 `pom.xml` 后改三处：`groupId` / `artifactId` /
+`mainClass`；Versatile 对接按「目录 → artifact 映射」**替换** agentcore adapter，
+SkillHub / custom-rest / A2A 自动注入等叠加能力在该映射中追加 artifact。
+
+它固化了四个容易推错的构建契约：Spring Boot parent 版本、runtime 两个 artifact 的
+直接声明（`agent-core-java` 经 adapter 传递引入，**不要直接声明**）、
+`spring-boot-maven-plugin`（缺失时编译正常但 `java -jar` 失败）、版本配对。
+
+```bash
+mvn -DskipTests package
+java -jar target/<artifactId>-<version>.jar
+```
+
+> **编译、启动、真实 LLM 调用是三个不同门禁**：`package` 通过只证明类型与依赖闭包
+> 正确；fat jar 启动成功只证明装配与 web 栈就绪；真实对话仍需 LLM 凭据与网络，
+> 按各 how-to「端到端校验」执行。
+
 ## 示例索引
 
 | 目录 | 能力闭环 | 引用它的 how-to |
@@ -66,7 +87,7 @@ src/main/resources/
 | workflow/ | `agent-service-app` + `agent-service-adapters-agentcore` | adapter 传递引入 agent-core-java，含中间件自动配置 |
 | react/ | `agent-service-app` + `agent-service-adapters-agentcore` | 同上 |
 | deepagent/ | `agent-service-app` + `agent-service-adapters-agentcore` | 同上 |
-| versatile/ | `agent-service-app` + `agent-service-adapters-versatile` | VersatileAgentHandler 所在 adapter |
+| versatile/ | `agent-service-app` + `agent-service-adapters-versatile` | VersatileAgentHandler 所在 adapter；**替换** agentcore adapter（非叠加），仅同一服务托管两类 Handler 时两者并存 |
 | 叠加：远端 A2A 工具注入 | 追加 `agent-service-adapters-agentcore-ext` | 仅主控侧需要自动注入时（见 [../how-to/a2a.md](../how-to/a2a.md)） |
 | 叠加：SkillHub 技能注入 | 追加 `agent-service-adapters-agentcore-ext`（+ `agent-service-spec-ext` 自定义 Provider 时） | 见 [../how-to/skillhub.md](../how-to/skillhub.md) |
 | 叠加：自定义 REST 入口 | 追加 `agent-service-app-custom-rest` | 见 [../how-to/custom-rest.md](../how-to/custom-rest.md) |

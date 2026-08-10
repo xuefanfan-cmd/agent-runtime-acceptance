@@ -48,7 +48,7 @@ public class AgentConfiguration {
                 .promptTemplate(List.of(Map.of("role", "system", "content", "你是一个简洁的助手。")))
                 .maxIterations(12)
                 .build()
-                .configureModelClient("openai", apiKey, apiBase, modelName, true);
+                .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
         agent.configure(config);
 
         var registration = Runner.resourceMgr().addAgent(card, () -> agent, null);

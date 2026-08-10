@@ -14,7 +14,7 @@ agent-core-java 是框架的**核心 SDK**（`com.openjiuwen.core.*`，纯 Java�
 
 | 包 | 关键类 | 用途 |
 | --- | --- | --- |
-| `core.singleagent` | `ReActAgent`、`agents.ReActAgentConfig`、`schema.AgentCard` | ReAct 单 agent（reason+act 循环） |
+| `core.singleagent` | `ReActAgent`、`agents.ReActAgentConfig`、`schema.AgentCard` | ReAct 单 agent（reason+act 循环）；生成代码首选根包 `ReActAgent` facade |
 | `core.application.workflow` | `WorkflowAgent`、`schema.WorkflowAgentConfig` | 多 workflow 容器 agent（单 workflow 模式无意图 LLM） |
 | `core.workflow` | `Workflow`、`WorkflowCard`、`component.*` | 命令式 DAG：`Start`、`End`、`llm.LLMComponent`、`llm.QuestionerComponent`、`tool.ToolComponent`、`BranchComponent` |
 | `core.foundation.llm.schema` | `ModelClientConfig`、`ModelRequestConfig`、`SystemMessage`、`UserMessage` | LLM 接入与消息 |
@@ -41,16 +41,30 @@ ReActAgentConfig config = ReActAgentConfig.builder()
         .promptTemplate(List.of(Map.of("role", "system", "content", "你是……")))
         .maxIterations(12)
         .build()
-        .configureModelClient("openai", apiKey, apiBase, modelName, true);
+        .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
 ModelRequestConfig modelConfig = config.getModelConfigObj();
 modelConfig.setTemperature(0.0);
 modelConfig.setMaxTokens(1024);
 agent.configure(config);
 ```
 
-要点：`configureModelClient(clientProvider, apiKey, apiBase, modelName, sslVerify)`
-链式挂在 builder 产物上；工具经 `remote-agents` 配置注入（远端）或 rail/tool 注册
-（本地，见 [core-ext](core-ext.md)）。
+要点：
+
+- `configureModelClient(clientProvider, apiKey, apiBase, modelName, sslVerify)`
+  链式挂在 builder 产物上；工具经 `remote-agents` 配置注入（远端）或 rail/tool 注册
+  （本地，见 [core-ext](core-ext.md)）。
+- **provider 优先用 canonical 值 `OpenAI`**（OpenAI 及兼容端点，文档示例一律取它）。
+  推荐发布件内置注册的 provider：`OpenAI` / `OpenRouter` / `SiliconFlow` / `DashScope` /
+  `InferenceAffinity`（别名 `inference_affinity`）；匹配不区分大小写，但仍统一用
+  canonical 拼写，不依赖大小写回退。**DeepSeek 等 OpenAI 兼容服务没有内置
+  provider**——用 `"OpenAI"` + `apiBase`（如 `https://api.deepseek.com`）+ 对应
+  modelName 接入；自定义协议经模型客户端注册机制显式扩展（锚点见下）。
+- `ModelRequestConfig`（`getModelConfigObj()` 取得）字段全集：`modelName`、
+  `temperature`（默认 0.95）、`topP`（默认 0.1）、`maxTokens`、`user`、`seed`、
+  `stop`、`extraFields`（`Map<String, Object>`——厂商特定参数一律经它传递）。
+- `ToolCard.inputParams` 为 `Map<String, Object>` 原样透传，框架不校验——Schema
+  方言取决于目标 LLM：`type` / `properties` / `required` 三件套普遍可用，
+  高级关键字（`enum` / `oneOf` / `$ref`）按模型侧支持情况使用。
 
 ## WorkflowAgent 最小用法
 

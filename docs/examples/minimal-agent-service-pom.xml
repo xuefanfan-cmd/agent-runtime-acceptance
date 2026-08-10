@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OpenJiuwen 最小 agent 服务工程 POM（三类基础 Agent 共享模板）。
+  2026-08-10 已对 react / deepagent / workflow 三个源码用例完成
+  mvn package + fat jar 启动验证。
+
+  用法：复制为目标工程的 pom.xml，修改 groupId / artifactId / mainClass。
+  能力扩展分两类，不要混用：
+  - Versatile 对接是替换而非叠加：agentcore adapter → versatile adapter
+    （仅同一服务同时托管两类 Handler 时两者并存）；
+  - SkillHub / custom-rest / A2A 自动注入属叠加，按 overview.md
+    「目录 → artifact 映射」在 runtime 基础依赖之后追加（顺序敏感，
+    见 compatibility.md 的 0.1.0 缓存风险说明）。
+
+  版本口径：本文件的版本字面量以 compatibility.md「依赖坐标速查」为唯一来源；
+  版本升级时两处必须同步（已纳入维护清单）。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.6</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.example</groupId>
+    <artifactId>my-agent-service</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
+    <dependencies>
+        <!-- HTTP / A2A 服务面；web 栈经它传递引入，无需另声明 starter -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-app</artifactId>
+            <version>0.1.1.post1</version>
+        </dependency>
+        <!-- core agent 托管 handler + 中间件自动配置；agent-core-java 经它传递引入，
+             不要直接声明 core，避免版本错位 -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-adapters-agentcore</artifactId>
+            <version>0.1.1.post1</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 必须：repackage 产出可执行 fat jar；缺失时 java -jar 报
+                 "no main manifest attribute"（编译能通过，启动才暴露） -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.myagent.MyAgentApplication</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -4,8 +4,8 @@ description: 用 openjiuwen.service.middleware.skillhub 开启 SkillHub 中间�
 audience: ai-coding
 status: verified
 snippets:
-  - docs/snippets/skillhub-agent-configuration.java
-  - docs/snippets/skillhub-middleware.yml
+  - snippets/skillhub-agent-configuration.java
+  - snippets/skillhub-middleware.yml
 ---
 
 # SkillHub 技能注入：启动下载技能包，请求时注册进 Agent
@@ -51,7 +51,7 @@ ReActAgent assistantAgent(...) {
             // ……
             .sysOperationId(AGENT_ID)   // ⚠️ 前置条件：不设置则技能注册不生效
             .build()
-            .configureModelClient("openai", apiKey, apiBase, modelName, true);
+            .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
     agent.configure(config);
     return agent;
 }

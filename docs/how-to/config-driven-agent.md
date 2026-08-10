@@ -4,7 +4,7 @@ description: agent-runtime-java 基于 Runner 的类型无关托管逻辑——�
 audience: ai-coding
 status: verified
 snippets:
-  - docs/snippets/assembly-application.yml
+  - snippets/assembly-application.yml
 ---
 
 # 配置驱动 Agent：Runner 运行逻辑与 YAML 装配边界

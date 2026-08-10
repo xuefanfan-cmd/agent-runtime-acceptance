@@ -4,7 +4,7 @@ description: ReActAgent 推理循环（LLM 自主决策工具调用）的创建�
 audience: ai-coding
 status: verified
 examples:
-  - docs/examples/react
+  - examples/react
 ---
 
 # ReAct Agent 指南
@@ -35,7 +35,7 @@ AgentHandler reactHandler(/* LLM 配置注入 */) {
             .promptTemplate(List.of(Map.of("role", "system", "content", "...")))
             .maxIterations(6)
             .build()
-            .configureModelClient("openai", apiKey, apiBase, modelName, true);
+            .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
     ReActAgent agent = new ReActAgent(card);
     agent.configure(config);                        // 必需：绑定模型客户端
 
@@ -115,7 +115,7 @@ curl -X POST http://localhost:18091/v1/query \
 
 ## API 锚点（jar 内类，按依赖可查）
 
-- Agent：`com.openjiuwen.core.singleagent.agents.ReActAgent` / `ReActAgentConfig`、`com.openjiuwen.core.singleagent.schema.AgentCard`
+- Agent（生成代码首选 facade）：`com.openjiuwen.core.singleagent.ReActAgent`；配置：`com.openjiuwen.core.singleagent.agents.ReActAgentConfig`；卡片：`com.openjiuwen.core.singleagent.schema.AgentCard`
 - 模型：`ReActAgentConfig.configureModelClient(...)`、`com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig`
 - 工具：`com.openjiuwen.core.foundation.tool.ToolCard` / `...tool.function.LocalFunction`、`com.openjiuwen.core.singleagent.AbilityManager`、`com.openjiuwen.core.runner.Runner.resourceMgr()`
 - 托管：`com.openjiuwen.service.adapters.agentcore.agentfw.JiuwenCoreAgentHandler`

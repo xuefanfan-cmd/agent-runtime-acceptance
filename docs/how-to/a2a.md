@@ -16,7 +16,12 @@ A2A（agent-to-agent）是 OpenJiuwen 中智能体跨进程互调的标准通道
   自动注入 `WorkflowAgent`。
 
 因此不存在「所有主控 × 被调组合只靠同一段 YAML 全部支持」的结论。先判断本 agent
-是**被调用方**还是需要**主动消费远端能力的主控方**，再选择接线方式。
+是**被调用方**还是需要**主动消费远端能力的主控方**，再选择接线方式：
+
+- **被调用侧**发布已构造/已托管的 Agent：通常只需 YAML（`a2a.skills` 等），零 Java 改动；
+- **主控侧**消费远端能力：是否需要 Java 取决于 Agent 类型与 handler 路径——
+  ReAct/DeepAgent 经 ext handler 自动注入（部署增量），WorkflowAgent 必须在 DAG 中
+  显式建模（代码增量）。
 
 ## 适用场景 / 不适用场景
 

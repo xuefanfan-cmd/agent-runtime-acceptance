@@ -55,7 +55,7 @@ public class AgentConfiguration {
                 // 不设置则 registerSkill 不生效（SkillHub 下载成功但 agent 无技能）
                 .sysOperationId(AGENT_ID)
                 .build()
-                .configureModelClient("openai", apiKey, apiBase, modelName, true);
+                .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
         agent.configure(config);
         return agent;
     }

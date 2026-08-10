@@ -47,7 +47,9 @@ public interface AgentHandler {
 ## 关键 DTO 契约
 
 - **ServeRequest**：入站请求。核心字段 `messages`、`conversationId`、`userId`、`tenantId`、`stream`。
-- **QueryResponse**：非流式聚合响应，`Map<String, Object> result` + `conversationId`。
+- **QueryResponse**：非流式聚合响应，`Object result` + `conversationId`。
+  DTO 声明类型是 `Object`（库存 core handler 的典型结果是 Map 结构），自定义
+  handler 或客户端不要把它当作固定 `Map<String, Object>` 契约。
 - **QueryChunk**：流式帧，`type` + `data`。type 取值：
 
 | type | 含义 | 典型场景 |

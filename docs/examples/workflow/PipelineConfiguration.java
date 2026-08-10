@@ -52,7 +52,7 @@ public class PipelineConfiguration {
 
     static Workflow buildWorkflow(String apiKey, String apiBase, String modelName) {
         ModelClientConfig clientCfg = ModelClientConfig.builder()
-                .clientProvider("openai")
+                .clientProvider("OpenAI")
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .verifySsl(true)

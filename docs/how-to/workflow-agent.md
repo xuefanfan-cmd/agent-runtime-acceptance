@@ -4,7 +4,7 @@ description: 用 agent-core-java 的 Workflow/WorkflowAgent 以代码编排 LLM+
 audience: ai-coding
 status: verified
 examples:
-  - docs/examples/workflow
+  - examples/workflow
 ---
 
 # 构建 WorkflowAgent：core DSL 编排 DAG 并托管

@@ -4,7 +4,7 @@ description: 用 agent-service-adapters-versatile 的 VersatileAgentHandler 将�
 audience: ai-coding
 status: verified
 examples:
-  - docs/examples/versatile
+  - examples/versatile
 ---
 
 # VersatileAgentHandler：把远端 versatile 工作流包成 Agent

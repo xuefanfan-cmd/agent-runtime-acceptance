@@ -4,9 +4,9 @@ description: 实现 CustomRestProtocolAdapter Bean 并配置 openjiuwen.service.
 audience: ai-coding
 status: verified
 snippets:
-  - docs/snippets/custom-rest-agent-configuration.java
-  - docs/snippets/custom-rest-protocol-adapter.java
-  - docs/snippets/custom-rest.yml
+  - snippets/custom-rest-agent-configuration.java
+  - snippets/custom-rest-protocol-adapter.java
+  - snippets/custom-rest.yml
 ---
 
 # 自定义 REST 入口：把宿主协议桥接到 A2A 执行链

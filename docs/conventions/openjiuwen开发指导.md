@@ -26,7 +26,7 @@ ReActAgent 基于 Reasoning-Acting 循环，每一轮迭代由 LLM 自主决定�
 **✅ 推荐写法**
 
 ```java
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -35,7 +35,8 @@ ReActAgentConfig agentConfig = ReActAgentConfig.builder()
     .promptTemplate(List.of(Map.of("role", "system", "content", "你是理财助手...")))
     .maxIterations(10)
     .build()
-    .configureModelClient("deepseek", "sk-xxx", "https://api.deepseek.com", "deepseek-chat", true);
+    .configureModelClient("OpenAI", apiKey, "https://api.deepseek.com", "deepseek-chat", true);
+    // DeepSeek 等 OpenAI 兼容服务没有内置 provider：用 "OpenAI" + apiBase + modelName 接入
 
 // 2) 创建 Agent
 AgentCard card = AgentCard.builder()
@@ -139,7 +140,7 @@ agent.addWorkflows(List.of(wf));
 
 1. `WorkflowAgent` 的构造只接受 `WorkflowAgentConfig`（`new WorkflowAgent(WorkflowAgentConfig)`），图通过 `addWorkflows(...)` 注册——不存在 `(AgentCard, List<Workflow>)` 构造器
 2. 无工厂可用，`new` 是唯一方式；服务化托管直接交给库存的 `JiuwenCoreAgentHandler`，不必子类化
-3. DAG 通过组件装配 API（`setStartComp` / `addWorkflowComp` / `setEndComp` / `addConnection`）显式声明，分支用 `BranchComponent.addBranch(条件, 目标id, 分支名)`；完整可运行骨架见本仓 `docs/how-to/workflow-agent.md` 及 `examples/workflow/`
+3. DAG 通过组件装配 API（`setStartComp` / `addWorkflowComp` / `setEndComp` / `addConnection`）显式声明，分支用 `BranchComponent.addBranch(条件, 目标id, 分支名)`；完整源码见 [WorkflowAgent 编排指南](../how-to/workflow-agent.md) 及 [examples/workflow/](../examples/workflow/)
 
 ---
 
@@ -147,7 +148,7 @@ agent.addWorkflows(List.of(wf));
 
 > 核心仓库：**agent-runtime-java**
 
-将 Agent 引擎包装为 Spring Boot HTTP 服务，对外暴露 A2A 协议接口（JSON-RPC + SSE 流式），实现生产级部署。通过 `AgentHandler` SPI 将 Agent 实例注册到框架的 HTTP 编排链路中。
+将 Agent 引擎包装为 Spring Boot HTTP 服务，对外暴露 A2A 协议接口（JSON-RPC + SSE 流式）。通过 `AgentHandler` SPI 将 Agent 实例注册到框架的 HTTP 编排链路中。
 
 ### 2.1 注册 AgentHandler
 
@@ -211,7 +212,10 @@ public class MyAgentHandler implements AgentHandler {
 2. **一个服务声明一个 `AgentHandler` Bean 即可** — 框架的自动装配以「容器中尚无 AgentHandler Bean」为条件，你声明了就让位；手写 Agent 经 `@Bean` 包装是最直接的形态，不要为省一个 Bean 绕路
 3. **唯一例外**：接入非 openjiuwen 引擎（如 AgentScope）时才需要自己实现 `AgentHandler`（扩展库 agent-runtime-ext-java 提供 `AgentScopeAgentHandler` 可参考）
 
-> **另一条独立路径**：配置驱动装配（Agent 本身由 `agents:` yaml 定义、强调 Agent 属性可配置）见本仓 `docs/how-to/config-driven-agent.md`——那是与「手写 Agent + @Bean 包装」并列的另一种使用方式，不是本节的替代写法。
+> **另一条独立路径**：配置驱动装配——Agent 由 Java 代码构造并注册，YAML 负责选择已注册
+> Agent、装配 handler 与运行参数（不存在 YAML 构造 Agent 的 DSL），见
+> [配置驱动 Agent](../how-to/config-driven-agent.md)——那是与「手写 Agent + @Bean 包装」
+> 并列的另一种使用方式，不是本节的替代写法。
 
 ---
 
@@ -583,7 +587,7 @@ public class MyService {
 
 > 适配实现来自：**agent-runtime-ext-java**（扩展 jar；`service.adapters.versatile` / `service.spec.ext`）
 
-支持将非 openjiuwen 原生引擎（低码平台 Versatile 工作流、AgentScope 框架）接入到 A2A 协议体系中。通过实现 `AgentHandler` SPI 并注册为 Spring Bean 完成适配。Versatile 对接的完整配置与意图路由见本仓 `docs/how-to/versatile-agent.md`。
+支持将非 openjiuwen 原生引擎（低码平台 Versatile 工作流、AgentScope 框架）接入到 A2A 协议体系中。通过实现 `AgentHandler` SPI 并注册为 Spring Bean 完成适配。Versatile 对接的完整配置与意图路由见 [Versatile 对接指南](../how-to/versatile-agent.md)。
 
 ### 7.1 Versatile 工作流代理
 
@@ -803,7 +807,7 @@ openjiuwen:
 
 > 核心仓库：**agent-runtime-java**
 
-框架支持 Agent 间互相发现与调用，实现多 Agent 编排。远端 Agent 通过 yaml 声明式配置，框架自动完成卡发现、调用路由和中断透传。完整的配置项、同步/流式语义与中断行为见本仓 `docs/how-to/a2a.md`，本节只给出最小接入路径。
+框架支持 Agent 间互相发现与调用，实现多 Agent 编排。远端 Agent 通过 yaml 声明式配置，框架自动完成卡发现、调用路由和中断透传。完整的配置项、同步/流式语义与中断行为见 [A2A 跨智能体调用机制](../how-to/a2a.md)，本节只给出最小接入路径。
 
 ### 11.1 调用链路（概念）
 
@@ -847,7 +851,7 @@ openjiuwen:
 
 > **委派工具由应用侧声明**：LLM 触发远端调用的入口需要应用自行提供一个本地工具 + 中断 Rail（典型形态：`delegate_to_xxx` 工具 + `BaseInterruptRail` 子类在中断上下文中携带 `agentName`）。框架提供发现/调用/编排能力，工具命名与拦截点由业务自定。
 >
-> **另一条注入路径**：agentcore-ext 运行时会把 `remote-agents` 自动安装为 Agent 的 A2A 工具（有类型边界，见本仓 `docs/how-to/a2a.md`）。两条路径服务的运行时形态不同，按需选用。
+> **另一条注入路径**：agentcore-ext 运行时会把 `remote-agents` 自动安装为 Agent 的 A2A 工具（有类型边界，见 [A2A 跨智能体调用机制](../how-to/a2a.md)）。两条路径服务的运行时形态不同，按需选用。
 
 **❌ 不要这样**
 

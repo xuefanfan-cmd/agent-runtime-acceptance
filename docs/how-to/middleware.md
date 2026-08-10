@@ -4,7 +4,7 @@ description: 用 openjiuwen.service.middleware 配置会话状态持久化（in-
 audience: ai-coding
 status: verified
 snippets:
-  - docs/snippets/middleware-checkpointer.yml
+  - snippets/middleware-checkpointer.yml
 ---
 
 # 中间件配置：checkpointer / Redis 端点 / 长期记忆

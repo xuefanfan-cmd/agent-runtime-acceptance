@@ -4,7 +4,7 @@ description: 用 openjiuwen.service.external.sandbox 声明式启用沙箱，经
 audience: ai-coding
 status: verified
 snippets:
-  - docs/snippets/sandbox.yml
+  - snippets/sandbox.yml
 ---
 
 # Sandbox 沙箱：远程代码执行客户端

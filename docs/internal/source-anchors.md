@@ -19,7 +19,8 @@ audience: maintainer
 
 行为与装配参考：`third_party/react&deep-agent-demos/meeting-agent-demos/`（meeting-react-agent；用户不可见，仅作维护回查）
 
-- `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java`（new + configure 路径）
+- `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/ReActAgent.java`（根包 facade，extends agents.ReActAgent，类注释标明 mirrors Python ReActAgent——用户页首选 import；2026-08-10 外部评审改为根包后登记）
+- `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgent.java`（new + configure 路径；facade 的父类实现）
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgentConfig.java`（builder 方法集、configureModelClient(provider, apiKey, apiBase, modelName, verifySsl)、getModelConfigObj()）
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/llm/schema/ModelRequestConfig.java`（@Data → setTemperature/setTopP）
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/AbilityManager.java`（add）
@@ -34,7 +35,8 @@ audience: maintainer
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/schema/config/DeepAgentConfig.java`（Lombok @Builder；completionTimeout Double、tools List<Object>、model/backend Object）
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/rails/TaskCompletionRail.java`（源码快照为 0/2/4/7 参）；推荐发布 jar 为 0/6/7 参，timeout 使用 `Duration`
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/workspace/Workspace.java`（源码快照存在多组构造器；推荐发布 jar 使用 `Workspace.builder()` 或三参构造器）
-- `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/deep_agent/DeepAgent.java`（ensureInitialized() 第 346 行、shutdown() 第 833 行——无 close()；model/backend Map 键消费第 124~213 行：model/model_name、top_p/topP、api_base/apiBase/base_url、verify_ssl/verifySsl、timeout）
+- `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/deep_agent/DeepAgent.java`（ensureInitialized() 第 346 行；model/backend Map 键消费第 124~213 行：model/model_name、top_p/topP、api_base/apiBase/base_url、verify_ssl/verifySsl、timeout）
+- **方法名漂移（2026-08-10 第三轮评审实测）**：本快照有 `shutdown()`（第 833 行）、无 `close()`；发布 jar 0.1.14.post1 反之（`close()` / `destroy()` + AutoCloseable）。用户可见页按发布件写 `destroyMethod = "close"`（[how-to/deepagent.md](../how-to/deepagent.md)、[examples/deepagent/](../examples/deepagent/)），评审临时工程验证 `close` 启动通过
 - 注意：此处存在源码快照与推荐发布 jar 的公开签名漂移；用户示例按发布 jar 的 `Duration` 与 `Workspace.builder()` 编写并做编译校验
 
 ## how-to/workflow-agent.md
@@ -199,7 +201,7 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - `third_party/agent-solution/common/agent-runtime-ext-java/agent-service-app/agent-service-app-custom-rest/pom.xml`
 - `third_party/agent-solution/common/agent-core-ext-java/agent-core-ext-react-rails/pom.xml`
 
-### 发布件编译回归（2026-08-09，人工）
+### 发布件编译与启动回归（2026-08-10，人工）
 
 使用 Java 17、Spring Boot 4.0.6，在系统临时目录生成 Maven 工程，不向用户示例目录写入 pom：
 
@@ -212,7 +214,14 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 | Custom REST Java snippets | runtime `0.1.1.post1` + custom-rest `0.1.0` | `mvn clean compile` 通过 |
 | SkillHub Java snippet | runtime app `0.1.1.post1` + agentcore-ext `0.1.0` | `mvn clean compile` 通过 |
 
-该记录是一次性人工回归，不代表已接入 CI；后续修改 examples/snippets 后必须重新执行。
+该记录是一次性人工回归，不代表已接入 CI；共享 POM 已对 ReAct / DeepAgent / Workflow 完成 `mvn package` 与 fat JAR 启动验证，后续修改 examples/snippets/POM 后必须重新执行。
+
+- **solution `0.1.0` 同版本缓存风险（2026-08-10 第三轮评审登记）**：上游在 `0.1.0`
+  版本号不变的情况下更新了 POM 元数据（依赖由 0.1.1/0.1.14 指向 post1），本地仓
+  旧缓存仍按旧元数据解析非 post1 链路。受控实测确认 `mvn -U` 不会可靠刷新
+  已缓存的非 SNAPSHOT release POM；处置已写入用户页 compatibility.md：删除受影响的
+  solution `0.1.0` artifact 缓存或使用空 local repository，先按服务形态选择 agentcore 或 versatile 基座（双 Handler 服务可并存），再声明真正的
+  叠加扩展。根除依赖上游以 `0.1.0.post1` 重发。
 
 ## api/agent-core-java.md
 
@@ -220,11 +229,15 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - `third_party/agent-solution/common/example/versatile-orchestration-demo/expense-review/src/main/java/com/openjiuwen/example/versatile/orchestration/expensereview/ExpenseReviewConfiguration.java`
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/runner/resourcemanager/ResourceMgr.java`
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/BaseAgent.java`
+- provider 值域（2026-08-10 两轮外部评审核实，含发布件漂移）：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/llm/schema/ProviderType.java`（枚举含 DeepSeek/IntelliRouter，但**无默认注册工厂**——快照与发布件一致的注册集仅 6 个：`.../foundation/llm/model_clients/DefaultModelClientFactories.java` 注册 OpenAI/OpenRouter/SiliconFlow/DashScope/InferenceAffinity/inference_affinity）、`.../foundation/llm/model_clients/ModelClients.java`（BUILTIN_PROVIDER_NAMES）、`.../core/common/clients/ClientRegistry.java`、`.../foundation/llm/model_clients/OpenAiModelClientFactory.java`（providerName()="OpenAI"）。**漂移**：源码快照查找为精确匹配（isBuiltinProvider/ClientRegistry 无规范化），外部评审反查 0.1.14.post1 发布 jar 称存在忽略大小写 fallback——用户页按发布件口径写「不区分大小写但统一 canonical」，生成代码用 "OpenAI" 两种口径下均安全；发布线佐证 `third_party/react&deep-agent-demos/meeting-agent-demos/meeting-react-agent/src/main/java/com/example/meeting/react/agent/MeetingReactAgentProperties.java`（provider 默认 "OpenAI"）
+- ModelRequestConfig 字段全集：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/llm/schema/ModelRequestConfig.java`（modelName/temperature 0.95/topP 0.1/maxTokens/user/seed/stop/extraFields）
+- ToolCard.inputParams 透传：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/tool/ToolCard.java`（Map<String,Object> 原样存储不校验）
 
 ## api/agent-runtime-java.md
 
 - `third_party/agent-runtime-java/service/agent-service-spec/src/main/java/com/openjiuwen/service/spec/spi/AgentHandler.java`
 - `third_party/agent-runtime-java/service/agent-service-spec/src/main/java/com/openjiuwen/service/spec/dto/QueryChunk.java`
+- `third_party/agent-runtime-java/service/agent-service-spec/src/main/java/com/openjiuwen/service/spec/dto/QueryResponse.java`（result 声明类型 Object，2026-08-10 第二轮外部评审纠正——原页面误写 Map<String,Object>，快照与发布 jar 均为 Object）
 - `third_party/agent-runtime-java/service/agent-service-adapters/agent-service-adapters-agentcore/src/main/java/com/openjiuwen/service/adapters/agentcore/agentfw/JiuwenCoreAgentHandler.java`
 - `third_party/agent-runtime-java/service/agent-service-app/src/main/java/com/openjiuwen/service/app/config/llm/LlmConfigResolver.java`
 - `third_party/agent-runtime-java/service/agent-service-app/src/main/java/com/openjiuwen/service/app/config/llm/ResolvedLlmConfig.java`
@@ -248,6 +261,11 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - `third_party/agent-solution/common/example/versatile-orchestration-demo/README.md`
 
 ## conventions/openjiuwen开发指导.md
+
+> 2026-08-10 第二轮外部评审修正：§配置驱动指针原误写「Agent 本身由 agents: yaml 定义」
+> （与 config-driven-agent.md 事实边界直接冲突，已改为「Java 构造注册 + YAML 选择装配」）；
+> §1.1 示例 provider 原写 "deepseek"（发布件无此内置 provider，已改为 "OpenAI" + apiBase
+> OpenAI 兼容接法）；5 处「本仓 docs/...」路径引用改为相对链接；删「生产级部署」过度声明。
 
 上游：`third_party/openjiuwen开发指导.md`（2026-08-09 合并；合并时全部 API 断言已回下列源码逐条核实，编造项已重写或剔除）
 

@@ -4,7 +4,7 @@ description: DeepAgent 目标导向任务循环的创建与装配——HarnessFa
 audience: ai-coding
 status: verified
 examples:
-  - docs/examples/deepagent
+  - examples/deepagent
 ---
 
 # DeepAgent 指南
@@ -43,7 +43,7 @@ DeepAgent 在 ReActAgent 基础上叠加 **TaskLoop 任务循环**、**Workspace
 核心接线摘录：
 
 ```java
-@Bean(destroyMethod = "shutdown")
+@Bean(destroyMethod = "close")
 DeepAgent notesDeepAgent(/* LLM 与工作区配置注入 */) {
     TaskCompletionRail completionRail = new TaskCompletionRail(
             "持续维护工作区交付物……；当前请求如下：\n{query}",   // {query} 会被当前请求替换
@@ -55,7 +55,7 @@ DeepAgent notesDeepAgent(/* LLM 与工作区配置注入 */) {
             .tools(WorkspaceFileTools.create(root))     // 受限文件工具（读/写/列）
             .rails(List.of(completionRail))
             .model(Map.of("model", modelName, "temperature", 0.1, "top_p", 0.8))
-            .backend(Map.of("provider", "openai", "api_key", apiKey,
+            .backend(Map.of("provider", "OpenAI", "api_key", apiKey,
                     "api_base", apiBase, "verify_ssl", true, "timeout", 120L))
             .build();
     Workspace workspace = Workspace.builder()
@@ -81,7 +81,7 @@ AgentHandler deepHandler(DeepAgent notesDeepAgent) {
 默认 Rail 注入（`SecurityRail`；开启 TaskLoop/TaskPlanning 时追加 `TaskCompletionRail`/
 `TaskPlanningRail`）、`addGeneralPurposeAgent(true)` 时注入通用子代理、工具实例注册。
 直接 `new DeepAgent(...)` 会跳过这些步骤，功能残缺。创建后调用 `agent.ensureInitialized()`；
-DeepAgent 持有工作区资源，Bean 声明 `destroyMethod = "shutdown"` 随容器释放。
+DeepAgent 持有工作区资源，Bean 声明 `destroyMethod = "close"` 随容器释放。
 
 ### 任务循环与完成判定（TaskCompletionRail）
 

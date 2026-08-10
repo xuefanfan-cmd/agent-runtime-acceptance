@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.service.adapters.agentcore.agentfw.JiuwenCoreAgentHandler;
@@ -34,7 +34,7 @@ public class ReactAgentConfiguration {
                         "你是文本分析助手。需要统计时调用 text_stats 工具，不要自己估算数字。")))
                 .maxIterations(6)
                 .build()
-                .configureModelClient("openai", apiKey, apiBase, modelName, true);
+                .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
         config.getModelConfigObj().setTemperature(0.1);
 
         AgentCard card = AgentCard.builder()

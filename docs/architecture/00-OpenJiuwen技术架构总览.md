@@ -29,9 +29,9 @@ OpenJiuwen 面向大模型应用的 Java 生态由三个分工明确的仓库构
 
 | 仓库 | 角色 | 推荐依赖坐标（代表） | Java 版本 | 构建形态 |
 |------|------|----------------------|----------|---------|
-| `agent-core-java` | Agent 执行核心引擎 | `com.openjiuwen:agent-core-java:0.1.14.post1` | 17 | 单 jar 工程 |
-| `agent-runtime-java` | 分布式运行时 / Agent Server | `com.openjiuwen:agent-service-app:0.1.1.post1` | 17 | 多模块聚合 |
-| `agent-solution` | 扩展方案与场景实现 | `com.openjiuwen:*:0.1.0` | 17/21 | 聚合 POM + 独立叶子模块 |
+| `agent-core-java` | Agent 执行核心引擎 | `com.openjiuwen:agent-core-java` | 17 | 单 jar 工程 |
+| `agent-runtime-java` | 分布式运行时 / Agent Server | `com.openjiuwen:agent-service-app` | 17 | 多模块聚合 |
+| `agent-solution` | 扩展方案与场景实现 | `com.openjiuwen:*` | 17/21 | 聚合 POM + 独立叶子模块 |
 
 > 具体能力所需 artifact 及其传递依赖统一以
 > [版本兼容与依赖坐标](../compatibility.md) 为准；公开页面不混用源码快照版本。
@@ -95,8 +95,8 @@ OpenJiuwen 面向大模型应用的 Java 生态由三个分工明确的仓库构
 
 | 形态 | 入口类 | 本地运行与远端边界 | 指南状态 |
 | --- | --- | --- | --- |
-| ReAct | `com.openjiuwen.core.singleagent.ReActAgent` | Runner 托管；可作为 ext 远端工具注入目标 | 由对应负责人补齐 |
-| DeepAgent | deep_agent 体系 | Runner 托管；ext 安装器解析其内部 BaseAgent | 由对应负责人补齐 |
+| ReAct | `com.openjiuwen.core.singleagent.ReActAgent` | Runner 托管；可作为 ext 远端工具注入目标 | [ReAct 指南](../how-to/react-agent.md) |
+| DeepAgent | deep_agent 体系 | Runner 托管；ext 安装器解析其内部 BaseAgent | [DeepAgent 指南](../how-to/deepagent.md) |
 | Workflow | `com.openjiuwen.core.application.workflow.WorkflowAgent` | Runner 托管；可被 A2A 调用，但不能靠 ext 自动注入远端工具 | [Workflow 指南](../how-to/workflow-agent.md) |
 | Workflow ↔ versatile | `agent-service-adapters-versatile` | 外部工作流通过 adapter 接入 runtime | [Versatile 指南](../how-to/versatile-agent.md) |
 

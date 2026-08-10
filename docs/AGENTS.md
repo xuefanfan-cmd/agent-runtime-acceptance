@@ -80,7 +80,7 @@ docs/
 │   ├── custom-rest.md         ← 跨类型能力：自定义 REST 协议入口（solution 增量）【已展开】
 │   ├── react-agent.md         ← ReAct Agent（推理循环 + 工具两步注册）【已展开】
 │   └── deepagent.md           ← DeepAgent（任务循环 + 工作区交付物）【已展开】
-├── internal/                  ← 内部维护文件（source-anchors.md，不面向文档用户）
+├── internal/                  ← 内部维护文件（source-anchors.md / doc-decisions.md，不面向文档用户，不随发行版交付）
 ├── snippets/                  ← 装配/配置片段（单文件平铺，非完整源码集；被 how-to 页引用）
 │   └── overview.md            ← 片段索引 + 与 examples 的分工规则
 └── examples/                  ← 完整 Agent 源码用例（不重复 pom）
@@ -172,13 +172,13 @@ description: 一句话说明读者读完能做什么；不含 markdown 格式
 audience: ai-coding        # ai-coding | human | both
 status: verified           # how-to 能力页必填：verified | experimental | placeholder | planned | deprecated
 examples:                  # 本文引用的完整 Agent 源码用例目录（若有）
-  - docs/examples/<name>
+  - examples/<name>
 snippets:                  # 本文引用的装配/配置片段文件（若有）
-  - docs/snippets/<能力>-<工件>.<扩展名>
+  - snippets/<能力>-<工件>.<扩展名>
 ---
 ```
 
-> frontmatter 不含任何源码路径；维护锚点统一登记 `internal/source-anchors.md`。
+> `examples` / `snippets` 路径一律相对发行版 SPEC 根目录（即 README.md 所在目录），不得带 `docs/` 前缀；frontmatter 不含任何源码路径，维护锚点统一登记 `internal/source-anchors.md`。
 
 ### 指南（how-to）页正文模板
 
@@ -232,6 +232,23 @@ snippets:                  # 本文引用的装配/配置片段文件（若有�
 - 「已验证组合」的置信度用一句话陈述（如「该组合已经框架侧端到端验证」），
   不链接用户看不到的验证工程。
 
+## 发行边界（Distribution boundary）
+
+docs/ 后续整体作为指导 AI Coding 的 SPEC 独立交付：本仓是开发版（single source of
+truth），发行版是本仓的**过滤产物**。过滤规则固定为三条，不做节级裁切：
+
+1. 排除 `AGENTS.md`（写作规则/导航地图/评审清单，只服务本仓维护）；
+2. 排除 `internal/` 整目录（source-anchors.md、doc-decisions.md）；
+3. 排除 frontmatter `audience: maintainer | internal` 的文件（兜底规则，防未来
+   维护页混入知识目录）。
+
+发行版以 `README.md` 所在目录为 SPEC 根目录；内容 = `README.md`（内容地图）+
+`conventions/` + `architecture/` + `api/` + `how-to/` + `examples/` + `snippets/` +
+`compatibility.md`。新增页面时按上述规则
+自证归属：面向知识消费者的内容不得写进维护文件；维护性内容不得留在发行文件中
+（含「外部交付」「本仓」这类元话语）。维护者使用根目录
+`scripts/package-ai-coding-spec.ps1` 生成并校验过滤产物，不手工复制整个 `docs/`。
+
 ## 外部改动评审清单（Review checklist）
 
 其他工具/协作者对本仓文档做过改动后，按本清单逐项评审再入库——目标是把
@@ -257,29 +274,35 @@ snippets:                  # 本文引用的装配/配置片段文件（若有�
 5. **机械校验必须全绿**：内部链接零断链（改动后跑一遍链接检查）；被删文件无残留
    引用（grep 文件名）；索引同步——`AGENTS.md` 导航地图、`how-to/overview.md`、
    `examples/overview.md`、`snippets/overview.md`、`README.md` 内容地图与改动一致；
-   examples 与关键 Java snippets 复制进临时 Maven 工程后，使用推荐发布件完成 `mvn compile`。
+   examples 与关键 Java snippets 复制进临时 Maven 工程后，使用推荐发布件完成 `mvn compile`；
+   执行 `scripts/package-ai-coding-spec.ps1`，确认公开文件、frontmatter 路径与内部链接校验全绿。
 6. **可见性边界不滑坡**：用户可见页面（含 frontmatter）不出现 `third_party/` 路径、
    不出现用户拿不到的内部类；可设置配置项边界块（⚠️ 内部属性不要设置）不被删改。
-   **显式黑名单检查**：改动后对用户可见页面（`docs/internal/` 以外）grep 以下两类
+   **显式黑名单检查**：改动后对用户可见页面（`docs/internal/` 以外）grep 以下三类
    模式，必须零命中——
-   a. 内部实现包类名：`service/app/controller/**` 下类型（如
+   a. 维护面引用（2026-08-10 发行边界落地后追加）：`third_party`、`internal/`、
+      `source-anchors`——公开内容不得把读者引向维护文件或源码镜像，
+      违者改写为消费者视角的事实性表述；
+   b. 内部实现包类名：`service/app/controller/**` 下类型（如
       `A2AEnabledServeOrchestrator`、`RemoteAgentCaller`、`RemoteAgentCardResolver`、
       `A2AAgentCardDiscovery`、`A2ARemoteAgentCardRegistry`、`A2ARemoteAgentClient`）、
       agentcore-ext 内部安装器（`RemoteA2aToolInstaller`）等只服务于 debugging 的
       实现类（排查指引可在「坑位与排错」用文字描述，不点名类名）；
-   b. demo/示例工程类名：`agent-service-demo/**`、`agent-solution/**/example/**` 独有
+   c. demo/示例工程类名：`agent-service-demo/**`、`agent-solution/**/example/**` 独有
       类型（如 `A2aDelegateRail`、`MemoryToolRegistrar`、`DecoratedSandboxToolRegistrar`、
       `ExampleReActAgentFactory`、`ExecutionLimitRail`、`EdpaAgentEnhancer`、
       `A2AGatewayRemoteAgentCaller`）以及「官方 demo」字样——demo 类用户拿不到，
       一律改写为「框架未内置 X，需自行封装」式表述；
-   c. 参考命令（名单随新发现的内部类追加）：
-      `grep -rn -E "A2AEnabledServeOrchestrator|RemoteAgentCaller|RemoteAgentCardResolver|A2AAgentCardDiscovery|A2ARemoteAgentCardRegistry|A2ARemoteAgentClient|RemoteA2aToolInstaller|A2aDelegateRail|MemoryToolRegistrar|DecoratedSandboxToolRegistrar|ExampleReActAgentFactory|ExecutionLimitRail|EdpaAgentEnhancer|A2AGatewayRemoteAgentCaller|官方 demo" docs --include=*.md | grep -v -e docs/internal/ -e docs/AGENTS.md`
-   d. **单一版本口径**：用户可见页面不出现上游 commit hash / tag / 源码镜像 POM 版本
+   d. 参考命令（名单随新发现的内部类追加）：
+      `grep -rn -E "third_party|internal/|source-anchors|A2AEnabledServeOrchestrator|RemoteAgentCaller|RemoteAgentCardResolver|A2AAgentCardDiscovery|A2ARemoteAgentCardRegistry|A2ARemoteAgentClient|RemoteA2aToolInstaller|A2aDelegateRail|MemoryToolRegistrar|DecoratedSandboxToolRegistrar|ExampleReActAgentFactory|ExecutionLimitRail|EdpaAgentEnhancer|A2AGatewayRemoteAgentCaller|官方 demo" docs --include=*.md | grep -v -e docs/internal/ -e docs/AGENTS.md`
+   e. **单一版本口径**：用户可见页面不出现上游 commit hash / tag / 源码镜像 POM 版本
       （含 `v0.x.y` 式 tag 与 12 位 hex commit）；版本表述一律以 `compatibility.md` 的
       发布件口径为唯一来源，镜像锚点只登记到 `internal/source-anchors.md`。
       外部改动带入此类信息时迁出而非保留（2026-08-09 compatibility.md 单一化时登记）。
+      唯一允许携带版本字面量的其他文件是 `docs/examples/minimal-agent-service-pom.xml`
+      （共享最小 POM，2026-08-10 引入）；版本升级时它与 compatibility.md 必须同步更新。
 
-## 演进路线（详见 README.md）
+## 演进路线（详见 internal/doc-decisions.md）
 
 当前阶段：**md-first**，纯 Markdown + 描述性文件名 + 目录索引页，保证 AI 与 git diff 友好。
 下一阶段（需要对外站点时）：迁 Docusaurus（选型结论见 `README.md`），迁移时目录结构不变，

@@ -28,7 +28,7 @@ import com.openjiuwen.service.spec.spi.AgentHandler;
 public class DeepAgentConfiguration {
 
     /** DeepAgent 持有工作区资源：随 Spring 容器关闭时释放。 */
-    @Bean(destroyMethod = "shutdown")
+    @Bean(destroyMethod = "close")
     DeepAgent notesDeepAgent(
             @Value("${deep.api-key:}") String apiKey,
             @Value("${deep.api-base:}") String apiBase,
@@ -55,7 +55,7 @@ public class DeepAgentConfiguration {
                 .tools(WorkspaceFileTools.create(root))
                 .rails(List.of(completionRail))
                 .model(Map.of("model", modelName, "temperature", 0.1, "top_p", 0.8))
-                .backend(Map.of("provider", "openai", "api_key", apiKey,
+                .backend(Map.of("provider", "OpenAI", "api_key", apiKey,
                         "api_base", apiBase, "verify_ssl", true, "timeout", 120L))
                 .build();
 

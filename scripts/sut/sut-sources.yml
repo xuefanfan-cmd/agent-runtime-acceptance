@@ -63,8 +63,7 @@ envs:
       - { source: agent-solution, module: common/agent-core-ext-java }
       - { source: agent-solution, module: common/agent-runtime-ext-java }
       - { source: agent-solution, module: common/agent-service-spec-ext }
-      - { source: agent-solution, module: common/agent-bus }
-      - { source: agent-solution, module: common/registry-discovery-center }
+      - { source: agent-solution, module: common/agent-bus/registry-discovery-center }
       - { source: agent-solution, module: common/example/multi-react-travel-demo }
       - { source: agent-solution, module: common/example/multi-deep-research-demo }
       - { source: agent-solution, module: common/example/versatile-orchestration-demo }

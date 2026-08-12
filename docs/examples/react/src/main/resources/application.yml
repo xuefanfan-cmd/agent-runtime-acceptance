@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: notes-react
+
+server:
+  port: 18091
+
+openjiuwen:
+  service:
+    agent-id: notes-react
+    a2a:
+      streaming: true
+      skills:
+        - id: analyze_text
+          name: analyze_text
+          description: "使用 ReAct 推理循环分析文本，必要时调用统计工具"
+          tags: [react, text]
+
+react:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:https://api.openai.com/v1}
+  model-name: ${LLM_MODEL:gpt-4o-mini}

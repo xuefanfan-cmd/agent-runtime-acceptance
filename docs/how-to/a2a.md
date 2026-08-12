@@ -135,7 +135,11 @@ Agent，应在 DAG 中显式增加负责远端调用的 Tool/组件，而不是�
 
 1. **续传上下文记录在最外层**：链路含 HITL 时，`(contextId, taskId)` 的保存与
    续传回灌由**最外层调用方**承担（自定义前端、集成层或网关）；链路中所有 agent
-   无感知，不写续传代码。
+   无感知，不写续传代码。两者职责不同：`contextId` 会映射为 runtime 的
+   `conversationId`，用于定位 Core Session / agent-loop 状态；`taskId` 用于定位处于
+   `INPUT_REQUIRED` 的 A2A Task，并恢复该 Task 保存的可信中断元数据，不直接替代 Core
+   Session ID。普通 AskUser 答复可继续使用 A2A `TextPart`，无需新增自定义 resume RPC；
+   runtime 将文本作为 query，Core 再按同一 Session 的待决工具状态恢复。
 2. **调用方非 A2A 客户端时加协议翻译层**：当最外层调用方只会说自己的协议
    （如 versatile 风格报文、自定义 REST 信封），在最外层放一个**无 LLM 的纯翻译
    层**：最小入参重建完整信封、记录续传上下文（中断时吞状态帧、续传时回灌）、

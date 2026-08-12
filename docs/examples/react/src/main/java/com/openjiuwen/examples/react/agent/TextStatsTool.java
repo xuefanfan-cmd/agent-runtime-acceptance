@@ -1,4 +1,4 @@
-package com.openjiuwen.examples.react;
+package com.openjiuwen.examples.react.agent;
 
 import java.util.List;
 import java.util.Map;
@@ -6,10 +6,7 @@ import java.util.Map;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 
-/**
- * 最小工具实现：LocalFunction = ToolCard（id/描述/输入 JSON Schema）+ execute 函数。
- * 统计输入文本的字符数、词数与行数，返回 Map。
- */
+/** ToolCard（语义契约）+ LocalFunction（本地执行体）。 */
 public final class TextStatsTool extends LocalFunction {
 
     public TextStatsTool() {

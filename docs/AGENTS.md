@@ -26,12 +26,12 @@
 1. **完全自包含**：本工程是文档的唯一权威来源（single source of truth）。禁止写「详见 third_party 文档」「跳转上游文档」这类索引句——`third_party/` 里的文档是零碎的工程笔记，不是本工程的内容来源。所有结论在本文档内写全。
 2. **不编造 API，发布件优先**：所有类名、配置 key、方法签名必须真实存在；生成代码会使用的公开签名以 `compatibility.md` 推荐版本的发布 jar 为最终准绳，源码用于解释行为与定位实现。正文中引用实现时**用 jar 内类的全限定名**（用户按依赖可查），且只列**用户会直接 import/调用**的公开类；`third_party/` 源码路径只允许出现在 `internal/source-anchors.md`（内部维护文件），用户可见页面（含 frontmatter）一律不得出现。
 3. **改导航必改索引**：新增/重命名页面时，同步更新本文件的「导航地图」与对应目录索引页（`how-to/overview.md`、`examples/overview.md`）。
-4. **示例聚焦能力、examples 与 snippets 分工**：一个示例只演示一个能力点；禁止把示例写成完整业务方案。`examples/` 只放**完整 Agent 源码用例**（一个目录 = Application + Configuration + 配套类 + application.yml 的框架源码闭环，不重复 pom）；`snippets/` 放**装配/配置片段**（单文件平铺，命名 `<能力>-<工件>.<扩展名>`，如 `middleware-checkpointer.yml`）——叠加能力（middleware/skillhub/custom-rest 式）一律放 snippets 并在 how-to 页标明「在任一 agent 服务工程上叠加哪个片段」，禁止为每个叠加能力复制一整套样板工程（副本会掩盖能力差异并产生漂移）。
+4. **示例聚焦能力、examples 与 snippets 分工**：一个示例只演示一个能力点；禁止把示例写成完整业务方案。`examples/` 只放**完整 Agent 源码用例**（一个 `examples/<name>/` = 入口 + `agent/` 语义定义 + `runtime/` 装配 + `resources/` 配置的能力闭环，不重复 pom）；这里的“一个目录”是示例收录边界，**不表示 Java 文件平铺**。`agent/`、`runtime/` 是强制一级职责边界，内部二级 package 可按业务场景纵向聚合，也可按 `tool/`、`rail/`、`protocol/rest/` 等能力横向组织，不得把任一形式固化为必须生成空目录的脚手架。`snippets/` 放**装配/配置片段**（单文件平铺，命名 `<能力>-<工件>.<扩展名>`，如 `middleware-checkpointer.yml`）——叠加能力（middleware/skillhub/custom-rest 式）一律放 snippets 并在 how-to 页标明「在任一 agent 服务工程上叠加哪个片段」，禁止为每个叠加能力复制一整套样板工程（副本会掩盖能力差异并产生漂移）。
 5. **中文写作，代码英文**：正文用简体中文；类名、配置 key、代码保持英文原文。
 6. **frontmatter 必填**：每篇 md 头部带 `title` / `description` / `audience`（+ 可选 `examples`、`snippets`；how-to 能力页另需 `status`，枚举见「页面模板」）。
 7. **不改动 `third_party/`**：该目录是上游源码镜像，文档只引用、不修改。
 8. **文件名即定位信号**：内容页一律用描述性 kebab-case 文件名（对齐 langchain-docs：`add-human-in-the-loop.mdx`、`agent-server-overview.mdx` 式）——`find` / `glob` / `grep` 输出里文件名是模型的首要定位依据，一排 `README.md` 没有区分度。禁止 `README.md` / `index.md` 作内容页（仓根 `README.md` 与目录索引用途的 `overview.md` 除外）；目录只在其下 ≥2 个内容页时引入。**例外**：`architecture/` 的 `00-`~`05-` 六篇采用「数字前缀 + 中文名」，与 `third_party/代码架构文档` 命名对齐，便于上游刷新时逐篇回查维护（2026-08-09 合并时登记）；`conventions/openjiuwen开发指导.md` 采用中文名，与上游 `third_party/openjiuwen开发指导.md` 对齐，同理便于刷新回查（2026-08-09 合并时登记）。
-9. **同主题页面用文件名前缀分组，不急于建目录**：某入口拆分出子页时，用 `<类型>-<主题>.md` 平铺命名（如 `workflow-hitl.md`、`workflow-components.md`、`react-rails.md`）——前缀使同组页面在文件清单中按字母序相邻、可直接 grep（langchain-docs 的 `src/langsmith/` 数百个文件即全部平铺）。仅当同组页面 ≥4~5 页且需要独立落地页时，才晋升为 `<类型>/` 目录（内含 `overview.md` + 子页）；晋升后必须同步修复指向这些页面的相对链接深度。
+9. **同主题页面用文件名前缀分组，不急于建目录**：某入口拆分出子页时，用 `<类型>-<主题>.md` 平铺命名（如 `workflow-hitl.md`、`workflow-components.md`、`react-rails.md`）——前缀使同组页面在文件清单中按字母序相邻、可直接 grep（langchain-docs 的 `src/langsmith/` 数百个文件即全部平铺）。仅当同组页面 ≥4~5 页且需要独立落地页时，才晋升为 `<类型>/` 目录（内含 `overview.md` + 子页）；晋升后必须同步修复指向这些页面的相对链接深度。这里的“平铺”只适用于文档内容页和 `snippets/` 的知识组织，**不得解释为生成应用工程的 Java package 约定**；应用源码必须遵守 `agent/`、`runtime/`、`resources/` 分层。
 
 ## 仓库与源码对照表（维护元数据，供框架团队校验）
 
@@ -78,16 +78,22 @@ docs/
 │   ├── sandbox.md             ← 跨类型能力：Sandbox 沙箱客户端（external 配置域）【已展开】
 │   ├── skillhub.md            ← 跨类型能力：SkillHub 技能注入（solution 增量）【已展开】
 │   ├── custom-rest.md         ← 跨类型能力：自定义 REST 协议入口（solution 增量）【已展开】
+│   ├── tools.md               ← 跨类型能力：Tool 定义与注册矩阵【已展开】
+│   ├── rails.md               ← 跨类型能力：AgentRail、工具中断与内建 AskUser 结构化追问【已展开】
 │   ├── react-agent.md         ← ReAct Agent（推理循环 + 工具两步注册）【已展开】
 │   └── deepagent.md           ← DeepAgent（任务循环 + 工作区交付物）【已展开】
 ├── internal/                  ← 内部维护文件（source-anchors.md / doc-decisions.md，不面向文档用户，不随发行版交付）
-├── snippets/                  ← 装配/配置片段（单文件平铺，非完整源码集；被 how-to 页引用）
-│   └── overview.md            ← 片段索引 + 与 examples 的分工规则
+├── snippets/                  ← 语义/装配增量片段（单文件平铺，非完整源码集；被 how-to 页引用）
+│   ├── overview.md            ← 片段索引 + 与 examples 的分工规则
+│   ├── custom-rail.java       ← 普通 AgentRail 叠加片段
+│   ├── tool-interrupt-rail.java ← 工具执行前中断/恢复片段
+│   ├── ask-user-interrupt.java ← 内建 AskUserTool + AskUserRail 叠加片段
+│   └── deepagent-subagents.java ← DeepAgent 可选 SubAgent 声明片段
 └── examples/                  ← 完整 Agent 源码用例（不重复 pom）
     ├── overview.md            ← 用例索引 + 收录规则
     ├── workflow/              ← 源码用例 → how-to/workflow-agent.md
     ├── versatile/             ← 源码用例 → how-to/versatile-agent.md
-    ├── react/                 ← 源码用例 → how-to/react-agent.md
+    ├── react/                 ← agent/runtime/resources 标准分层源码用例 → how-to/react-agent.md
     └── deepagent/             ← 源码用例 → how-to/deepagent.md
 ```
 
@@ -117,7 +123,7 @@ docs/
 | `api/core-ext.md` | react-rails 三条认知 rail；ext handler 归属只做边界提示 | ✅ 可用参考 |
 | `api/runtime-ext.md` | VersatileAgentHandler、ext handler、SkillHub SPI、custom REST SPI | ✅ 可用参考 |
 
-### how-to/ — 任务导向指南（AI coding 主战场，按 agent 类型分入口）
+### how-to/ — 任务导向指南（AI coding 主战场，按 agent 类型与跨类型能力分入口）
 
 整体框架介绍只在 `architecture/00-OpenJiuwen技术架构总览.md` 一处；各入口页只做选型链接，不重复讲框架。
 索引页：`how-to/overview.md`。
@@ -133,6 +139,8 @@ docs/
 
 | 页面 | 内容 | 状态 |
 | --- | --- | --- |
+| `how-to/tools.md` | Tool 定义与 ReAct / DeepAgent / Workflow 注册矩阵 | ✅ 完整 |
+| `how-to/rails.md` | AgentRail 回调、TaskIterationRail 边界与工具中断/恢复 | ✅ 完整 |
 | `how-to/config-driven-agent.md` | 配置驱动 Agent：Runner 注册/托管 + YAML 选择边界 + solution 增量边界 | ✅ 完整 |
 | `how-to/a2a.md` | A2A 跨智能体互调：服务暴露 + 有类型边界的远端工具注入 + 场景→动作表 + 组合外层职责 | ✅ 完整 |
 | `how-to/middleware.md` | 中间件配置：checkpointer（in-memory / Redis）+ 命名 Redis 端点 + 长期记忆 MemoryStore | ✅ 完整 |
@@ -148,10 +156,10 @@ docs/
 | --- | --- | --- |
 | `examples/workflow/` | WorkflowAgent DAG 编排 + HITL + 托管 | `how-to/workflow-agent.md` |
 | `examples/versatile/` | VersatileAgentHandler 对接装配 | `how-to/versatile-agent.md` |
-| `examples/react/` | ReActAgent 推理循环 + 本地工具两步注册 + 托管 | `how-to/react-agent.md` |
+| `examples/react/` | `agent/` 语义层 + `runtime/` 服务层 + resources 的 ReAct 完整闭环 | `how-to/react-agent.md` |
 | `examples/deepagent/` | DeepAgent 任务循环 + 受限工作区文件工具 + 托管 | `how-to/deepagent.md` |
 
-### snippets/ — 装配/配置片段（单文件平铺，被 how-to 页引用）
+### snippets/ — 语义/装配增量片段（单文件平铺，被 how-to 页引用）
 
 | 片段 | 能力点 | 被引用于 |
 | --- | --- | --- |
@@ -160,6 +168,8 @@ docs/
 | `snippets/sandbox.yml` | `external.sandbox.*` 沙箱端点配置段 | `how-to/sandbox.md` |
 | `snippets/skillhub-agent-configuration.java` + `snippets/skillhub-middleware.yml` | SkillHub 技能注入：ext handler + sysOperationId + skillhub 配置 | `how-to/skillhub.md` |
 | `snippets/custom-rest-agent-configuration.java` + `snippets/custom-rest-protocol-adapter.java` + `snippets/custom-rest.yml` | CustomRestProtocolAdapter 协议桥接 + 自有协议端点 | `how-to/custom-rest.md` |
+| `snippets/custom-rail.java` + `snippets/tool-interrupt-rail.java` | 普通 AgentRail + 指定工具中断/恢复 | `how-to/rails.md` |
+| `snippets/deepagent-subagents.java` | DeepAgent 可选进程内 SubAgent 声明 | `how-to/deepagent.md` |
 
 ## 页面模板
 
@@ -203,7 +213,7 @@ snippets:                  # 本文引用的装配/配置片段文件（若有�
 写作约定：
 
 1. **先定义，再能力，后步骤**：开头一句话说清「这是什么」，第二句「让你能做什么」，然后给最小完整示例或接线片段。
-2. **完整源码与 md 分离**：完整 Agent 源码用例放在 `examples/<name>/`（一个目录 = Application + Configuration + 配套类 + application.yml，代码唯一来源，不重复 pom）；装配/配置片段放在 `snippets/`（单文件平铺，命名 `<能力>-<工件>.<扩展名>`，how-to 页必须写明「在任一 agent 服务工程上叠加哪个片段、新增还是替换」）；md 的「最小完整示例 / 最小装配契约」节**引用用例目录 / 片段文件链接 + 摘录关键接线片段**（bean 装配、DAG 骨架等 10~30 行），不整文件复制。所有 Java 源码以 compatibility 推荐发布件可编译为维护硬门禁，但目录本身不宣称是独立 Maven 工程。
+2. **完整源码与 md 分离**：完整 Agent 源码用例放在 `examples/<name>/`（一个能力目录 = Application 入口 + `agent/` 语义定义/Tool/Rail + `runtime/` 装配 + `resources/application.yml`，代码唯一来源，不重复 pom）；“一个能力目录”不要求内部平铺，新的代表性 example 应采用标准 Maven `src/main/` 与 `agent/runtime/resources` 分层。装配/配置片段放在 `snippets/`（单文件平铺，命名 `<能力>-<工件>.<扩展名>`，how-to 页必须写明「在任一 agent 服务工程上叠加哪个片段、新增还是替换」）；md 的「最小完整示例 / 最小装配契约」节**引用用例目录 / 片段文件链接 + 摘录关键接线片段**（bean 装配、DAG 骨架等 10~30 行），不整文件复制。所有 Java 源码以 compatibility 推荐发布件可编译为维护硬门禁，但目录本身不宣称是独立 Maven 工程。
 3. **微型片段保持内联**：3~10 行的 API 示范、正确/错误对照直接在 md 内联，不为它们建文件。
 4. **配置项用粗体定义列表，且必须声明可设置边界**：只列**支持用户设置**的属性
    （`- **url-template**：含义。默认值、占位符规则、注意事项。`）；属性类中的其余
@@ -219,6 +229,7 @@ snippets:                  # 本文引用的装配/配置片段文件（若有�
 - import 必须写全（AI 依赖 import 推断包归属）；按 java 标准库 → 第三方 → com.openjiuwen 排序。
 - 示例中的配置值用占位符 + 默认值注释（如 `${LLM_API_BASE:}`），不写死密钥。
 - `examples/` 与 `snippets/` 下的 Java 文件必须完整（含 package 与 import），并使用 `compatibility.md` 推荐发布件做真实编译校验；snippets 复制到临时工程时须按 public class 重命名并调整 package。禁止「略」「// ...」式省略。未接入持续校验前，不在用户页面承诺每次提交后都自动验证。
+- 新生成的业务代码必须使用用户自己的业务根包，并在其下划分 `agent` / `runtime` 子包；`com.openjiuwen.examples.*` 仅供 SPEC 示例使用，不得作为业务默认 package。Application 位于 `runtime` 子包时，示例须显式扫描业务根包。
 
 ## 独立性原则（自包含与可见性）
 

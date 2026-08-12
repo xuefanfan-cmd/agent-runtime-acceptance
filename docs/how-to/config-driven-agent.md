@@ -16,6 +16,23 @@ agent-runtime-java 的基础托管建立在 core `Runner` 上。ReAct、DeepAgen
 > ⚠️ 当前没有「YAML Agent Definition → 自动构造 Agent」的 DSL。YAML 负责服务装配、
 > 选择和运行时参数，不负责创建 Agent、prompt、工具或 Workflow DAG。
 
+## 两层开发模型：core 语义层 + runtime 服务层
+
+开发一个可对外服务的 Agent 分两层，代码职责不同：
+
+| 层 | 职责 | 代码性质 | 推荐落盘位置 |
+| --- | --- | --- | --- |
+| 语义层（agent-core-java） | Agent 定义、Workflow DAG、Tool、Rail 等语义逻辑 | 纯 core SDK 代码，不依赖 Spring | `<business-base-package>.agent` 包 |
+| 服务层（agent-runtime-java） | 入口与装配：构造 Agent Bean、注册 Runner、创建或声明 Handler、发布 REST / A2A 服务 | Spring 托管装配代码 | `<business-base-package>.runtime` 包 |
+| 配置层 | 模型接入、Agent 选择、skills / remote-agents、middleware | YAML 声明 | `src/main/resources` |
+
+服务层承载多智能体交互与服务化治理（A2A 发布、checkpointer / Redis 等 middleware
+配置），语义层只关心 Agent 自身行为。框架不以 package 名限制编译，但对 AI Coding
+生成的新工程，以上分层是本 SPEC 的强制落盘约定；不得把两层代码平铺到同一 package。
+`<business-base-package>` 必须替换为用户自己的业务根包，不得沿用
+`com.openjiuwen.examples.*`。多 Agent 扩展规则详见
+[examples 目录约定](../examples/overview.md#复制到标准工程的目录约定)。
+
 ## 适用场景 / 不适用场景
 
 | | 说明 |

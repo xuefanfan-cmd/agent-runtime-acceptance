@@ -24,25 +24,18 @@ ReActAgent 基于 Reasoning-Acting 循环：每一轮迭代由 LLM 自主决定�
 
 ## 最小完整示例
 
-完整代码在 **[examples/react/](../examples/react/)**（3 个 Java 文件 + 1 个 `application.yml`：
-`ReactAgentApplication.java` / `ReactAgentConfiguration.java` / `TextStatsTool.java` /
-`application.yml`），闭环能力：ReAct 推理循环 → 本地工具调用 → 托管 + A2A 暴露。核心接线摘录：
+完整代码在 **[examples/react/](../examples/react/)**，已经按标准工程结构落盘：
+`agent/ReactAgentDefinition.java` + `agent/TextStatsTool.java` 承载 core 语义逻辑，
+`runtime/ReactAgentRuntimeConfiguration.java` + `runtime/ReactAgentApplication.java` 承载程序级服务层，
+`resources/application.yml` 承载运行配置。闭环能力：ReAct 推理循环 → 本地工具调用 → 托管 + A2A 暴露。核心接线摘录：
 
 ```java
-@Bean
-AgentHandler reactHandler(/* LLM 配置注入 */) {
-    ReActAgentConfig config = ReActAgentConfig.builder()
-            .promptTemplate(List.of(Map.of("role", "system", "content", "...")))
-            .maxIterations(6)
-            .build()
-            .configureModelClient("OpenAI", apiKey, apiBase, modelName, true);
-    ReActAgent agent = new ReActAgent(card);
-    agent.configure(config);                        // 必需：绑定模型客户端
+// agent/：纯 core 语义层
+DefinedReactAgent defined = ReactAgentDefinition.create(apiKey, apiBase, modelName);
 
-    agent.getAbilityManager().add(tool.getCard());  // 工具元数据 → LLM 可见
-    Runner.resourceMgr().addTool(tool, List.of(card.getId()), true);  // 执行体 → 运行时可调
-    return new JiuwenCoreAgentHandler(agent);       // 库存 handler 直接托管，不子类化
-}
+// runtime/：注册程序级执行资源并托管
+Runner.resourceMgr().addTool(defined.tool(), List.of(defined.agentId()), true);
+return new JiuwenCoreAgentHandler(defined.agent());
 ```
 
 启动后获得：REST `POST /v1/query`、A2A skill `analyze_text`，全部由框架提供。
@@ -68,7 +61,7 @@ AgentHandler reactHandler(/* LLM 配置注入 */) {
 
 只做第 1 步：LLM 会选中该工具但运行时找不到执行函数，抛异常。工具本体 =
 `ToolCard`（id/name/description/inputParams JSON Schema）+ `LocalFunction` 执行函数，
-完整实现见示例 `TextStatsTool.java`。
+完整实现见示例 `agent/TextStatsTool.java`。
 
 ### 会话上下文
 
@@ -76,6 +69,13 @@ AgentHandler reactHandler(/* LLM 配置注入 */) {
 但它始终以**本次响应**为交付物（对比：DeepAgent 以工作区文件为持续交付物，
 见 [deepagent.md](deepagent.md) 的对照表）。会话持久化（中断/恢复、跨进程）依赖
 checkpointer 中间件，见 [middleware.md](middleware.md)。
+
+自然语言多轮澄清与“暂停当前工具调用”的中断追问不是同一内部机制：前者在本轮返回问题，
+下一轮重新推理；后者使用框架内建 `AskUserTool` + `AskUserRail` 保留待决执行点。
+但推荐 runtime 对外都复用 `/v1/query` 的同一请求形态，不需要独立 `resume` 字段：同一
+`conversation_id` 没有待决工具中断时，下一条 `message` 进入普通会话上下文；存在待决中断时，
+ReAct 内核会把该 String 自动归一化为 `InteractiveInput` 并恢复对应 Rail。需要结构化 HIL 时见
+[Rail 与工具中断](rails.md#ask-user-interrupt)。
 
 ## 配置项参考（application.yml，完整文件见示例目录）
 
@@ -99,7 +99,7 @@ checkpointer 中间件，见 [middleware.md](middleware.md)。
 
 ## 端到端校验
 
-1. 启动示例（`ReactAgentApplication`），确认日志中 handler 注册成功。
+1. 启动示例（`runtime/ReactAgentApplication`），确认日志中 handler 注册成功。
 2. 触发一次需要工具的请求：
 
 ```bash

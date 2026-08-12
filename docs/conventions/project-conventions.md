@@ -31,6 +31,55 @@ core 层       agent-core-java（ReActAgent / WorkflowAgent / Workflow 组件，
   （如 `agent-service-adapters-versatile` 把外部 HTTP/SSE 工作流包成 A2A agent），
   禁止给 core 打补丁。
 
+## 生成工程目录约定
+
+对**新生成的应用工程**，以下是 AI Coding 的强制落盘约定。除非用户明确要求适配某个
+既有目录结构，不得把 Agent 定义、Tool、Rail、Spring `@Configuration` 和 Application
+平铺到同一个 Java package。框架本身不以 package 名限制编译，但本 SPEC 要求生成结果
+显式保留 core 语义层与 runtime 程序级服务层的职责边界。
+
+```text
+src/main/java/<business-base-package-path>/agent/   # Agent 语义能力层（Core / Harness）：定义、Tool、Rail、Workflow DAG
+src/main/java/<business-base-package-path>/runtime/ # runtime 程序级服务层：Application、@Configuration、Runner/Handler 托管
+src/main/resources/                            # application.yml 及模型、A2A、中间件等资源配置
+```
+
+强制的是上述一级职责边界，而不是统一的二级目录树。生成代码时：
+
+- 不要机械创建空的 `tool/`、`rail/`、`customrest/`；也不要让大量 Tool、Rail、DTO、配置类长期
+  平铺在 `agent/` 或 `runtime/` 根 package。
+- 同一业务场景中共同演进的 Tool、Rail、Agent 辅助类型，优先按业务场景纵向聚合，例如
+  `agent/expense/`；跨场景复用或同类实现较多时，再按能力横向使用 `agent/tool/`、
+  `agent/rail/` 等。最小示例只有少量类型时可保留在 `agent/` 根 package。Tool 所调用的领域
+  服务、客户端等不属于 Agent 框架适配代码时，可继续遵循既有业务架构，不要求迁入 `agent/`。
+- Custom REST 始终属于 `runtime/`：可按协议组织为 `runtime/protocol/rest/`，也可按业务组织为
+  `runtime/<business-scenario>/rest/`。不得将 Controller、协议 DTO 或协议适配器放入 `agent/`。
+- 新建 Java package 优先使用简短、全小写、无下划线的业务名称；接入既有工程时可遵循其
+  `svcx_xxx` 等既有分区规范，但不能因此破坏 `agent/` 与 `runtime/` 的依赖方向。
+- 创建 Agent 的通用语义入口优先命名为 `<AgentName>Definition`，只有真正承担参数化、可重复
+  构造职责时才使用 `Factory`。语义层的 `Options` / `Spec` 保持纯 Java；Spring
+  `@ConfigurationProperties` 放在 runtime 层并使用 `RuntimeProperties` 等可区分名称。
+
+生成时遵守以下依赖方向：
+
+- `agent/` 只承载 Agent 自身语义，默认不 import Spring 或 runtime 类型；Tool、Rail 和
+  Workflow DAG 也归入该层。
+- `runtime/` 可以依赖 `agent/`，负责实例构造、Bean 装配、Runner 注册、Handler 与协议暴露；
+  `agent/` 不得反向依赖 `runtime/`。
+- Application 放在 `runtime/` 时，应把组件扫描根包显式设为业务根包，例如
+  `@SpringBootApplication(scanBasePackages = "com.acme.expense")`。
+- `<business-base-package-path>` 是业务根包把 `.` 替换为 `/` 后的源码路径，不是要求
+  照抄的字面量。业务 Java 根包也不一定等于 Maven `groupId`；例如
+  `groupId=com.acme` 的报销应用可使用根包 `com.acme.expense`，对应目录为
+  `com/acme/expense/agent` 与 `com/acme/expense/runtime`。
+- `com.openjiuwen.examples.*` 只属于本 SPEC 的示例命名空间，生成业务代码时必须替换，
+  不得作为用户工程的默认 package。
+
+这里要求的是**单一 Maven 工程内的 package 分层**，不是自动拆成多个 Maven module。
+只有语义层需要被多个服务独立复用，或发布周期、团队边界明确分离时，才升级为多 module。
+代表性结构见 [ReAct 完整用例](../examples/react/)；复制与重命名规则见
+[examples 目录约定](../examples/overview.md#复制到标准工程的目录约定)。
+
 ## 托管与装配规范
 
 - agent 通过 **AgentHandler SPI**（`com.openjiuwen.service.spec.spi.AgentHandler`）接入 runtime：

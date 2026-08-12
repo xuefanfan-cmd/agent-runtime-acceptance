@@ -28,6 +28,8 @@ API 锚点 → See also）：完整 Agent 源码用例在 [../examples/](../exam
 
 | 能力 | 指南 | 示例 / 片段 | 状态 |
 | --- | --- | --- | --- |
+| **Tool 定义与注册** | [tools.md](tools.md) | [../examples/react/](../examples/react/) / [../examples/deepagent/](../examples/deepagent/) / [../examples/workflow/](../examples/workflow/) | ✅ |
+| **Agent Rail / 工具中断 / 结构化追问** | [rails.md](rails.md) | [../snippets/custom-rail.java](../snippets/custom-rail.java) / [../snippets/tool-interrupt-rail.java](../snippets/tool-interrupt-rail.java) / [../snippets/ask-user-interrupt.java](../snippets/ask-user-interrupt.java) | ✅ |
 | **配置驱动 Agent**（Runner 注册/托管 + YAML 选择边界） | [config-driven-agent.md](config-driven-agent.md) | [../snippets/assembly-application.yml](../snippets/assembly-application.yml) | ✅ |
 | **A2A 跨智能体互调** | [a2a.md](a2a.md) | — | ✅ |
 | **中间件配置**（checkpointer / Redis 端点 / 长期记忆） | [middleware.md](middleware.md) | [../snippets/middleware-checkpointer.yml](../snippets/middleware-checkpointer.yml) | ✅ |

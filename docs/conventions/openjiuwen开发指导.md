@@ -326,7 +326,7 @@ Rail 是 Agent 推理循环中的拦截器链，在工具调用前后插入自�
 
 ### 4.1 通用 Rail — 拦截工具调用
 
-继承 `AgentRail`，重写 `beforeToolCall` / `afterToolCall` 等回调（无 `on` 前缀，返回 `CompletionStage<Void>`）。框架在每次工具调用前后依次回调注册的 Rail 链；拦截语义通过上下文表达——`ctx.requestRetry(...)` 请求重试、`ctx.requestForceFinish(...)` 请求提前结束，而不是返回决策对象。
+继承 `AgentRail`，重写 `beforeToolCall` / `afterToolCall` 等 `void` 回调（方法名无 `on` 前缀）。框架在每次工具调用前后依次回调 Rail 链；拦截语义通过上下文表达——`ctx.requestRetry(...)` 请求重试、`ctx.requestForceFinish(...)` 请求提前结束，而不是返回决策对象。
 
 **✅ 推荐写法**
 
@@ -334,37 +334,33 @@ Rail 是 Agent 推理循环中的拦截器链，在工具调用前后插入自�
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-
 /**
  * 记录每次工具调用的入参。
  */
 public class LogRail extends AgentRail {
 
     public LogRail() {
-        setPriority(100);          // 数值越小越先执行（默认 50）
+        setPriority(100);          // 数值越大越先执行（默认 50）
     }
 
     @Override
-    public CompletionStage<Void> beforeToolCall(AgentCallbackContext ctx) {
+    public void beforeToolCall(AgentCallbackContext ctx) {
         log.info("工具调用开始，入参: {}", ctx.getInputs());
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public CompletionStage<Void> afterToolCall(AgentCallbackContext ctx) {
+    public void afterToolCall(AgentCallbackContext ctx) {
         log.info("工具调用结束");
-        return CompletableFuture.completedFuture(null);
     }
 }
 
-// 注册
+// ReActAgent/BaseAgent 注册
 agent.registerRail(new LogRail());
-// 或 DeepAgent 用: DeepAgentConfig.builder().rails(List.of(new LogRail()))
+// DeepAgent 在工厂创建前声明
+DeepAgentConfig.builder().rails(List.of(new LogRail()))
 ```
 
-可重写的完整回调面：`beforeInvoke` / `afterInvoke` / `beforeModelCall` / `afterModelCall` / `onModelException` / `beforeToolCall` / `afterToolCall` / `onToolException` / `beforeTaskIteration` / `afterTaskIteration`。
+`AgentRail` 可重写的完整回调面：`beforeInvoke` / `afterInvoke` / `beforeModelCall` / `afterModelCall` / `onModelException` / `beforeToolCall` / `afterToolCall` / `onToolException`，另有生命周期 `init` / `uninit`。DeepAgent 任务循环的 `afterTaskIteration(TaskIterationContext)` 属于独立的 `TaskIterationRail` 接口，不是 `AgentRail` 回调。
 
 ### 4.2 中断 Rail — 需要用户输入时暂停
 
@@ -373,33 +369,38 @@ agent.registerRail(new LogRail());
 ```java
 import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
-/**
- * 当 LLM 调用 ask_user 工具时，暂停并等待用户输入。
- * （覆写点与签名以所使用版本的 BaseInterruptRail API 为准）
- */
-public class AskUserTemplateRail extends BaseInterruptRail {
+import java.util.List;
+import java.util.Map;
 
-    public AskUserTemplateRail() {
-        super(List.of("ask_user"));       // 声明拦截的工具名
+/**
+ * 当 LLM 调用 write_file 工具时，暂停并等待用户审批。
+ */
+public class ConfirmToolExecutionRail extends BaseInterruptRail {
+
+    public ConfirmToolExecutionRail() {
+        super(List.of("write_file"));       // 声明拦截的工具名
     }
 
     @Override
     protected InterruptDecision resolveInterrupt(
             AgentCallbackContext ctx, ToolCall toolCall, Object resumeInput) {
 
-        if (resumeInput != null) {
-            // 用户已输入 → 恢复执行
-            return reject(resumeInput);
+        if (resumeInput == null) {
+            String arguments = toolCall.getArguments() == null ? "" : toolCall.getArguments();
+            return interrupt(InterruptRequest.builder()
+                    .message("工具 " + toolCall.getName() + " 即将执行，是否继续？")
+                    .context(Map.of("tool", toolCall.getName(), "arguments", arguments))
+                    .build());
         }
-
-        // 发起中断
-        InterruptRequest req = InterruptRequest.builder()
-            .message(toolCall.getArguments().get("question").toString())
-            .build();
-        return interrupt(req);
+        String decision = String.valueOf(resumeInput);
+        if ("approve".equalsIgnoreCase(decision) || "yes".equalsIgnoreCase(decision)) {
+            return approve();
+        }
+        return reject(Map.of("cancelled", true, "reason", "user rejected tool execution"));
     }
 }
 ```
@@ -422,7 +423,7 @@ public class MyAgentHandler implements AgentHandler {
 
 1. **关注点分离** — Rail 只负责「拦截什么 + 怎么处理」，Agent 引擎专注于推理循环。Handler 层不知道工具的存在
 2. **可组合** — 一个 Agent 可以注册多个 Rail（日志 + 权限 + 中断 + 限流），框架按时序链式调用
-3. **可复用** — `AskUserTemplateRail` 写一次，所有 Agent 都可以用 `agent.registerRail(new AskUserTemplateRail())`
+3. **可复用** — Rail 类可跨 Agent 复用，但注册入口不同：ReAct/BaseAgent 用 `registerRail`；DeepAgent 用 `DeepAgentConfig.rails(...)`；WorkflowAgent 不走该回调链
 4. **优先级控制** — `setPriority()` 决定执行顺序，不需要在 Handler 里维护 if-else 顺序
 5. **`BaseInterruptRail` 封装了中断标记与待决清单** — 命中声明的工具名时在上下文写入 `interrupt_required` 并记录 pendingInterrupts；子类通过 `resolveInterrupt(ctx, toolCall, resumeInput)` 决定「发起中断 / 放行 / 以用户输入恢复」，返回 `InterruptDecision`（sealed：`ApproveResult` / `RejectResult` / `InterruptResult`）
 
@@ -430,89 +431,60 @@ public class MyAgentHandler implements AgentHandler {
 
 ## 5. Agent 装配模式
 
-> 模式说明：增强器（Enhancer）是推荐的**应用侧组织方式**（框架未强制该类型，由业务代码自定义）
+> 模式说明：集中装配器是推荐的**应用侧组织方式**，不是框架强制类型。不同 Agent 类型的装配 API 不同，不能写一个接收 `DeepAgent` 后再调用 BaseAgent 方法的“通用增强器”。
 
-业务 Agent 通常需要注册大量工具和 Rail。增强器（Enhancer）模式提供集中装配入口——将所有工具和 Rail 的注册逻辑集中到一个类的 `enhance()` 方法中，避免散落在 Handler 各处。
+### 5.1 先在语义层集中构造，再由 runtime 注册执行资源
 
-### 5.1 集中注册，不散落
-
-**✅ 推荐写法**
+**✅ ReActAgent 推荐写法**
 
 ```java
-/**
- * 我的业务 Agent 增强器：集中注册业务工具和 Rails。
- */
-public class MyAgentEnhancer {
-
-    public void enhance(DeepAgent agent, MyConfig config) {
-        // 1) 注册业务工具
-        List<Tool> tools = buildTools(config);
-        for (Tool tool : tools) {
-            agent.getAbilityManager().add(tool.getCard());
-            Runner.resourceMgr().addTool(tool, List.of(agent.getCard().getId()), true);
-        }
-
-        // 2) 注册业务 Rails
-        List<AgentRail> rails = buildRails(config);
-        for (AgentRail rail : rails) {
-            agent.registerRail(rail);
-        }
-    }
-
-    private List<Tool> buildTools(MyConfig config) {
-        // 集中定义全部业务工具的 ToolCard + LocalFunction
-        return List.of(
-            createHotelSearchTool(config),
-            createFlightSearchTool(config),
-            createOrderQueryTool(config)
-        );
-    }
-
-    private List<AgentRail> buildRails(MyConfig config) {
-        return List.of(
-            new LogRail(),
-            new AskUserTemplateRail()     // 业务自定义 Rail，见 §4
-        );
+// agent/：纯 core 语义层
+public final class MyReactDefinition {
+    public static DefinedAgent create(ModelProperties model) {
+        ReActAgent agent = createConfiguredAgent(model);
+        List<Tool> tools = buildTools();
+        List<AgentRail> rails = buildRails();
+        tools.forEach(tool -> agent.getAbilityManager().add(tool.getCard()));
+        rails.forEach(agent::registerRail);
+        return new DefinedAgent(agent, tools, agent.getCard().getId());
     }
 }
 
-// 在 @Bean Handler 中调用
+// runtime/：程序级服务层
 @Bean
-AgentHandler agentHandler(...) {
-    DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
-    new MyAgentEnhancer().enhance(agent, myConfig);     // 一行搞定
-    return new JiuwenCoreAgentHandler(agent);
+AgentHandler agentHandler(ModelProperties model) {
+    DefinedAgent defined = MyReactDefinition.create(model);
+    defined.tools().forEach(tool ->
+            Runner.resourceMgr().addTool(tool, List.of(defined.agentId()), true));
+    return new JiuwenCoreAgentHandler(defined.agent());
 }
+```
+
+**✅ DeepAgent 推荐写法**
+
+```java
+// Tool 与 Rail 在调用工厂前进入 DeepAgentConfig；不要对 DeepAgent 调 registerRail/getAbilityManager
+DeepAgentConfig config = DeepAgentConfig.builder()
+        .tools(buildTools())
+        .rails(buildRails())
+        .build();
+DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
 ```
 
 **❌ 不要这样**
 
 ```java
-@Bean
-AgentHandler agentHandler() {
-    DeepAgent agent = HarnessFactory.createDeepAgent(...);
-
-    // 工具注册散落在各处
-    agent.getAbilityManager().add(hotelCard);
-    Runner.resourceMgr().addTool(hotelTool, List.of(agentId), true);
-
-    agent.getAbilityManager().add(flightCard);          // 漏了 addTool
-    // ... 50 行后
-    agent.registerRail(new LogRail());
-    // ... 100 行后
-    agent.registerRail(new AskUserTemplateRail());
-    // 新增一个工具要找半天该插哪
-
-    return new JiuwenCoreAgentHandler(agent);
-}
+DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
+agent.getAbilityManager().add(tool.getCard()); // DeepAgent 不是 BaseAgent
+agent.registerRail(new LogRail());             // DeepAgent 没有 registerRail
 ```
 
-**💡 为什么推荐 Enhancer 模式**
+**💡 为什么集中但分类型装配**
 
-1. **单一入口** — `enhance()` 一行调用即完成全部装配，代码结构清晰
-2. **可测试** — `buildTools()` 和 `buildRails()` 方法可独立单测，验证工具描述、Rail 行为
-3. **配置驱动** — Enhancer 接收 `MyConfig` 对象，可以从 yaml 配置驱动工具行为，不改代码
-4. **不会漏注册** — 工具在 `buildTools()` 中集中定义，不会出现「加了 ToolCard 忘记 `addTool`」的半注册状态
+1. **职责清楚** — `agent/` 只定义语义，`runtime/` 只注册运行资源和 Handler；
+2. **注册不遗漏** — ReAct 的 ToolCard 与执行体仍成对维护，DeepAgent 的工具/Rail 在工厂前一次声明；
+3. **API 不串型** — 不把 BaseAgent/ReActAgent 的方法误用到 DeepAgent 或 WorkflowAgent；
+4. **可测试** — Tool、Rail、Agent 定义可脱离 Spring 单测，runtime 装配只做薄层集成测试。
 
 ---
 

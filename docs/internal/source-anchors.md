@@ -38,6 +38,13 @@ audience: maintainer
 - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/deep_agent/DeepAgent.java`（ensureInitialized() 第 346 行；model/backend Map 键消费第 124~213 行：model/model_name、top_p/topP、api_base/apiBase/base_url、verify_ssl/verifySsl、timeout）
 - **方法名漂移（2026-08-10 第三轮评审实测）**：本快照有 `shutdown()`（第 833 行）、无 `close()`；发布 jar 0.1.14.post1 反之（`close()` / `destroy()` + AutoCloseable）。用户可见页按发布件写 `destroyMethod = "close"`（[how-to/deepagent.md](../how-to/deepagent.md)、[examples/deepagent/](../examples/deepagent/)），评审临时工程验证 `close` 启动通过
 - 注意：此处存在源码快照与推荐发布 jar 的公开签名漂移；用户示例按发布 jar 的 `Duration` 与 `Workspace.builder()` 编写并做编译校验
+- SubAgent 委派（2026-08-11 登记）：
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/factory/HarnessFactory.java`（enrichConfig：subagents 非空注入 SubagentRail / 异步时 SessionRail；injectGeneralPurposeSubagent 继承主 Agent prompt/工具/rails，剔除 SessionRail/SubagentRail 防递归）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/rails/SubagentRail.java`（向主 Agent 注册 `task_tool`，卸载时注销；`harness/tools/subagent/TaskTool.java` 为执行体）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/deep_agent/DeepAgent.java`（createSubagent 按 agentCard.name 大小写不敏感解析，未声明抛 IllegalArgumentException；applyParentRuntimeFallbacks 继承 model/backend/promptMode；resolveChildWorkspace 按 spec.workspacePath 或会话子目录）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/subagents/SubAgentConfig.java`（builder 字段：agentCard/systemPrompt/maxIterations/tools/rails/workspacePath；executionMode 默认 "ephemeral"）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/harness/subagents/SubAgentRegistry.java`（内置 6 个工厂名注册表；**当前快照全仓无调用方、未接线——不进用户页**）
+  - 2026-08-12：基础 examples/deepagent 不再混入可选 SubAgent；声明式增量移至 snippets/deepagent-subagents.java，并使用推荐 core 0.1.14.post1 完成 mvn compile（本轮回归记录见下表）
 
 ## how-to/workflow-agent.md
 
@@ -183,6 +190,10 @@ Redis 部分与仓内重叠未采纳，版本口径 / registrar 说法 / pip-ind
 
 ## compatibility.md
 
+页面版本口径验证日期：**2026-08-10**（原在用户页标题下体现，2026-08-12 移入本文件——
+正式发布件不携带验证时间戳）。维护规则：版本随上游发布滚动更新；更新本页时以明确
+告知的发布件口径为准，同步核对三仓发布件，并同步刷新本验证日期与下方回归记录。
+
 源码镜像锚点（维护者回查专用；compatibility.md 用户可见页只保留发布件口径，
 commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文件）：
 
@@ -201,27 +212,29 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - `third_party/agent-solution/common/agent-runtime-ext-java/agent-service-app/agent-service-app-custom-rest/pom.xml`
 - `third_party/agent-solution/common/agent-core-ext-java/agent-core-ext-react-rails/pom.xml`
 
-### 发布件编译与启动回归（2026-08-10，人工）
+### 发布件编译与启动回归（2026-08-12，人工）
 
 使用 Java 17、Spring Boot 4.0.6，在系统临时目录生成 Maven 工程，不向用户示例目录写入 pom：
 
 | 校验对象 | 依赖版本 | 结果 |
 | --- | --- | --- |
-| `examples/workflow` | runtime `0.1.1.post1`（app + agentcore adapter） | `mvn clean compile` 通过 |
-| `examples/react` | runtime `0.1.1.post1`（app + agentcore adapter） | `mvn clean compile` 通过 |
-| `examples/deepagent` | runtime `0.1.1.post1`（app + agentcore adapter，传递 core `0.1.14.post1`） | `mvn clean compile` 通过 |
-| `examples/versatile` | runtime app `0.1.1.post1` + solution versatile `0.1.0` | `mvn clean compile` 通过 |
-| Custom REST Java snippets | runtime `0.1.1.post1` + custom-rest `0.1.0` | `mvn clean compile` 通过 |
-| SkillHub Java snippet | runtime app `0.1.1.post1` + agentcore-ext `0.1.0` | `mvn clean compile` 通过 |
+| `examples/workflow` | runtime `0.1.1.post1`（app + agentcore adapter） | 2026-08-10 `mvn clean compile` 通过 |
+| `examples/react`（`agent/runtime/resources` 新分层） | runtime `0.1.1.post1`（app + agentcore adapter） | 2026-08-12 `mvn clean compile` 通过 |
+| `examples/deepagent`（基础闭环，不含可选 SubAgent） | runtime `0.1.1.post1`（app + agentcore adapter，传递 core `0.1.14.post1`） | 2026-08-12 `mvn clean compile` 通过 |
+| `snippets/custom-rail.java` | core `0.1.14.post1` | 2026-08-12 按目标 public class 文件名复制后 `mvn clean compile` 通过 |
+| `snippets/tool-interrupt-rail.java` | core `0.1.14.post1` | 2026-08-12 按目标 public class 文件名复制后 `mvn clean compile` 通过 |
+| `snippets/ask-user-interrupt.java` | core `0.1.14.post1` | 2026-08-12 按目标 public class 文件名复制后 `mvn clean compile` 通过 |
+| `snippets/deepagent-subagents.java` | core `0.1.14.post1` | 2026-08-12 按目标 public class 文件名复制后 `mvn clean compile` 通过 |
+| `examples/versatile` | runtime app `0.1.1.post1` + solution versatile `0.1.0` | 2026-08-10 `mvn clean compile` 通过 |
+| Custom REST Java snippets | runtime `0.1.1.post1` + custom-rest `0.1.0` | 2026-08-10 `mvn clean compile` 通过 |
+| SkillHub Java snippet | runtime app `0.1.1.post1` + agentcore-ext `0.1.0` | 2026-08-10 `mvn clean compile` 通过 |
 
-该记录是一次性人工回归，不代表已接入 CI；共享 POM 已对 ReAct / DeepAgent / Workflow 完成 `mvn package` 与 fat JAR 启动验证，后续修改 examples/snippets/POM 后必须重新执行。
+该记录是一次性人工回归，不代表已接入 CI；共享 POM 的 `mvn package` 与 fat JAR 启动记录仍来自 2026-08-10，修改 examples/snippets/POM 后必须分别重跑相应门禁。
 
-- **solution `0.1.0` 同版本缓存风险（2026-08-10 第三轮评审登记）**：上游在 `0.1.0`
-  版本号不变的情况下更新了 POM 元数据（依赖由 0.1.1/0.1.14 指向 post1），本地仓
-  旧缓存仍按旧元数据解析非 post1 链路。受控实测确认 `mvn -U` 不会可靠刷新
-  已缓存的非 SNAPSHOT release POM；处置已写入用户页 compatibility.md：删除受影响的
-  solution `0.1.0` artifact 缓存或使用空 local repository，先按服务形态选择 agentcore 或 versatile 基座（双 Handler 服务可并存），再声明真正的
-  叠加扩展。根除依赖上游以 `0.1.0.post1` 重发。
+- **solution `0.1.0` 同版本缓存风险（2026-08-10 第三轮评审登记，2026-08-12 从用户页移除）**：
+  上游曾在 `0.1.0` 版本号不变的情况下更新 POM 元数据（依赖由 0.1.1/0.1.14 指向 post1），
+  当时本地仓旧缓存仍按旧元数据解析非 post1 链路。对新下载已不成立，属一次性历史事件；
+  AI Coding SPEC 面向新生成工程，不再在用户页保留该处置说明。
 
 ## api/agent-core-java.md
 
@@ -232,6 +245,50 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - provider 值域（2026-08-10 两轮外部评审核实，含发布件漂移）：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/llm/schema/ProviderType.java`（枚举含 DeepSeek/IntelliRouter，但**无默认注册工厂**——快照与发布件一致的注册集仅 6 个：`.../foundation/llm/model_clients/DefaultModelClientFactories.java` 注册 OpenAI/OpenRouter/SiliconFlow/DashScope/InferenceAffinity/inference_affinity）、`.../foundation/llm/model_clients/ModelClients.java`（BUILTIN_PROVIDER_NAMES）、`.../core/common/clients/ClientRegistry.java`、`.../foundation/llm/model_clients/OpenAiModelClientFactory.java`（providerName()="OpenAI"）。**漂移**：源码快照查找为精确匹配（isBuiltinProvider/ClientRegistry 无规范化），外部评审反查 0.1.14.post1 发布 jar 称存在忽略大小写 fallback——用户页按发布件口径写「不区分大小写但统一 canonical」，生成代码用 "OpenAI" 两种口径下均安全；发布线佐证 `third_party/react&deep-agent-demos/meeting-agent-demos/meeting-react-agent/src/main/java/com/example/meeting/react/agent/MeetingReactAgentProperties.java`（provider 默认 "OpenAI"）
 - ModelRequestConfig 字段全集：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/llm/schema/ModelRequestConfig.java`（modelName/temperature 0.95/topP 0.1/maxTokens/user/seed/stop/extraFields）
 - ToolCard.inputParams 透传：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/tool/ToolCard.java`（Map<String,Object> 原样存储不校验）
+- 自定义 Rail SPI（2026-08-11 登记）：
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/rail/AgentRail.java`（10 个钩子 + init/uninit；快照返回 CompletionStage<Void>）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/rail/AgentCallbackContext.java`（requestForceFinish(Map)/requestRetry/pushSteering；getInputs 按事件转型）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/rail/ModelCallInputs.java`（getResponse()）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/BaseAgent.java`（registerRail 第 158 行）
+  - `third_party/agent-core-java/src/main/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgent.java`（extends ControllerAgent——无 singleagent 回调链，「WorkflowAgent 不适用」边界依据）
+  - **钩子返回类型漂移（2026-08-12 发布件实证）**：快照 AgentRail 钩子返回 `CompletionStage<Void>`，推荐发布 jar 0.1.14.post1 经 javap 确认为 `void`；snippets/custom-rail.java 与 conventions §4 均按发布件修正，并通过 mvn compile。
+  - 推荐发布 jar 的 AgentRail 只有 invoke/model/tool 八个事件回调 + init/uninit；任务迭代另由 `com.openjiuwen.harness.rails.TaskIterationRail.afterTaskIteration(TaskIterationContext)` 提供。
+  - `BaseInterruptRail.resolveInterrupt(...)`、`ToolCall.getArguments(): String` 已按推荐发布 jar javap 与 snippets/tool-interrupt-rail.java 编译确认。
+  - **AskUser 内建能力与发布件漂移（2026-08-12 发布件实证）**：推荐发布 jar
+    `agent-core-java:0.1.14.post1` 经 `jar tf` / `javap` 确认存在
+    `com.openjiuwen.harness.rails.interrupt.AskUserTool`（0/1 参构造）、
+    `com.openjiuwen.harness.rails.interrupt.AskUserRail`（继承 BaseInterruptRail）、
+    **独立顶层类** `com.openjiuwen.harness.rails.interrupt.AskUserPayload` 与
+    **独立顶层类** `com.openjiuwen.core.singleagent.interrupt.AskUserRequest`；发布 jar 不存在
+    `AskUserRail$AskUserPayload` / `AskUserRail$AskUserRequest`。内建工具/Rail 均绑定
+    `ask_user`。源码快照则把 Payload / Request 定义为 `AskUserRail` 嵌套类，且另有
+    `com.openjiuwen.harness.tools.AskUserTool`；这些快照形态均不得覆盖推荐发布件 FQN，
+    用户页与 snippet 以发布 jar 为准。
+  - **AskUser runtime 恢复链（2026-08-12 快照 + 推荐发布 jar 实证）**：
+    `agent-service-spec:0.1.1.post1` 的 `QueryRequest` 只有 messages/conversationId/
+    userId/spaceId/tenantId/stream/message，无 resume 字段；`JiuwenCoreAgentHandler.buildInputs(...)`
+    对普通请求把 `lastUserQuery()` 作为 String query，`resolveSessionId(...)` 使用
+    `ServeRequest.conversationId`（空值才回退 `default_session`）。推荐发布 jar
+    `agent-core-java:0.1.14.post1` 的 `ReActAgent.invoke(...)` 会先从 Session 加载
+    `ToolInterruptionState`：无待决状态时才把 query 加为 `UserMessage`；有待决状态时调用
+    `normalizeResumePayload(queryPayload, state)`。该方法接受现成 `InteractiveInput`，也会把
+    String 自动构造成 `InteractiveInput`：单个待决工具写入对应 `toolCallId`，多个待决工具则
+    对每个 `toolCallId` 写入同一 String；随后放入 `AgentCallbackContext.extra`
+    的 `_resume_user_input`。`BaseInterruptRail.beforeToolCall(...)` 再按当前 `toolCallId` 取值并
+    调用 `resolveInterrupt(...)`。因此库存 `/v1/query` 使用同一 `conversation_id + message`
+    即可恢复 BaseInterruptRail/AskUserRail，**不需要公开独立 resume 字段**；adapter 只传
+    String，但 String → InteractiveInput 的转换发生在 Core。公共 REST 的真实边界是：多个
+    待决工具需要不同回答时，`QueryRequest` 没有公开结构化 `toolCallId → answer` 字段。
+    `runtime.remoteToolResults` 仍是 A2A 远端工具批次的特殊恢复链，不是普通 AskUser 的前提。
+  - **A2A 中断续传职责（2026-08-12 快照 + 推荐发布 jar 实证）**：
+    `A2AProtocolAdapter` 将 `contextId` 写入 `ServeRequest.conversationId`，将 `taskId` 写入
+    metadata `runtime.parentTaskId`；因此 contextId 定位 Core Session，taskId 定位 A2A Task，
+    二者不可互换。`A2AAgentExecutor` 只在现有 Task 状态为 `TASK_STATE_INPUT_REQUIRED` 时，
+    从 Task 状态/历史恢复可信 `_interrupt` 到请求 metadata。普通 AskUser 用户答复仍由
+    A2A TextPart 转为 String query，再走 Core 的 `normalizeResumePayload(...)`；带
+    `TextPart.metadata.toolCallId` 的 `runtime.remoteToolInputs` / `runtime.remoteToolResults`
+    属于远端工具批次的定向恢复路径，不应泛化为 AskUser 的公共协议契约。
+  - **priority 语义（2026-08-12 发布件实证）**：源码快照 `core/singleagent/InstanceCallbackFramework.java` 第 37 行按 `Comparator.comparingInt(priority).reversed()` 排序；推荐发布 jar `agent-core-java:0.1.14.post1` 经 javap 核验，`AgentCallbackManager` 的注册与执行 comparator 同样按 priority 降序，且 `AgentRail` 默认 priority 为 50。因此 **数值越大越先执行**。开发指导 §4 LogRail 注释已按此修正（原误写「越小越先」，疑似与 Spring `@Order` 语义混淆；§沙箱处 `@Order(1)` 属 Spring 语义，数值越小越先，原注释正确）。
 
 ## api/agent-runtime-java.md
 
@@ -275,7 +332,7 @@ commit / tag / 镜像 POM 版本不在该页体现——2026-08-09 移入本文�
 - §2.1 服务化：`third_party/agent-runtime-java/service/agent-service-adapters/agent-service-adapters-agentcore/src/main/java/com/openjiuwen/service/adapters/agentcore/autoconfigure/AgentCoreAdaptersAutoConfiguration.java`（agent-id + handler:agentcore 自动装配条件）、`.../agent-service-app/.../config/llm/ResolvedLlmConfig.java`（@Getter/@Builder 字段）、`.../config/ServiceProperties.java`
 - §3.1 外部服务工厂：`.../agent-service-adapters-agentcore/.../external/AgentCoreSandboxClientFactory.java`（create()/create(serverId)/configFor()）、`AgentCoreMcpClientDecoratorFactory.java`、`AgentCoreRemoteClientFactory.java`、`DecoratingSandboxClient.java`；DecoratedSandboxToolRegistrar 在 demo（example/support），不在 jar
 - §3.2 工具注册：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/foundation/tool/ToolCard.java`（builder() 存在）、`.../tool/function/LocalFunction.java`（(ToolCard, Function) 构造）、`.../core/singleagent/AbilityManager.java`（add）、`.../core/runner/resourcemanager/ResourceMgr.java`（addTool(Tool, Collection<String>, boolean)）、`.../core/runner/Runner.java`（resourceMgr() 静态）
-- §4 Rail：`third_party/agent-core-java/src/main/java/com/openjiuwen/core/singleagent/rail/AgentRail.java`（beforeToolCall 等返回 CompletionStage<Void>，无 RailDecision）、`.../rail/AgentCallbackContext.java`、`.../harness/rails/interrupt/BaseInterruptRail.java` + `InterruptDecision.java`（sealed）；resolveInterrupt 覆写形态以 demo `third_party/agent-runtime-java/service/agent-service-demo/example/a2a/.../A2aDelegateRail.java` 与 `.../agent_teams/rails/TeamToolApprovalRail.java` 为准（源码快照内 BaseInterruptRail 未声明该方法，以发布 jar 为准）
+- §4 Rail：源码快照 `.../core/singleagent/rail/AgentRail.java` 与发布件存在返回类型漂移；用户代码以 0.1.14.post1 jar 为准（void hooks）。发布 jar 另核验 `...harness.rails.TaskIterationRail`、`...harness.rails.interrupt.BaseInterruptRail` / `InterruptDecision` 与 `...foundation.llm.schema.ToolCall`。
 - §6 生命周期钩子：`third_party/agent-runtime-java/service/agent-service-spec/src/main/java/com/openjiuwen/service/spec/lifecycle/AgentInitHook.java`（onInit(AgentLifecycleContext) throws Exception）、`AgentShutdownHook.java`、`AgentLifecycleContext.java`
 - §7 异构接入：`third_party/agent-solution/common/agent-runtime-ext-java/agent-service-adapters/agent-service-adapters-versatile/.../VersatileAgentHandler.java`、`.../autoconfigure/VersatileProperties.java`（ambiguousIntentId 默认 "1"，setUrlTemplate/setTimeout/setResultNodeName 存在）、`.../agent-service-spec-ext/.../skillhub/spi/SkillHubProvider.java`、`.../agent-service-adapters-agentscope/.../AgentScopeAgentHandler.java`
 - §8 SubAgent 工厂：`third_party/agent-core-java/src/main/java/com/openjiuwen/harness/subagents/`（CodeAgentFactory.createCodeAgent(Object model)、ExploreAgentFactory.createExploreAgent(String, Workspace)、PlanAgentFactory.createPlanAgent(String, Workspace)、ResearchAgentFactory.createResearchAgent(Object model)、VerificationAgentFactory.createVerificationAgent(Object model)、BrowserAgentFactory.createBrowserAgent(model, tools, mcps, rails, card, language, settings)、MobileGuiAgentFactory）

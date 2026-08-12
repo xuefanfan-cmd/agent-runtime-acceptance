@@ -18,10 +18,10 @@
 | 接口文档 · agent-runtime-java | [api/agent-runtime-java.md](api/agent-runtime-java.md) | AgentHandler SPI、托管、A2A、HTTP 对话面 |
 | 接口文档 · core-ext | [api/core-ext.md](api/core-ext.md) | react-rails 认知 rail（纯 core 扩展） |
 | 接口文档 · runtime-ext | [api/runtime-ext.md](api/runtime-ext.md) | versatile、agentcore-ext / SkillHub、Custom REST 与能力边界 |
-| **how-to 指南（按 agent 类型分入口）** | [how-to/overview.md](how-to/overview.md) | WorkflowAgent / ReAct / DeepAgent / Versatile 对接 / 配置驱动装配 / 中间件 / SkillHub / 自定义 REST / A2A 互调 |
+| **how-to 指南（按类型与能力分入口）** | [how-to/overview.md](how-to/overview.md) | WorkflowAgent / ReAct / DeepAgent / Versatile 对接，以及 Tool / Rail / 配置驱动 / 中间件 / SkillHub / Custom REST / A2A |
 | 版本兼容与依赖坐标 | [compatibility.md](compatibility.md) | 生成 pom 的坐标速查、Java/Spring Boot 基线、artifact 版本基线、代码仓地址、已知漂移 |
 | Agent 源码用例 | [examples/overview.md](examples/overview.md) | how-to 引用的完整框架源码集；各类型目录不重复携带 pom，共用一份已验证的最小 POM |
-| 装配/配置片段 | [snippets/overview.md](snippets/overview.md) | 可叠加到任一 agent 服务工程的单文件片段（非完整工程） |
+| 语义/装配增量片段 | [snippets/overview.md](snippets/overview.md) | Tool、Rail、SubAgent 与 runtime 配置等可叠加单文件片段（非完整工程） |
 
 ## 事实源分工（按领域各认一家）
 

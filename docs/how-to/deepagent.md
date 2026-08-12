@@ -5,6 +5,8 @@ audience: ai-coding
 status: verified
 examples:
   - examples/deepagent
+snippets:
+  - snippets/deepagent-subagents.java
 ---
 
 # DeepAgent 指南
@@ -100,6 +102,37 @@ TaskLoop 让 Agent 围绕「任务是否完成」多轮迭代而非一轮即返�
   对标准化路径做 `startsWith(root)` 边界检查——与 `restrictToWorkDir` 构成「可写范围」双保险。
   工具本体仍是 `ToolCard` + `LocalFunction`，经 `DeepAgentConfig.tools(...)` 传入
   （区别于 ReActAgent 的两步注册，DeepAgent 的工具由工厂装配时注册）。
+
+### SubAgent 委派（进程内）
+
+主 Agent 可把子任务委派给**同进程**的 SubAgent 执行。声明即启用——
+`DeepAgentConfig.subagents(...)` 传入 `SubAgentConfig` 列表。为避免把可选委派混入基础闭环，
+完整可复制类见 [snippets/deepagent-subagents.java](../snippets/deepagent-subagents.java)，
+在主配置中叠加：
+
+```java
+.subagents(DeepAgentSubagents.reviewer())
+```
+
+机制链（均由 `HarnessFactory.createDeepAgent` 装配，不要手工复刻）：
+
+1. `subagents` 非空 → 自动注入 `SubagentRail`（`enableAsyncSubagent(true)` 时改注
+   `SessionRail`，异步委派）；
+2. Rail 向主 Agent 注册 `task_tool`：LLM 以子代理的 `agentCard.name`（大小写不敏感）
+   指定委派对象；
+3. 未声明的 name 抛 `IllegalArgumentException`（Unsupported subagent type）——能委派
+   谁完全由声明清单决定；
+4. 子代理经 `HarnessFactory` 实例化：`model` / `backend` / `promptMode` 缺省继承主
+   Agent，工作区按 `SubAgentConfig.workspacePath` 或会话子目录解析；`executionMode`
+   默认 `"ephemeral"`。
+
+`addGeneralPurposeAgent(true)` 会在清单头部再注入一个通用子代理（继承主 Agent 的
+systemPrompt / 工具 / rails 与模型配置），兜底未特化的子任务。
+
+- **与 A2A 的分工**：SubAgent 是进程内委派，共享主 Agent 的模型配置与工作区；跨进程、
+  跨服务的智能体互调走 [A2A](a2a.md)。本 SPEC 当前覆盖的内置声明式 SubAgent 机制由 DeepAgent 提供。
+- **特化 SubAgent 工厂与正确/错误对照**见[开发指导手册 §8](../conventions/openjiuwen开发指导.md)；
+  工厂 `createXxxAgent(...)` 返回的 DeepAgent 实例也可直接放入 `subagents(...)` 清单。
 
 ### 模型配置：model / backend 两个 Map
 

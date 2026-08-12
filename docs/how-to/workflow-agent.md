@@ -185,6 +185,12 @@ curl -X POST http://localhost:18090/v1/query \
    ```
 
    预期：`manual_result` 返回审批内容。
+
+   > Workflow `QuestionerComponent` 与 ReAct/DeepAgent 的 `BaseInterruptRail` /
+   > `AskUserRail` 是不同的内部中断模型，但推荐 runtime 对外都可复用“同一
+   > `conversation_id` + 下一条 `message`”完成续传。不要因为 HTTP 请求形态相同而混淆
+   > Workflow 节点输出与待决 Tool 调用；工具中断机制见
+   > [Rail 与工具中断](rails.md#ask-user-interrupt)。
 4. DAG 结构校验建议写成单测（节点数、连线、分支条件），避免靠人肉启动验证。
 
 ## API 锚点（jar 内类，按依赖可查）

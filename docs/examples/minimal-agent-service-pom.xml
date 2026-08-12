@@ -9,8 +9,7 @@
   - Versatile 对接是替换而非叠加：agentcore adapter → versatile adapter
     （仅同一服务同时托管两类 Handler 时两者并存）；
   - SkillHub / custom-rest / A2A 自动注入属叠加，按 overview.md
-    「目录 → artifact 映射」在 runtime 基础依赖之后追加（顺序敏感，
-    见 compatibility.md 的 0.1.0 缓存风险说明）。
+    「目录 → artifact 映射」追加。
 
   版本口径：本文件的版本字面量以 compatibility.md「依赖坐标速查」为唯一来源；
   版本升级时两处必须同步（已纳入维护清单）。
@@ -61,7 +60,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.example.myagent.MyAgentApplication</mainClass>
+                    <mainClass>com.example.myagent.runtime.MyAgentApplication</mainClass>
                 </configuration>
                 <executions>
                     <execution>

@@ -112,6 +112,30 @@ agent.registerSkill("/path/to/skill-dir");   // 目录内含 SKILL.md
 - 技能也可以运行期从 Skill Hub 下载注入——见
   [SkillHub 技能注入](../how-to/skillhub.md)（runtime-ext 中间件）。
 
+## 自定义 Rail：AgentRail 钩子链
+
+Rail 是挂在 Agent 执行链上的钩子类，承载护栏、观测、降级收尾等横切逻辑。继承
+`com.openjiuwen.core.singleagent.rail.AgentRail` 抽象类并按需覆盖钩子；完整可复制类见
+[snippets/custom-rail.java](../snippets/custom-rail.java)。
+
+- **钩子分组**（入参均为 `AgentCallbackContext`，默认空实现，只覆盖需要的）：
+  invoke 级 `beforeInvoke` / `afterInvoke`；模型级 `beforeModelCall` / `afterModelCall` /
+  `onModelException`；工具级 `beforeToolCall` / `afterToolCall` / `onToolException`；生命周期
+  `init` / `uninit`。DeepAgent 任务循环的 `afterTaskIteration(TaskIterationContext)` 属于独立的
+  `com.openjiuwen.harness.rails.TaskIterationRail`，不是 `AgentRail` 钩子。
+- **读输入**：`context.getInputs()` 按事件转型——模型事件为 `ModelCallInputs`；
+  `afterModelCall` 中 `getResponse()` 是 `AssistantMessage`，`getToolCalls()` 为空即终态答案。
+- **控制面**（`AgentCallbackContext`）：
+  - `requestForceFinish(Map<String, Object>)`：在 `afterModelCall` 中请求短路循环，
+    `invoke` 返回该 **Map**（消费方按 Map 处理，不是纯字符串）——`ReActAgent` 在
+    模型回调后消费该请求，core 自带的 `SecurityRail` / `BudgetRail` 等同用此门；
+  - `requestRetry(delaySeconds)`：请求一次延迟重试；
+  - `pushSteering(message)`：向运行中的 Agent 推引导消息。
+- **注册**：BaseAgent/ReActAgent 用 `agent.registerRail(rail)`；DeepAgent 在工厂创建前经
+  `DeepAgentConfig.rails(List<Object>)` 声明，由 `HarnessFactory` 装配到内部执行 Agent。
+- **适用边界**：`AgentRail` 是 BaseAgent/ReActAgent 的回调机制；DeepAgent 通过配置把 Rail
+  交给内部执行 Agent；`WorkflowAgent` 属 ControllerAgent 体系，不走这条回调链。
+
 ## DeepAgent
 
 DeepAgent（`com.openjiuwen.core` 的 deep_agent 体系）面向长任务拆解与多步执行，
@@ -124,6 +148,7 @@ DeepAgent（`com.openjiuwen.core` 的 deep_agent 体系）面向长任务拆解�
 - Workflow：`com.openjiuwen.core.application.workflow.WorkflowAgent`、`...application.schema.WorkflowAgentConfig`、`com.openjiuwen.core.workflow.*`
 - 注册/解析：`com.openjiuwen.core.runner.Runner`（`resourceMgr()`）、`...runner.resourcemanager.ResourceMgr`
 - 技能：`com.openjiuwen.core.singleagent.BaseAgent`（`registerSkill`）
+- Rail SPI：`com.openjiuwen.core.singleagent.rail.AgentRail` / `AgentCallbackContext` / `ModelCallInputs`；BaseAgent 注册入口 `...singleagent.BaseAgent.registerRail`；DeepAgent 配置入口 `com.openjiuwen.harness.schema.config.DeepAgentConfig.rails`；任务迭代接口 `com.openjiuwen.harness.rails.TaskIterationRail`
 - LLM/工具：`com.openjiuwen.core.foundation.llm.schema.*`、`com.openjiuwen.core.foundation.tool.*`
 - 装配示例：[../how-to/workflow-agent.md](../how-to/workflow-agent.md) 与 [../examples/overview.md](../examples/overview.md)（本工程自有）
 

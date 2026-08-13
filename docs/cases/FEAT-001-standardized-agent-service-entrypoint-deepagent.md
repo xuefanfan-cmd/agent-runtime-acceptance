@@ -11,8 +11,8 @@ depends_on:
   - deep-research 启动时按 SIT env 就绪 (含 SANDBOX_ENABLED / redis-checkpointer / long-term-memory 等按子用例前置声明)
   - 部分子用例需算子在跑前手工重启 deep-research（与 DA-06 / DA-07 同源 bug 触发条件）
 related_docs:
-  - FEAT-001 特性文档（version-scope，外部契约）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `version-scope/FEAT-001-standardized-agent-service-entrypoint.md`（2026-07-15 版本；已抽象化错误码值、把 gRPC / generic-client webhook / mid-state webhook / HITL webhook / agent-bus 私有入口 / outbound / 认证等明示 OUT）
-  - FEAT-001 L2 设计文档（当前实现事实）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-001-standardized-agent-service-entrypoint.md`（2026-07-09 版本；⬜ Push Notification Config CRUD JSON-RPC 分发 / runtime-to-runtime webhook 实际推送 / gRPC 均未激活；✅ SendMessage / SendStreamingMessage / GetTask / Agent Card 发现 / JSON-RPC 错误面 / SSE 已激活）
+  - FEAT-001 特性文档（version-scope，外部契约）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `version-scope/FEAT-001-standardized-agent-service-entrypoint.md`（**2026-07-24 v2 版本**；Push Notification Config CRUD 4 method 已从 §2 MUST 集下线,由 SendMessage 内联 pushNotificationConfig 承担;runtime-to-runtime callback receiver 端点新增为 MUST;callback 家族的范围/大载荷/幂等/安全边界/streaming 分离全部转 MUST）
+  - FEAT-001 L2 设计文档（当前实现事实）：`chaosxingxc-orion/spring-ai-ascend@experimental` → `architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-001-standardized-agent-service-entrypoint.md`（**2026-07-25 L2 版本**；§1.3 明确 params 缺项/类型错当前映射到 `-32603` internal error,预期 `-32602` invalid params —— 实现缺口;§2.1 endpoint 列表含 `POST /a2a/push-notifications/callback` receiver;§2.7 定义 receiver 契约含 `X-A2A-Notification-Id` 幂等 header;§6.4 composite capability check）
   - FEAT-001 评审与待澄清清单：[FEAT-001-standardized-agent-service-entrypoint-review.md](FEAT-001-standardized-agent-service-entrypoint-review.md)
   - 旧档：[deepagent/DA-01-agent-card-discovery.md](deepagent/DA-01-agent-card-discovery.md) ~ [DA-07-sandbox-tools.md](deepagent/DA-07-sandbox-tools.md)（增量沉淀之前 smoke，本档为 FEAT-001 覆盖全景视角，不废弃）
 ---
@@ -22,6 +22,19 @@ related_docs:
 > **一句话**：以 deep-research SUT 为对象，把 FEAT-001 §2 能力表里所有 MUST 项、§4 用户旅程和 §5.1.8 错误场景，映射为可在 SIT 侧黑盒断言的子用例；旧 DA-01~07 已覆盖的部分在本档表里显式标记，剩余部分是本档新增落点。
 
 > **⚠️ 本文档已同步评审结论**（2026-07-09）：每条子用例带**状态**（runnable / partial / blocked / deferred）与**评审关联**列，映射到 [评审文档](FEAT-001-standardized-agent-service-entrypoint-review.md) 的 7 项待澄清项。blocked / deferred 项在特性文档未澄清前，实现阶段跳过。
+
+> **⚠️ 2026-08-04 spec 变更同步**：本档跟进 version-scope FEAT-001 (2026-07-24 v2) + L2 (2026-07-25) 变更 —— 主要影响面:
+> - **Push Notification Config CRUD 5 method(Set/Get/List/Update/Delete)已显式下线**为 `-32601 method-not-found`,`push-config-crud` 子用例已<b>方向反转</b>为断言拒绝(不再走 CRUD 全链路)。
+> - **Callback receiver 端点新增为 MUST**(§2.1 `POST /a2a/push-notifications/callback` + §2.7 契约);原 webhook 家族 deferred 项转 runnable(需 SUT 部署 receiver 激活)。
+> - **SendMessage 内联 pushNotificationConfig 承担异步接受**,新增 `inline-push-config-async-accept` + `inline-push-config-untrusted-host` 子用例。
+> - **JSON-RPC `-32602 invalid-params`** 由 L2 §1.3 明示为实现缺口(当前落 `-32603`),新增 `jsonrpc-invalid-params` 子用例(red-first)。
+> - **§5.1.7 状态语义忠实性反向断言**(信息齐全时不得误伪装 INPUT_REQUIRED)由新增 `input-required-fake-completed` 覆盖。
+>
+> **⚠️ 2026-08-09 双向 wire 抓包决定性证据**:CascadeCallbackRealSearchAgentHappyPathTest 用透明代理夹在 dr↔search-agent 之间(searchProxy)+ 让 DEEP_RESEARCH_PUBLIC_URL 指向反向代理(callbackProxy) 后,首次完整抓获 cascade push 双向 HTTP 载荷。结论:
+> - **outbound OK**: dr 发出 SendMessage 携带完整 `taskPushNotificationConfig{url,id,token}`,`url = DEEP_RESEARCH_PUBLIC_URL/a2a/push-notifications/callback`,response 200。
+> - **反向 callback OK**: sub-agent 完成任务后反向 POST `/callback`,body 含正确 taskId + COMPLETED state + artifacts;Authorization Bearer token echo 回来一致;dr receiver 返 200 `{"status":"accepted",...}`。
+> - **真 gap 在 auto-resume**: 即使前 4 步全通,caller parent task 仍永不 resume 到 COMPLETED(90s 超时)。dr 收下 callback 却未把 sub-agent 结果 wire 回 ReAct 循环 emit terminal state。该 gap 属 FEAT-004 中断-续接语义域,不属 FEAT-001 入口面,本档新增 `cascade-callback-real-search-happy-path` 子用例作端到端 smoke 兜底(assertion 4 常红)。
+> - **BUG-009 outbound gap 结论翻案**:早期基于 log-grep 推断"outbound 未 wire"错误,应关闭。方法学教训:SUT log 不齐全时,优先抓 HTTP wire (`TransparentA2AProxy` 是通用工具)。
 
 **状态含义**：
 - **runnable**：可直接落地实现，与评审无关
@@ -46,25 +59,24 @@ related_docs:
 | JSON-RPC invalid request | `FEAT-001.jsonrpc-invalid-request` | 已覆盖（[JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java)） | runnable | — | 硬断言 `-32600`（L2 §5.3）+ id 回显 |
 | JSON-RPC method-not-found | `FEAT-001.jsonrpc-method-not-found` | 已覆盖（[JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java)） | runnable | — | 硬断言 `-32601`（L2 §5.3）+ id 回显 |
 | JSON-RPC error 保留 request id | `FEAT-001.jsonrpc-id-preserved` | 已覆盖（并入 invalid-request + method-not-found 断言） | runnable | — | invalid-request 断 id=`"1"`；method-not-found 断 id=`"7"`；parse-error 按 JSON-RPC 2.0 §5.1 断 id=null |
+| JSON-RPC invalid params(-32602) | `FEAT-001.jsonrpc-invalid-params` | 已覆盖（[JsonRpcInvalidParamsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidParamsTest.java)） | partial | — | params=[] 场景 runnable；结构合法但字段缺项/类型错场景 red-first（L2 §1.3 实现缺口:当前落 -32603,预期 -32602） |
 | 阻塞 `SendMessage` | `FEAT-001.send-message-blocking` | DA-02 覆盖 | runnable | — | 已覆盖 |
 | 流式 `SendStreamingMessage` | `FEAT-001.send-streaming-message` | DA-03 覆盖 | runnable | — | 已覆盖 |
 | Stream 中途下游 agent 被杀 | `FEAT-001.downstream-agent-killed-mid-stream` | 已覆盖（[DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)，watchdog + manual） | partial | 评审 §6 | 用 SutStack.stop() 中途杀 search 触发 handler runtime exception；层 1（终态 ∈ failed/canceled/rejected）+ 层 2（结构化 payload）为硬 MUST，不受 §6 影响；jar 就绪前 @manual |
 | 不存在工具的 LLM 拒答 | `FEAT-001.nonexistent-tool-refusal` | 已覆盖（[NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java)） | runnable | — | §5.1.6 正例：LLM 收到虚构工具请求应 COMPLETED 且回答包含工具名 + 「不存在/不可用」关键词；与 downstream-agent-killed 构成完整错误面覆盖 |
 | `GetTask` 快照 | `FEAT-001.get-task` | DA-04 覆盖 | runnable | — | 已覆盖 |
 | `GetTask` 负路径（TaskNotFound） | `FEAT-001.get-task-not-found` | DA-04.F 覆盖 | runnable | — | 已覆盖 |
-| Push Notification config CRUD | `FEAT-001.push-config-crud` | 已覆盖（[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)） | runnable | — | capabilities.pushNotifications=false 时 assumeTrue skip |
-| Webhook COMPLETED 文本一次性回调 | `FEAT-001.webhook-completed` | 未覆盖 | **deferred** | 评审 §3 | receiver 全栈缺失 |
-| Webhook FAILED 回调 | `FEAT-001.webhook-failed` | 未覆盖 | **deferred** | 评审 §3 | 同上 |
-| Webhook CANCELED 回调 | `FEAT-001.webhook-canceled` | 未覆盖 | **deferred** | 评审 §3 | 同上 |
-| Webhook REJECTED 回调 | `FEAT-001.webhook-rejected` | 未覆盖 | **deferred** | 评审 §3 | 同上 |
-| Webhook 大载荷 `payloadRef` | `FEAT-001.webhook-payload-ref` | 未覆盖 | **blocked** | 评审 §1 §3 | 阈值未定 + receiver 缺失 |
-| Webhook notification id 幂等 | `FEAT-001.webhook-idempotent` | 未覆盖 | **blocked** | 评审 §3 §4 | SDK 无 id 字段承载 |
-| Webhook 不通知中间态 | `FEAT-001.webhook-no-intermediate` | 未覆盖 | **deferred** | 评审 §3 | 需 receiver 侧观察 |
-| Webhook 未受信任 target 拒绝 | `FEAT-001.webhook-untrusted-target` | 未覆盖 | partial | 评审 §2 | 只能测注册拒绝负路径 |
-| Webhook 与 streaming 分离 | `FEAT-001.webhook-vs-streaming` | 未覆盖 | **deferred** | 评审 §3 | 需 receiver 侧观察 |
+| Push Notification config CRUD 应显式排除 | `FEAT-001.push-config-crud` | 已覆盖（[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)） | runnable | — | **2026-08-04 spec 反转**:5 method 都应返 -32601(v2 §2 显式排除 + L2 §2.3.1) |
+| SendMessage 内联 pushNotificationConfig 异步接受 | `FEAT-001.inline-push-config-async-accept` | 已覆盖（[InlinePushConfigAsyncAcceptTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigAsyncAcceptTest.java)） | runnable | — | v2 §2 新增 MUST;非阻塞 15s 内回 Task 骨架(非 COMPLETED);`@manual`(需 LLM) |
+| SendMessage 内联 config 未受信 host 拒绝 | `FEAT-001.inline-push-config-untrusted-host` | 已覆盖（[InlinePushConfigUntrustedHostTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigUntrustedHostTest.java)） | runnable | 评审 §2 | v2 §2 「callback 安全边界」MUST;`.example` TLD 保证未信任 |
+| Callback receiver 端点契约 | `FEAT-001.push-notification-callback-receiver` | 已覆盖（[PushNotificationCallbackReceiverTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationCallbackReceiverTest.java)） | runnable | 评审 §3(已澄清) | L2 §2.1/§2.7 定义 endpoint + 契约;正例/malformed/unauthorized/capability-gate 四场景 |
+| Callback 幂等(notificationId) | `FEAT-001.push-notification-idempotency` | 已覆盖（[PushNotificationIdempotencyTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationIdempotencyTest.java)） | runnable | 评审 §4(已澄清) | X-A2A-Notification-Id header;同 id 同 payload → 200/202/409;同 id 不同 payload → 409 |
+| capabilities ⇔ callback endpoint composite check | `FEAT-001.agent-card-callback-composite` | 已覆盖（[AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) 扩展） | runnable | — | L2 §6.4:pushNotifications=true 时 callback endpoint 必须存在(非 404/501) |
+| Cascade push 端到端 real-search happy-path | `FEAT-001.cascade-callback-real-search-happy-path` | 已覆盖（[CascadeCallbackRealSearchAgentHappyPathTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/CascadeCallbackRealSearchAgentHappyPathTest.java)，双向 wire 抓包 + `@manual`） | partial | 2026-08-09 wire 证据 | Assertion 1-3 断言 outbound pushConfig + 反向 callback + 200 accepted 全通(green);Assertion 4 断言 caller task COMPLETED —— **FEAT-004 auto-resume gap 常红** |
 | `X-Tenant-Id` 头传递 | `FEAT-001.tenant-id-propagation` | 未覆盖 | partial | 评审 §7 | 缺 header 落点未定 |
 | Tenant 跨租户记忆隔离 | `FEAT-001.tenant-isolation` | 未覆盖 | partial | 评审 §7 | 间接证据（DA-05/06 记忆链路衍生） |
 | 空文本输入拒绝 | `FEAT-001.empty-text-input` | 已覆盖（[EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)，本地 2026-07-20 PASS） | partial | — | §5.1.6 反推：断"不得伪装 completed"下限；A/B/C/D 任一拒绝分支合规，唯一 FAIL 分支是 D-COMPLETED+artifact 非空 |
+| §5.1.7 状态语义忠实性反向断言 | `FEAT-001.input-required-fake-completed` | 已覆盖（[InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java)） | runnable | — | v2 §5.1.7 反向:信息齐全 prompt 不应首轮 INPUT_REQUIRED;dual-stack + `@manual`(需 LLM) |
 | Task 生命周期状态序列 | `FEAT-001.task-lifecycle` | 已覆盖（[StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java) 已扩显式状态序列 + 严格顺序 + 无回退断言） | runnable | — | 严格顺序 + 无回退硬断言 |
 | Failed Task 携带结构化错误 payload | `FEAT-001.task-failed-payload` | 已覆盖（[TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)，watchdog + manual；当前 SUT 阶段预期红） | partial | 评审 §6 | §5.1.6「**可供客户端程序化判断**」+ §5.1.8「结构化错误 payload」；本用例层 3 断"DataPart / JSON TextPart / metadata 约定 key 三选一"作为程序化判断信号；开发组尚未落实结构化 shape 前预期红 —— 红即证明 SUT 与 spec 存在 gap，评审 §6 定字段后 SUT 补齐即绿 |
 
@@ -74,12 +86,15 @@ related_docs:
 
 ### 1.1 状态分布快照
 
+> **2026-08-04 spec sync 后**:v2 §2 把 callback receiver 从 deferred/blocked 类别 (评审 §3/§4) 转 MUST,原 webhook 家族 6 条 deferred/blocked → 4 条 runnable + 2 条落入新 callback 家族;新增 5 条(inline config × 2 + callback × 2 + input-required-fake-completed + jsonrpc-invalid-params + composite check),减少 1 条(push-config-crud 反转但仍占 1 位)。
+> **2026-08-09 wire evidence 补充**:新增 D7 `cascade-callback-real-search-happy-path` 端到端 smoke(partial · 双向 wire 抓包 + FEAT-004 gap 兜底)。
+
 | 状态 | 数量 | 说明 |
 |---|---|---|
-| runnable | 13 | 可直接落地，无评审依赖 |
-| partial | 8 | 主路径可测，某维度受评审限制（含 F5 层 3 预期红） |
-| blocked | 2 | 断言依据待评审澄清 |
-| deferred | 7 | 依赖能力缺失（webhook 家族 6 条 + no-intermediate 归属其中） |
+| runnable | 20 | 可直接落地(含 callback receiver / 内联 config / composite check 等新 spec 项) |
+| partial | 10 | 主路径可测,某维度受评审限制(含 jsonrpc-invalid-params 的 L2 §1.3 red-first 场景 + F5 层 3 预期红 + D7 assertion 4 FEAT-004 auto-resume gap 常红) |
+| blocked | 0 | 原 blocked 项(payload-ref / idempotent)因 v2 落地 receiver 契约后转 runnable / 直接由新用例承担 |
+| deferred | 2 | 剩余 webhook 家族 mid-state / token-stream 明示 OUT,不再列入本档 |
 
 **落地优先级**：runnable → partial → 评审澄清后 → blocked / deferred。
 
@@ -94,38 +109,40 @@ related_docs:
 | | A2 | agent-card-public-base-url | 🟡 | [AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java) |
 | | A3 | agent-card-capabilities | ✅ | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) |
 | | A4 | agent-card-skills | ✅ | [AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java) |
-| **B. JSON-RPC 错误面（5）** | B1 | jsonrpc-endpoint-slash | ✅ | [JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java) |
+| **B. JSON-RPC 错误面（6）** | B1 | jsonrpc-endpoint-slash | ✅ | [JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java) |
 | | B2 | jsonrpc-parse-error | ✅ | [JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java) |
 | | B3 | jsonrpc-invalid-request | ✅ | [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java) |
 | | B4 | jsonrpc-method-not-found | ✅ | [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java) |
 | | B5 | jsonrpc-id-preserved | ✅ | 并入 B2 / B3 / B4 |
+| | B6 | jsonrpc-invalid-params | 🟡 | [JsonRpcInvalidParamsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidParamsTest.java)(params=[] runnable;结构合法但字段错 red-first L2 §1.3) |
 | **C. 核心 A2A 方法（5）** | C1 | send-message-blocking | ✅ | SyncSendMessageTest（DA-02） |
 | | C2 | send-streaming-message | ✅ | StreamingSendMessageTest（DA-03） |
 | | C3 | downstream-agent-killed-mid-stream | 🟡 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)(watchdog + @manual;层 1 绿,层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)) |
 | | C4 | get-task / not-found | ✅ | GetTaskTest（DA-04 + F） |
 | | C5 | nonexistent-tool-refusal | ✅ | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) |
-| **D. Push Config CRUD（1）** | D1 | push-config-crud | ✅ | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)（capabilities=false 时 assumeTrue skip） |
-| **E. Webhook 家族（7）** | E1 | webhook-completed | ⏸ | WebhookCompletedTest |
-| | E2 | webhook-failed/canceled/rejected | ⏸ | WebhookTerminalStateTest |
-| | E3 | webhook-payload-ref | 🚫 | WebhookPayloadRefTest |
-| | E4 | webhook-idempotent | 🚫 | WebhookIdempotencyTest |
-| | E5 | webhook-no-intermediate | ⏸ | 并入 E1 |
-| | E6 | webhook-untrusted-target | ⬜ | WebhookUntrustedTargetTest |
-| | E7 | webhook-vs-streaming | ⏸ | WebhookVsStreamingTest |
-| **F. Tenant / 输入 / 生命周期（5）** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
+| **D. Push Config / Callback 家族(6, 2026-08-04 spec 反转 + 新增)** | D1 | push-config-crud(反转:5 method 应返 -32601) | ✅ | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) |
+| | D2 | inline-push-config-async-accept | ✅ | [InlinePushConfigAsyncAcceptTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigAsyncAcceptTest.java)(`@manual`) |
+| | D3 | inline-push-config-untrusted-host | ✅ | [InlinePushConfigUntrustedHostTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigUntrustedHostTest.java) |
+| | D4 | push-notification-callback-receiver | ✅ | [PushNotificationCallbackReceiverTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationCallbackReceiverTest.java) |
+| | D5 | push-notification-idempotency | ✅ | [PushNotificationIdempotencyTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationIdempotencyTest.java) |
+| | D6 | agent-card-callback-composite | ✅ | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) 扩展 |
+| | D7 | cascade-callback-real-search-happy-path (端到端 smoke + FEAT-004 gap 兜底) | 🟡 | [CascadeCallbackRealSearchAgentHappyPathTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/CascadeCallbackRealSearchAgentHappyPathTest.java)(双向透明代理 wire 抓包;assertion 1-3 绿 · assertion 4 [FEAT-004](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) auto-resume gap 常红 · `@manual`) |
+| **E. Webhook 家族剩余项(2 项 deferred / OUT)** | E1 | webhook-vs-streaming | ⏸ | 剩余 mid-state / streaming 分离细节等 SUT 侧联测形态明确后再列 |
+| | E2 | webhook-payload-ref | ⏸ | v2 §2 承接为 MUST 但 SUT 侧阈值/落地形态未确认,等联测 |
+| **F. Tenant / 输入 / 生命周期(6)** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
 | | F2 | tenant-isolation | ⬜ | TenantIsolationTest |
-| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)（§5.1.6 反推：任一拒绝分支合规，仅 FAIL 于 COMPLETED+artifact 非空） |
-| | F4 | task-lifecycle | ✅ | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 扩展：严格顺序 + 无回退硬断言，已 PASS） |
-| | F5 | task-failed-payload | 🟡 | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)（watchdog + @manual；层 1/2 硬 MUST，层 3「程序化判断」当前 SUT 阶段**预期红**） |
+| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)(§5.1.6 反推:任一拒绝分支合规,仅 FAIL 于 COMPLETED+artifact 非空) |
+| | F4 | task-lifecycle | ✅ | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)(DA-03 扩展:严格顺序 + 无回退硬断言,已 PASS) |
+| | F5 | task-failed-payload | 🟡 | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)(watchdog + @manual;层 1/2 硬 MUST,层 3「程序化判断」当前 SUT 阶段**预期红**) |
+| | F6 | input-required-fake-completed | ✅ | [InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java)(v2 §5.1.7 反向,dual-stack + @manual) |
 
-**进度**：已落地 17 / 27（其中 ✅ 硬 PASS 13、🟡 partial 4）；⬜ 待落地 3；🚫 blocked 2；⏸ deferred 5。
+**进度**(2026-08-09 wire evidence 后):已落地 25 / 32(其中 ✅ 硬 PASS 20、🟡 partial 5);⬜ 待落地 2(tenant 双条);⏸ deferred 2(mid-state / payload-ref 联测形态待定)。
 
-**下一步优先级**：
-1. **P1** ⬜ E6 webhook-untrusted-target（只测注册拒绝负路径，不依赖 receiver）
-2. **P1** ⬜ F1/F2 tenant 双条（依赖 §7 澄清 X-Tenant-Id 落点）
-3. **P2** 🟡 C3 downstream-agent-killed-mid-stream / F5 task-failed-payload（本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual）—— F5 层 3 预期红，等 SUT 补齐结构化 payload
-4. **Blocked** 🚫 E3 payload-ref / E4 idempotent 等评审澄清
-5. **Deferred** ⏸ webhook 家族其余 5 条等 receiver 契约就绪
+**下一步优先级**:
+1. **P0** 等 jar 到位后跑通新增 8 条测试(P0×3 / P1×3 / P2×2),验证 SUT 侧 v2 spec 实现程度 —— 预期 jsonrpc-invalid-params 结构场景 + push-callback-receiver auth 场景 red-first
+2. **P1** ⬜ F1/F2 tenant 双条(依赖 §7 澄清 X-Tenant-Id 落点)
+3. **P2** 🟡 C3 downstream-agent-killed-mid-stream / F5 task-failed-payload(本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual)—— F5 层 3 预期红,等 SUT 补齐结构化 payload
+4. **Deferred** ⏸ webhook mid-state / payload-ref 剩余细节等 SUT 联测形态明确
 
 ---
 
@@ -236,6 +253,22 @@ related_docs:
 - **FEAT 依据**：version-scope §5.1.8「错误 response 尽量保留原 request id」；对应 L2 §5.3 表里各错误行的 id 回显要求。
 - **框架落点**：断言并入 [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java)（id=`"1"`）+ [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java)（id=`"7"`）；parse-error 场景按 JSON-RPC 2.0 §5.1 断 `id=null`（[JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java)）。
 
+#### FEAT-001.jsonrpc-invalid-params — params 缺项/类型错 → -32602(2026-08-04 新增)
+- **状态**:partial(params=[] runnable;结构合法但字段错为 L2 §1.3 明示实现缺口,red-first)
+- **FEAT 依据**:version-scope §5.1.2 承诺 shape-level 错误统一走 JSON-RPC error code(不吞、不 500);L2 §1.3 明确「参数缺项/类型不匹配当前会映射到 `-32603` internal error,预期为 `-32602 invalid params`(待补)」;L2 §2.3.1 错误码表归位。
+- **G**:deep-research 就绪。
+- **W**(4 payload):
+  1. `params=[]`(空数组,SendMessage 无法解码 → -32602);
+  2. `params={}`(缺 message);
+  3. `params.message.parts` 非数组(应为数组给字符串);
+  4. `params.message.role` 非法枚举("OWNER")。
+- **T**:4 次响应都:
+  1. HTTP 200 + body 含 error;
+  2. `error.code == -32602`(严格断言);
+  3. 若返 `-32603`,输出 stderr 诊断行标注为 L2 §1.3 实现缺口 red-first(不 relax 断言,补齐后自然通过)。
+- **PASS**:4 payload 都 -32602。**FAIL**(spec-gap 类):任一返 -32603(现状预期);**FAIL**(SUT-崩溃类):HTTP 5xx / 无 error / -32603 之外的错值。
+- **框架落点**:[JsonRpcInvalidParamsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidParamsTest.java)。
+
 ### 3.3 核心 A2A 方法（send / get）
 
 > **⚠️ Scope 说明**（对齐 version-scope §2 能力表 + §3 事实要求列）：
@@ -279,81 +312,123 @@ related_docs:
 - **状态**：runnable（DA-04 / DA-04.F 已覆盖）
 - **框架落点**：[GetTaskTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/GetTaskTest.java)。
 
-### 3.4 Push Notification config CRUD
+### 3.4 Push Notification config CRUD 应显式排除（2026-08-04 spec 反转）
 
-#### FEAT-001.push-config-crud — CRUD 全链路
-- **状态**：runnable（CRUD 契约本身可测，不触发实际推送）
-- **评审关联**：不阻塞，但此条通过后即证明 sender 半边就绪，为 §3.5 deferred 项的解锁前置
-- **FEAT 依据**：§2「Push Notification 配置 CRUD」+ §3。
-- **G**：deep-research 就绪；Agent Card `capabilities.pushNotifications == true`（否则 assumeTrue 跳过）。
-- **W**：串接：
-  1. `CreateTaskPushNotificationConfig(taskId, url, token)` → 得 configId
-  2. `GetTaskPushNotificationConfig(taskId, configId)` → 回显同一 url / token
-  3. `ListTaskPushNotificationConfigs(taskId)` → 包含 configId
-  4. `DeleteTaskPushNotificationConfig(taskId, configId)`
-  5. 再 `Get` → not-found 类错误
-- **T**：每步返回 JSON-RPC result；字段等价；删除后再查为 not-found。
-- **PASS**：五步全通。**FAIL**：任一步 5xx / 字段漂移 / delete 后仍能查到。**INCONCLUSIVE**：capabilities.pushNotifications=false 跳过。
-- **框架落点**：[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)（新增）。走底层 HTTP + JSON-RPC 串接 Set/Get/List/Delete → 再 Get 应 not-found；前置探针 capabilities.pushNotifications=false 时 assumeTrue 跳过。SIT 当前 skip（capabilities.pushNotifications=false，与 DA-01.C 一致）。
+#### FEAT-001.push-config-crud — 5 method 都应返 -32601
+- **状态**:runnable
+- **FEAT 依据**:v2 §2 明确 4 个 config CRUD method(Set/Get/List/Update/Delete TaskPushNotificationConfig)+ 老规范里的 `Delete` 共 5 method<b>从 §2 MUST 集下线</b> —— 现规范只保留 SendMessage 内联 pushNotificationConfig 承担 sender 侧意向声明,不再暴露独立 config CRUD method。
+- **L2 归位**:L2 §2.3.1 错误码表明确"显式排除的 method 应返 `-32601 method-not-found`,不允许静默 200、也不允许返 `-32603` internal error"。
+- **G**:deep-research 就绪(无论 `capabilities.pushNotifications` 值为何)。
+- **W**:对 5 个 method 各发一个 params 结构基本合规的 dummy request(让 dispatcher 过 params-shape 层再判 method)。
+- **T**:5 次响应都:
+  1. HTTP 200(JSON-RPC error 在 body 里);
+  2. body 含 error;
+  3. `error.code == -32601`(非 `-32603`,后者说明 SUT 走了 internal-error 兜底而非显式 method 排除)。
+- **PASS**:5 method 全部 -32601。**FAIL**:任一 method 返 result / -32603 / 5xx / 或返 result 说明 method 未下线,违反 v2 §2。
+- **框架落点**:[PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java)(2026-08-04 <b>方向反转</b>,原「5 步 CRUD 全链路成功」断言删除,现「5 method 拒绝」断言)。
 
-### 3.5 Runtime-to-runtime Webhook 完成回调（受评审 §3 影响，全节 deferred / blocked）
+### 3.5 Runtime-to-runtime Callback 家族（2026-08-04 v2 spec 落地）
 
-> **⚠️ 全节状态说明**：本节子用例整体 **deferred / blocked**，等待评审 §3 (receiver 契约)、§1 (payload 阈值)、§4 (notification id) 澄清并落地对应能力后再实现。
->
-> **当前栈能力**：
-> - A2A SDK 1.0.0.Final：sender 半边完整（`BasePushNotificationSender` / config CRUD / payload formatter），**receiver 半边一个类都没有**
-> - deep-research / agent-search：都未实现 receiver endpoint
->
-> **本节可实测子集（不 deferred 的部分）**：
-> - `webhook-untrusted-target` **注册拒绝负路径**（不需要 receiver 收到）→ partial 状态
-> - `push-config-crud`（在 §3.4）→ runnable
-> - 在 SIT 挂占位 HTTP endpoint 观察 "sender 是否曾发起 POST"（能力探针，不作为 FEAT-001 断言，见 §6.2）
+> **⚠️ 2026-08-04 变更**:v2 §2 把 callback receiver 从 deferred/blocked 转 MUST —— 增加 `POST /a2a/push-notifications/callback` 端点 + `X-A2A-Notification-Id` 幂等 header + capability composite check。原 webhook-* 家族的 6 条 deferred/blocked 项:
+> - `webhook-untrusted-target` → **升级为 `inline-push-config-untrusted-host`**(§3.5.b);
+> - `webhook-idempotent` → **升级为 `push-notification-idempotency`**(§3.5.d),不再阻塞;
+> - `webhook-completed / failed / canceled / rejected` → 合并入 `push-notification-callback-receiver`(§3.5.c) 正例场景;
+> - `webhook-payload-ref` → v2 §2 承接但 SUT 侧阈值/落地形态未确认,继续 deferred 至联测;
+> - `webhook-vs-streaming / no-intermediate` → 已明示为 OUT(v2 §5.2);
+> - 新增:`inline-push-config-async-accept`(§3.5.a) + `agent-card-callback-composite`(§3.5.e)。
 
-#### FEAT-001.webhook-completed — COMPLETED 一次性文本回调
-- **状态**：deferred
-- **评审关联**：§3 receiver 缺口
-- **FEAT 依据**：§2「webhook 文本结果」+ §4 + §5.1.3。
-- **落地阻塞条件**：整栈需先具备 receiver endpoint 契约（评审 §3 (a)/(b) 澄清后）。
-- **G/W/T**（供解锁后参考）：mock receiver 已启动；SUT allowlist 已加；`SendMessage` 附 `pushNotificationConfig`；等待 receiver 收到 POST。body 含 `tenantId` / `taskId` / `status=COMPLETED` / `result` / `notificationId` / `timestamp`；文本正文能直接从 body 读。
-- **框架落点**：待新建（`WebhookCompletedTest`），阻塞至 receiver 契约就绪。
+#### 3.5.a FEAT-001.inline-push-config-async-accept — SendMessage 内联 config 非阻塞返回
+- **状态**:runnable(`@manual`,需 LLM)
+- **FEAT 依据**:v2 §2「SendMessage 支持内联 pushNotificationConfig 携带,SUT 应立即返回 Task 骨架(非阻塞语义),后续状态迁移由 callback 交付」;L2 §2.7 依赖 SUT 侧不再"卡住 sendMessage" 等 Task 完成。
+- **G**:deep-research 就绪。
+- **W**:`POST /a2a` 发 `SendMessage`,params 内含 `pushNotificationConfig={url, token}`(SIT placeholder URL,SUT 不应尝试连接)。
+- **T**:
+  1. HTTP 200 + 无 error;
+  2. response 返回耗时 ≤ 15s(远小于 LLM handler 完整执行时长);
+  3. result 是 Task 骨架且 `status.state` ∈ {SUBMITTED, WORKING, INPUT_REQUIRED},**非 COMPLETED**。
+- **PASS**:三条全满足。**FAIL**:超时(阻塞等 handler) / COMPLETED(阻塞等完) / error(SUT 未接受内联 config)。
+- **框架落点**:[InlinePushConfigAsyncAcceptTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigAsyncAcceptTest.java)。
 
-#### FEAT-001.webhook-failed / webhook-canceled / webhook-rejected
-- **状态**：deferred
-- **评审关联**：§3
-- **落地阻塞条件**：同 completed；且各终态本身的触发条件（评审 §5.1.6 关联，见 §6.4）
-- **框架落点**：待新建，三条并入 `WebhookTerminalStateTest`（参数化），阻塞至 receiver 就绪。
+#### 3.5.b FEAT-001.inline-push-config-untrusted-host — 未受信任 host 入口拒绝
+- **状态**:runnable
+- **FEAT 依据**:v2 §2「callback 安全边界」MUST + L2 §2.3.1 归位 `-32602 invalid-params` 或实现层 trust-policy 专属错误码。
+- **G**:deep-research 就绪。
+- **W**:`SendMessage` params 内含 `pushNotificationConfig.url = http://sit-untrusted.example/webhook`(`.example` TLD 由 RFC 2606 保留,不可能出现在任何真实 trusted hosts 白名单)。
+- **T**:
+  1. HTTP 200 + body 含 error(不静默接受);
+  2. `error.code` ∈ {-32602, -32001~-32099}(invalid-params 首选,实现层 trust-policy 专属码次选);
+  3. `error.message` / `error.data` 含 trust-policy 语义关键词(trust / host / whitelist / callback / policy / 信任 / 白名单 / 受信 / 回调)。
+- **PASS**:三条全满足。**FAIL**:静默接受(违约) / 5xx / 无 trust-policy 语义(拒绝原因不可诊断)。
+- **框架落点**:[InlinePushConfigUntrustedHostTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigUntrustedHostTest.java)。
 
-#### FEAT-001.webhook-payload-ref — 大载荷走 payloadRef
-- **状态**：blocked
-- **评审关联**：§1 阈值未定 + §3 receiver 缺失
-- **落地阻塞条件**：需要评审 §1 定义 payload 阈值、§3 定义 receiver 契约
-- **框架落点**：待新建（`WebhookPayloadRefTest`）。
+#### 3.5.c FEAT-001.push-notification-callback-receiver — Receiver 端点契约
+- **状态**:runnable(capability off 时正例分支 assumeTrue skip)
+- **FEAT 依据**:v2 §2 「runtime 必须暴露 `POST /a2a/push-notifications/callback` 接收上游 runtime 的 task 状态回调」;L2 §2.1 endpoint 表 + §2.7 契约。
+- **G**:deep-research 就绪;读 `capabilities.pushNotifications` 作为 gate 参考。
+- **W**:直接 POST 到 `/a2a/push-notifications/callback`,分 4 场景:
+  1. 正例:合法 body + `X-A2A-Notification-Id` header;
+  2. malformed body:非法 JSON;
+  3. unauthorized:显式错误 `Authorization: Bearer sit-invalid-token-*`;
+  4. capability gate:capabilities=false 时应 404/501,capabilities=true 时不应 404/501。
+- **T**:
+  - 正例 → 200 或 202;
+  - malformed → 400/422;
+  - unauthorized → 401/403(spec §2.7;若 200/202 说明 SUT 未启用 callback auth 校验,spec-gap red-first);
+  - capability gate:capabilities=true 时非 404/501 / capabilities=false 时非 200/202(§6.4 composite check)。
+- **PASS**:四条全满足。**FAIL**:capabilities=true 却 404/501(声明夸大能力,§6.4 违约) / capabilities=false 却 200/202(能力泄漏)。
+- **框架落点**:[PushNotificationCallbackReceiverTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationCallbackReceiverTest.java)。
 
-#### FEAT-001.webhook-idempotent — 稳定 notification id + 幂等
-- **状态**：blocked
-- **评审关联**：§4 notification id 字段承载缺失 + §3 receiver 缺失
-- **落地阻塞条件**：A2A SDK 当前 payload 无独立 `notificationId` 字段；需 SDK 后续版本或 runtime 侧扩展 header/body
-- **框架落点**：待新建（`WebhookIdempotencyTest`）。
+#### 3.5.d FEAT-001.push-notification-idempotency — Callback 幂等
+- **状态**:runnable(capability off 时 assumeTrue skip)
+- **FEAT 依据**:L2 §2.7「`X-A2A-Notification-Id` header 与 body notificationId 一致,作幂等键;同 id + 同 payload → 200/202/409;同 id + 不同 payload → 409 conflict,禁止 silent overwrite」。
+- **G**:deep-research 就绪 + `capabilities.pushNotifications=true`(否则 assumeTrue skip)。
+- **W**:
+  1. `POST /a2a/push-notifications/callback` 首投(200/202);
+  2. 相同 id + 相同 payload 重投;
+  3. 相同 id + 不同 `status.state` 重投。
+- **T**:
+  1. 首投 200/202;
+  2. 相同 payload 重投 ∈ {200, 202, 409}(等价幂等,SUT 二选一);
+  3. 不同 payload 重投必须 409(禁止 silent overwrite)。
+- **PASS**:三条全满足。**FAIL**:任一 5xx / 不同 payload 却 200/202(overwrite 违约)。
+- **框架落点**:[PushNotificationIdempotencyTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationIdempotencyTest.java)。
 
-#### FEAT-001.webhook-no-intermediate — 中间态不推送
-- **状态**：deferred
-- **评审关联**：§3
-- **框架落点**：待新建，可与 `WebhookCompletedTest` 合并为双段断言，阻塞至 receiver 就绪。
+#### 3.5.e FEAT-001.agent-card-callback-composite — capabilities ⇔ callback endpoint composite check
+- **状态**:runnable
+- **FEAT 依据**:L2 §6.4「composite capability check」—— `capabilities.pushNotifications=true` 是复合声明,意味着 SUT 同时具备 callback receiver 端点可达 + delivery/store handler 已注入。
+- **G**:deep-research 就绪。
+- **W**:读 Agent Card 得 `capabilities.pushNotifications`;直接 POST 到 `/a2a/push-notifications/callback` 探端点。
+- **T**:
+  - 声明 true → endpoint 不允许 404/501(§6.4 违约);
+  - 声明 false → endpoint 不应 200/202(能力泄漏)。
+- **PASS**:两分支之一满足。**FAIL**:声明 true 却 404/501(夸大)/ 声明 false 却 200/202(泄漏)。
+- **框架落点**:[AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) 扩展的 `capabilityImpliesCallbackReachability` 方法。
 
-#### FEAT-001.webhook-untrusted-target — 未受信任 target 拒绝
-- **状态**：partial（可测注册拒绝负路径，不需要 receiver 收到；正路径—— trusted target 真实推送——deferred）
-- **评审关联**：§2 webhook 安全机制未明；本条只能测"注册被拒绝"这一条负路径，不能验证"trusted 判定规则本身"
-- **FEAT 依据**：§2「webhook 安全边界」+ §5.1.8「webhook target untrusted」。
-- **G**：显式配一个明显不受信的 URL（如 `http://evil.example`，或 `file://` scheme）。
-- **W**：调 `CreateTaskPushNotificationConfig(url=<untrusted>)`。
-- **T**：SUT 返回 JSON-RPC error 拒绝注册，**或**注册成功但 SIT 侧占位 endpoint 未收到任何 POST。
-- **PASS**：注册被拒绝或投递被拦截。**FAIL**：SUT 向未受信 URL 发了 POST（信任边界失守）。
-- **框架落点**：待新建（`WebhookUntrustedTargetTest`）。
-
-#### FEAT-001.webhook-vs-streaming — streaming 与 webhook 分离
-- **状态**：deferred
-- **评审关联**：§3 receiver 缺失导致无法观察 webhook 侧收到什么
-- **框架落点**：待新建（`WebhookVsStreamingTest`），阻塞至 receiver 就绪。
+#### 3.5.f FEAT-001.cascade-callback-real-search-happy-path — Cascade push 端到端 wire 抓包(2026-08-09 新增)
+- **状态**:partial(assertion 1-3 绿 · assertion 4 [FEAT-004](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) auto-resume gap 常红 · `@manual`,需 LLM + 两 jar)
+- **FEAT 依据**:v2 §2 「SendMessage 内联 pushNotificationConfig 的 sender 侧承担」+「callback receiver MUST」双端;本用例是<b>端到端 smoke</b>,把 3.5.a(inline config accept)+ 3.5.c(receiver 契约)+ 3.5.e(composite check)串成一条链路,并同时暴露 [FEAT-004](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) auto-resume gap。
+- **为何在 FEAT-001 而非纯 FEAT-004 承接**:
+  - 前 3 条 assertion(outbound pushConfig 完整 + 反向 callback fire + receiver 200 accepted)属 FEAT-001 服务入口面的<b>wire 契约</b>,不是 continuation 语义;
+  - 第 4 条 assertion(caller task COMPLETED)则跨界到 FEAT-004(中断-续接语义域);
+  - 本档承接 assertion 1-3,并把 assertion 4 作为<b>红色兜底</b>标记 FEAT-004 gap 存在 —— 修复责任在 FEAT-004 承接,不在本档扩断言范围。
+- **G**:
+  - deep-research + search 两 jar 就绪;
+  - `SEARCH_AGENT_USE_STUB=true`(绕过 Tavily 依赖);
+  - `SEARCH_AGENT_PUSH_NOTIFICATIONS=true` + `DEEP_RESEARCH_PUSH_NOTIFICATIONS=true`;
+  - `DEEP_RESEARCH_CALLBACK_TOKEN` 已注入(shared secret,验签依据);
+  - **双向 [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java)**:
+    - `searchProxy` 夹在 dr → search 出站方向(dr 通过 proxy 打 search 的 agent-card / SendMessage);
+    - `callbackProxy` 夹在 search → dr 反向方向(通过让 `DEEP_RESEARCH_PUBLIC_URL` 指向 callbackProxy,让 search 的反向 callback 也过一遍代理)。
+- **W**:发一个明确需要 search 的 prompt(如 Python 官网 URL 查询) + `pushNotificationConfig` 指向 dr 自身 receiver;等 90s 轮询 caller task 状态。
+- **T**(4 assertion):
+  - **Assertion 1(outbound wire)**:`searchProxy.exchanges()` 应至少捕获 1 次 dr → search 的 `SendMessage`,body 内含<b>完整</b> `taskPushNotificationConfig{url, id, token}`,其中 `url == DEEP_RESEARCH_PUBLIC_URL + /a2a/push-notifications/callback`,response 200。
+  - **Assertion 2(reverse callback fire)**:`callbackProxy.exchanges()` 应至少捕获 1 次 search → dr 的 `POST /a2a/push-notifications/callback`,body `result.task.id == <subTaskId>`(与 assertion 1 response 里的 taskId 一致),`status.state == TASK_STATE_COMPLETED`,`Authorization: Bearer <same token>` header 存在,`X-A2A-Notification-Id` header 存在。
+  - **Assertion 3(receiver accept)**:上一步 callback POST 的 response status 应为 200 且 body 含 `{"status":"accepted", "notificationId":...}`(dr receiver 校验通过 + 落库)。
+  - **Assertion 4(caller task terminal)**:轮询 dr 侧 `GetTask(callerTaskId)` 90s,finalState 应 == `TASK_STATE_COMPLETED`。**该 assertion 常红(FEAT-004 auto-resume gap)** —— dr 收下 callback 且 200 accepted,但未把 sub-agent 结果 wire 回 caller ReAct 循环,caller task 永不 resume。
+- **PASS**:4 条 assertion 都绿(需要 FEAT-004 修复才可能)。**Expected FAIL**:assertion 1-3 绿 + assertion 4 90s 超时 —— 意味着 wire 契约完全通,gap 只在 auto-resume。**FAIL(SUT 退化)**:assertion 1-3 任一红 —— 之前 wire 证据已通,若回退表示 SUT 侧 outbound pushConfig 落 / 反向 callback fire / receiver auth 存在退化。
+- **不断言**:artifact 内容真伪(用 stub search)/ 精确耗时。
+- **框架落点**:[CascadeCallbackRealSearchAgentHappyPathTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/CascadeCallbackRealSearchAgentHappyPathTest.java) + [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java);`@Tag("manual")`(需两 jar + LLM key)。
+- **方法学教训**:SUT log 不齐全时,优先抓 HTTP wire(TransparentA2AProxy 是通用工具),不要用 log-grep 推断 gap 位置 —— 早期 BUG-009 outbound 结论就是 log-grep 误判,双向 wire 抓包后翻案。
 
 ### 3.6 传输 / 上下文 / 输入边界
 
@@ -414,6 +489,18 @@ related_docs:
   - **层 3**（§5.1.6「程序化判断」）：至少满足 DataPart / JSON-shape TextPart / metadata 约定 key 之一
 - **当下预期**：**层 3 大概率红** —— 开发组尚未落实结构化 shape，failed Task 当前多以自然语言 TextPart 承载。**这是 spec-first 写法的价值**：SUT 违约就红、SUT 补齐就绿；断言不 relax 到 SUT 现状。评审 §6 落地后可把层 3 收紧为具体字段名。
 
+#### FEAT-001.input-required-fake-completed — §5.1.7 状态语义忠实性反向断言(2026-08-04 新增)
+- **状态**:runnable(dual-stack + `@manual`,需 LLM)
+- **FEAT 依据**:v2 §5.1.7「handler 输出需要用户输入的中断时,Task 必须进入 input-required 类语义,而不是伪装成 completed」—— 正向已由 [MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) 覆盖(缺项 prompt → 期望 INPUT_REQUIRED);本用例覆盖<b>反向</b>:信息齐全 prompt 不得<b>误伪装 INPUT_REQUIRED</b>。
+- **配对逻辑**:INPUT_REQUIRED 是昂贵路径(客户端挂机等续答、消费方误分配用户会话槽位);agent 因保守/歧义处理不当滥用 INPUT_REQUIRED,与「handler 意图忠实反映」精神对立。正反向配对形成完整状态语义 gate。
+- **G**:deep-research + search dual-stack(deep-research 通过 `SEARCH_AGENT_URL` env 寻址 search)。
+- **W**:发送信息齐全 prompt「请查询 DeepSeek-R1 模型的官方定价,请给出官方定价页面链接。」—— 显式提供了模型(DeepSeek-R1)+ 具体问题(官方定价)+ 期望格式(链接),search-agent LLM 无判追问的条件。
+- **T**:
+  - **A**:首轮终态 != INPUT_REQUIRED(信息齐全却假装追问 = §5.1.7 反向违约);
+  - **B**:若 COMPLETED,artifact 不应是"假 COMPLETED 装追问文本"(§5.1.7 正向违约:handler 意图应忠实反映到 Task 状态)。
+- **PASS**:A+B 都满足。**FAIL**:首轮 INPUT_REQUIRED(A 违约) / COMPLETED 但 artifact 全是追问文本无 DeepSeek 引用(B 违约)。
+- **框架落点**:[InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java)。
+
 ---
 
 ## 4. 框架落点汇总
@@ -433,17 +520,20 @@ related_docs:
 | downstream-agent-killed-mid-stream | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java) | partial | 已落（watchdog + @manual） |
 | nonexistent-tool-refusal | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) | runnable | 已落 |
 | get-task / get-task-not-found | `GetTaskTest` | runnable | 已有（DA-04 + F） |
-| push-config-crud | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) | runnable | 已落（capabilities false 时 assumeTrue skip） |
-| webhook-completed | `WebhookCompletedTest` | **deferred** | 阻塞（评审 §3） |
-| webhook-{failed,canceled,rejected} | `WebhookTerminalStateTest` | **deferred** | 阻塞（评审 §3） |
-| webhook-payload-ref | `WebhookPayloadRefTest` | **blocked** | 阻塞（评审 §1 §3） |
-| webhook-idempotent | `WebhookIdempotencyTest` | **blocked** | 阻塞（评审 §3 §4） |
-| webhook-no-intermediate | 并入 `WebhookCompletedTest` | **deferred** | 阻塞（评审 §3） |
-| webhook-untrusted-target | `WebhookUntrustedTargetTest` | partial | 待新建 |
-| webhook-vs-streaming | `WebhookVsStreamingTest` | **deferred** | 阻塞（评审 §3） |
+| jsonrpc-invalid-params | [JsonRpcInvalidParamsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidParamsTest.java) | partial | 已落(params=[] runnable;结构合法但字段错 red-first) |
+| push-config-crud(反转) | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) | runnable | 已落(2026-08-04 反转:5 method 应返 -32601) |
+| inline-push-config-async-accept | [InlinePushConfigAsyncAcceptTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigAsyncAcceptTest.java) | runnable | 已落(`@manual`) |
+| inline-push-config-untrusted-host | [InlinePushConfigUntrustedHostTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigUntrustedHostTest.java) | runnable | 已落 |
+| push-notification-callback-receiver | [PushNotificationCallbackReceiverTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationCallbackReceiverTest.java) | runnable | 已落(capability off 时正例分支 assumeTrue skip) |
+| push-notification-idempotency | [PushNotificationIdempotencyTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationIdempotencyTest.java) | runnable | 已落(capability off 时 assumeTrue skip) |
+| agent-card-callback-composite | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) 扩展 | runnable | 已落 |
+| cascade-callback-real-search-happy-path | [CascadeCallbackRealSearchAgentHappyPathTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/CascadeCallbackRealSearchAgentHappyPathTest.java) + [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java) | partial | 已落(assertion 1-3 绿 · assertion 4 FEAT-004 auto-resume gap 常红 · `@manual`) |
+| webhook-vs-streaming / no-intermediate | — | OUT | v2 §5.2 明示 OUT,不再列 |
+| webhook-payload-ref | 待新建 | **deferred** | v2 §2 承接为 MUST 但 SUT 侧阈值/落地形态未确认,等联测 |
 | tenant-id-propagation | `TenantIdPropagationTest` | partial | 待新建 |
 | tenant-isolation | `TenantIsolationTest` | partial | 待新建 |
 | empty-text-input | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java) | partial | 已落（§5.1.6 反推） |
+| input-required-fake-completed | [InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java) | runnable | 已落(dual-stack + `@manual`,v2 §5.1.7 反向) |
 | task-lifecycle | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)（DA-03 已扩展） | runnable | 已扩展落地 |
 | task-failed-payload | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java) | partial | 已落（watchdog + @manual；层 3 预期红） |
 
@@ -463,8 +553,15 @@ related_docs:
 - ✅ `JsonRpcInvalidRequestTest`
 - ✅ `JsonRpcMethodNotFoundTest`
 
-**P0-C · SDK 方法扩展（新类，正路径）**
-- ✅ `PushConfigCrudTest`（capabilities.pushNotifications=false 时 assumeTrue skip）
+**P0-C · Push Config / Callback 家族(2026-08-04 v2 spec 落地批次)**
+- ✅ `PushConfigCrudTest`(反转:5 method 应返 -32601)
+- ✅ `JsonRpcInvalidParamsTest`(partial;结构场景 red-first,L2 §1.3 实现缺口)
+- ✅ `InlinePushConfigAsyncAcceptTest`(`@manual`)
+- ✅ `InlinePushConfigUntrustedHostTest`
+- ✅ `PushNotificationCallbackReceiverTest`
+- ✅ `PushNotificationIdempotencyTest`
+- ✅ `AgentCardCapabilitiesTest` 扩展(composite check)
+- 🟡 `CascadeCallbackRealSearchAgentHappyPathTest`(端到端 smoke + 双向 wire 抓包;assertion 1-3 绿、assertion 4 FEAT-004 auto-resume gap 常红;`@manual`)
 
 **P1 · Agent Card 完整性 + 场景化**
 - ✅ `AgentCardCapabilitiesTest`
@@ -473,15 +570,16 @@ related_docs:
 - ⬜ `TenantIdPropagationTest`（partial）
 - ⬜ `TenantIsolationTest`（partial，复用 DA-05/06 fixture）
 - ✅ `EmptyTextInputTest`（partial；§5.1.6 反推）
-- ⬜ `WebhookUntrustedTargetTest`（partial，只测注册拒绝）
+- ✅ `InputRequiredFakeCompletedTest`(dual-stack + `@manual`;v2 §5.1.7 反向)
 
 **P2 · 依赖故障注入**
 - 🟡 `DownstreamAgentKilledMidStreamTest`（watchdog + @manual；本地拉两 jar，用 SutStack.stop() 中途杀 search）
 - ✅ `NonexistentToolRefusalTest`（§5.1.6 正例；LLM 拒答不存在工具走 COMPLETED）
 - 🟡 `TaskFailedPayloadTest`（watchdog + @manual；复用 downstream-killed fixture；层 3「程序化判断」当前 SUT 阶段**预期红**，等 SUT 补齐结构化 payload 后自动绿）
 
-**Deferred · 阻塞至评审澄清 / 能力就绪**
-- webhook 家族其余 6 条：`WebhookCompletedTest` / `WebhookTerminalStateTest` / `WebhookPayloadRefTest` / `WebhookIdempotencyTest` / `WebhookVsStreamingTest`
+**Deferred · 等联测形态明确**
+- `WebhookPayloadRefTest`(v2 §2 承接但阈值/落地形态未定)
+- webhook-vs-streaming / no-intermediate 已明示为 OUT(v2 §5.2),不再列
 
 ---
 
@@ -526,14 +624,13 @@ related_docs:
 - `webhook-untrusted-target` 可用 `com.sun.net.httpserver.HttpServer`（JDK 自带）临时挂一个占位 endpoint，只用于"观察 SUT 是否曾 POST"（负路径断言用）。
 - 完整 webhook 家族用例的实现，**等待评审 §3 落地 receiver 契约后**才决定用什么依赖。
 
-### 6.3 待决：input-required 子用例
+### 6.3 input-required 子用例进展(2026-08-04 更新)
 
-FEAT-001 §5.1.6 要求 handler 输出需要用户输入的中断时 Task 进入 input-required 类语义。deep-research 是否有 planner 澄清追问路径（触发该状态的业务代码）尚未确认。
+**已落地**:
+- 正向:[MultiTurnSearchFollowupTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/MultiTurnSearchFollowupTest.java) —— deep-research + search dual-stack;缺项 prompt(缺型号)触发 search-agent 追问 → 期望 INPUT_REQUIRED → 续答 → COMPLETED。
+- 反向:[InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java) —— 信息齐全 prompt 应<b>非 INPUT_REQUIRED</b>(v2 §5.1.7 反向:handler 不得滥用追问路径)。
 
-- **待做**：扫描 deep-research 源码，确认 planner / clarification 路径是否产出 `TaskState.INPUT_REQUIRED`。项目组已确认 deep-research 源在 `D:\openjiuwen-java\...`，待用户提供具体路径后核实。
-- **决策分支**：
-  - 若有 → 新增 `FEAT-001.input-required` 子用例（runnable / partial），找到能可靠触发澄清的 prompt
-  - 若无 → 本档记录"deep-research SUT 上该状态不可达"，交由其他有 HITL 能力的 SUT 覆盖
+**补充**:input-required 语义的"中断-续接"完整能力由 **FEAT-004** 承接(见 [FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) §行为矩阵能力 7);本档从 FEAT-001 服务入口视角断言"状态可达 + wire 契约合规",不重复 FEAT-004 的中断-续接完整链路。
 
 ### 6.4 Failed / Rejected 触发条件
 
@@ -554,3 +651,9 @@ FEAT-001 §5.1.6 要求 handler 输出需要用户输入的中断时 Task 进入
 
 - 本档只覆盖 inbound。deep-research 若自己作为 client 主动调其他 agent（outbound），由 FEAT-005 承接，不列入。
 - 通用 runtime-to-runtime 场景（deep-research → agent-search 常规 A2A 调用）：从 **agent-search 服务端视角**观察它作为 A2A server 的入口面，本质上属于"agent-search 作为独立 SUT 的 FEAT-001 用例"——如需覆盖，另开一份 `FEAT-001-standardized-agent-service-entrypoint-agentsearch.md`，不并入本档。
+
+### 6.8 与 FEAT-004(远程编排 continuation)关系(2026-08-09 补)
+
+- 本档承接 push cascade 的 **wire 契约**面(outbound pushConfig / 反向 callback / receiver 200 accepted / composite check);cascade smoke 用例 `cascade-callback-real-search-happy-path`(§3.5.f)assertion 1-3 就是本档职责。
+- **auto-resume 语义**(caller 收到 sub-agent callback 后 → wire 回 ReAct 循环 → emit terminal state) 属 FEAT-004 中断-续接域,由 [FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) 承接。§3.5.f assertion 4 只作 **红色兜底** 标记该 gap 存在,不在本档扩展修复责任。
+- **BUG-009 已翻案**:早期 log-grep 推断"outbound pushConfig 未 wire"错误。2026-08-09 双向 [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java) 抓包证明 outbound + callback + receiver 全通,真正 gap 在 auto-resume。BUG-009 doc(untracked)应关闭或降级为"已验证无问题"。

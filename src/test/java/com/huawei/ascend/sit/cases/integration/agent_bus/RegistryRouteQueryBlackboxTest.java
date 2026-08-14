@@ -55,12 +55,12 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.awaitility.Awaitility.await;
 
 /** FEAT-016 black-box acceptance tests for the external registry-discovery-center JAR. */
-@Feature("016")
+@Feature("FEAT-016: 运行时实例路由查询")
 @Tag("feat-016")
 @Tag("integration")
 @Execution(ExecutionMode.SAME_THREAD)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class Feat016RegistryRouteQueryBlackboxTest {
+class RegistryRouteQueryBlackboxTest {
     private static final String REGISTRY = "registry-center";
     private static final String DB_USER = "agent_rdc";
     private static final String DB_PASSWORD = "agent_rdc";

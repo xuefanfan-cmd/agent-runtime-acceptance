@@ -58,11 +58,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** FEAT-016 public Service, DTO, tenant, handle and health-probe contracts. */
-@Feature("016")
+@Feature("FEAT-016: 运行时实例路由查询")
 @Tag("feat-016")
 @Tag("integration")
 @Tag("contract")
-class Feat016RegistryRouteQueryContractTest {
+class RegistryRouteQueryContractTest {
     private static final String TENANT = "tenant-contract";
     private static final String AGENT = "agent-contract";
     private static final String SERVICE = "service-contract";

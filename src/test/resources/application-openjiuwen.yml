@@ -14,7 +14,7 @@ sut:
     enabled: true
   services:
     postgres:
-      image: postgres:latest
+      image: postgres:16.2
       port: 5432
       env:
         POSTGRES_DB: agent_rdc
@@ -58,11 +58,24 @@ sut:
           spring.datasource.username: agent_rdc
           spring.datasource.password: agent_rdc
           spring.flyway.enabled: true
+          rdc.deployment-discovery.enabled: false
           agent-bus.registry.mvp.probe-interval-ms: 600000
       service-bindings:
         postgres:
           url-key: spring.datasource.url
           url-template: "jdbc:postgresql://{{url}}/agent_rdc"
+    gateway-direct:
+      group: com.openjiuwen
+      artifact: agent-gateway
+      version: 0.1.0
+      ready-mode: tcp
+      spring:
+        properties:
+          gateway.path-mode: direct
+          gateway.default-agent-id: source-agent
+          gateway.test-credential.token: acceptance-token
+          gateway.test-credential.principalId: acceptance-principal
+          gateway.test-credential.tenantId: tenant-a
     # react scenario
     mainplan:
       group: com.openjiuwen.example

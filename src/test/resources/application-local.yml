@@ -67,7 +67,7 @@ sut:
       profile: main
     # —— Deep-research chain（本地拉起两 jar；FEAT-001 downstream-agent-killed-mid-stream 用例需要
     # 通过 SutStack.stop(...) 中途杀 search，因此必须走 managed 分支而非 remote-only）——
-    # deep-research 通过 SEARCH_AGENT_URL 环境变量寻址 search；测试用例在 @BeforeAll 里先启 search
+    # deep-research 通过 SEARCH_AGENT_URL 环境变量寻址 search；测试用例在 BeforeAll 钩子里先启 search
     # 再取其解析后的 baseUrl，用 .env(...) 注给 deep-research，因此这里 YAML 不需要 downstream 声明。
     deep-research:
       group: com.openjiuwen.example
@@ -76,6 +76,13 @@ sut:
     search:
       group: com.openjiuwen.example
       artifact: agent-search
+      version: 0.1.0
+    # deep-research 通过 VERIFY_AGENT_URL 寻址 verify（同 search 的注法）。ParallelSearchComparisonTest
+    # 等用例经 SutStack.agent(VERIFY) 启动它，故 local profile 必须声明其 Maven 坐标
+    # （fat jar 需预先安装进本地 Maven 仓）。
+    verify:
+      group: com.openjiuwen.example
+      artifact: agent-verify
       version: 0.1.0
   # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
   # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves

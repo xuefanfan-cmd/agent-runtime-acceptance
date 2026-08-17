@@ -63,8 +63,13 @@ class PushNotificationIdempotencyTest extends BaseManagedStackTest {
     protected SutStack.Builder buildStack(TestConfig config) {
         // SUT jar 0.1.0 声明了 remote-agents[search-agent, verify-agent]，startup 会校验二者 URL 非空；
         // 本用例不打真实 sub-agent 链路，占位 URL 让 Spring bind 通过即可。
+        // 2026-08-17 boot 契约修正：receiver 入口由 DEEP_RESEARCH_PUSH_NOTIFICATIONS 门控，
+        // 不开则一律 501 "push notification callback is not enabled"（D8 实测），幂等断言测不到真实路径；
+        // push=true 时 DEEP_RESEARCH_PUBLIC_URL 必填（占位即可，本用例不做出向投递）。
         return SutStack.builder(config)
                 .agent(DEEP_RESEARCH, a -> a
+                        .env("DEEP_RESEARCH_PUSH_NOTIFICATIONS", "true")
+                        .env("DEEP_RESEARCH_PUBLIC_URL", "http://127.0.0.1:18090")
                         .env("SEARCH_AGENT_URL", "http://127.0.0.1:1")
                         .env("VERIFY_AGENT_URL", "http://127.0.0.1:1"));
     }

@@ -235,6 +235,10 @@ class FailedSenderFireTest {
         if (s2.isTextual()) return s2.asText();
         JsonNode s3 = body.path("task").path("status").path("state");
         if (s3.isTextual()) return s3.asText();
+        // 2026-08-17 实测 body shape：JSON-RPC 信封复用 SendMessage result 表面
+        // {"notificationId":...,"jsonrpc":"2.0","result":{"task":{"status":{"state":...}}}}
+        JsonNode s4 = body.path("result").path("task").path("status").path("state");
+        if (s4.isTextual()) return s4.asText();
         return null;
     }
 

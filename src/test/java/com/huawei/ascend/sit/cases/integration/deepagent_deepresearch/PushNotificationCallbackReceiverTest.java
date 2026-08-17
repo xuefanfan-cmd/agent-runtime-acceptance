@@ -76,8 +76,13 @@ class PushNotificationCallbackReceiverTest extends BaseManagedStackTest {
     protected SutStack.Builder buildStack(TestConfig config) {
         // SUT jar 0.1.0 声明了 remote-agents[search-agent, verify-agent]，startup 会校验二者 URL 非空；
         // 本用例不打真实 sub-agent 链路，占位 URL 让 Spring bind 通过即可。
+        // 2026-08-17 boot 契约修正：receiver 入口由 DEEP_RESEARCH_PUSH_NOTIFICATIONS 门控，
+        // 不开则一律 501（D8 实测），合法/malformed/auth 三条断言全部打不到真实路径；
+        // push=true 时 DEEP_RESEARCH_PUBLIC_URL 必填（占位即可，本用例不做出向投递）。
         return SutStack.builder(config)
                 .agent(DEEP_RESEARCH, a -> a
+                        .env("DEEP_RESEARCH_PUSH_NOTIFICATIONS", "true")
+                        .env("DEEP_RESEARCH_PUBLIC_URL", "http://127.0.0.1:18090")
                         .env("SEARCH_AGENT_URL", "http://127.0.0.1:1")
                         .env("VERIFY_AGENT_URL", "http://127.0.0.1:1"));
     }
@@ -88,10 +93,11 @@ class PushNotificationCallbackReceiverTest extends BaseManagedStackTest {
         AgentCard card = client(DEEP_RESEARCH).getAgentCard();
         boolean advertisesPush = card.capabilities() != null && card.capabilities().pushNotifications();
 
-        String validBody = validCallbackBody(UUID.randomUUID().toString());
+        String capNotificationId = UUID.randomUUID().toString();
+        String validBody = validCallbackBody(capNotificationId, UUID.randomUUID().toString());
 
         HttpResponse<String> response = postWithNotificationId(CALLBACK_PATH, validBody,
-                UUID.randomUUID().toString());
+                capNotificationId);
 
         if (advertisesPush) {
             // 声明打开:endpoint 必须可达,且非 404/501。允许 200/202(成功) 或 401/403(缺 auth)。
@@ -117,8 +123,11 @@ class PushNotificationCallbackReceiverTest extends BaseManagedStackTest {
         // 2026-08-08 PushNotificationDirectionProbeTest 实测:capability=false 时 runtime sender 仍 fire。
         // 因此 receiver 端点契约不能用 capability 值 skip —— 无条件跑,让 SUT 真实行为决定。
         String taskId = UUID.randomUUID().toString();
+        // 2026-08-17 修正测试笔误：body 里的 notificationId 原来是另起的 randomUUID，
+        // 与 header 永远不一致 → SUT 必然 400 "notificationId mismatch"，断言意图（合法投递）根本没被测到。
+        String notificationId = UUID.randomUUID().toString();
         HttpResponse<String> response = postWithNotificationId(
-                CALLBACK_PATH, validCallbackBody(taskId), UUID.randomUUID().toString());
+                CALLBACK_PATH, validCallbackBody(notificationId, taskId), notificationId);
 
         assertThat(response.statusCode())
                 .as("FEAT-001.push-callback-receiver: 合法 callback 应 200/202\nstatus=%d body=%s",
@@ -151,12 +160,15 @@ class PushNotificationCallbackReceiverTest extends BaseManagedStackTest {
     void unauthorizedCallbackReturns401or403() throws Exception {
         // 见 validCallbackReturnsAccepted 注释:不再按 AgentCard capability skip.
         String taskId = UUID.randomUUID().toString();
+        // 同 validCallbackReturnsAccepted 的笔误修正：header 与 body 用同一个 notificationId，
+        // 让请求真正走到 auth 判定，而不是先被 nid mismatch 400 挡下。
+        String notificationId = UUID.randomUUID().toString();
         HttpRequest request = HttpRequest.newBuilder(URI.create(stack.baseUrl(DEEP_RESEARCH) + CALLBACK_PATH))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer sit-invalid-token-" + UUID.randomUUID())
-                .header("X-A2A-Notification-Id", UUID.randomUUID().toString())
-                .POST(HttpRequest.BodyPublishers.ofString(validCallbackBody(taskId)))
+                .header("X-A2A-Notification-Id", notificationId)
+                .POST(HttpRequest.BodyPublishers.ofString(validCallbackBody(notificationId, taskId)))
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -186,13 +198,13 @@ class PushNotificationCallbackReceiverTest extends BaseManagedStackTest {
         return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private static String validCallbackBody(String taskId) {
+    private static String validCallbackBody(String notificationId, String taskId) {
         return String.format(
                 "{\"notificationId\":\"%s\","
                         + "\"taskId\":\"%s\","
                         + "\"status\":{\"state\":\"TASK_STATE_WORKING\"},"
                         + "\"contextId\":\"ctx-cb-%s\"}",
-                UUID.randomUUID(),
+                notificationId,
                 taskId,
                 UUID.randomUUID().toString().substring(0, 8));
     }

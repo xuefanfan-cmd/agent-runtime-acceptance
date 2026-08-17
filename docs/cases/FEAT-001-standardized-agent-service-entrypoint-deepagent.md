@@ -114,6 +114,7 @@ related_docs:
 | B3 | invalid request | ✅ | JsonRpcInvalidRequestTest |
 | B4 | method-not-found | ✅ | JsonRpcMethodNotFoundTest |
 | B5 | Push Config CRUD 不可用表面 | ✅ | PushConfigCrudTest（5 method 全 -32601，2026-08-17 真机 PASS） |
+| B6 | invalid params 双表面之二 | 🟡 | JsonRpcInvalidParamsTest（params=[] runnable；结构合法字段错 red-first，L2 码值待钉）——2026-08-17 矩阵新条目，存量用例认领 |
 | C1 | blocking SendMessage 成功 | ✅ | SyncSendMessageTest |
 | C2 | streaming SSE 语义 | ✅ | StreamingSendMessageTest |
 | C3 | GetTask 快照与负路径 | ✅ | GetTaskTest |
@@ -135,15 +136,21 @@ related_docs:
 | D9b | 幂等重放缺陷看守 | ✅ | CallbackReplayIdempotencyTest（设计内 FAIL 站岗：first=404→replay=200，issue #77 未修，2026-08-17 新包复验仍在） |
 | D10 | callback 大载荷引用 | ⬜ | **待建**（原旧板 E2 deferred）。2026-08-17 实测观察：COMPLETED 回调 body 30KB 内联直发（artifacts 全量），未走「引用 + GetTask 取回」形态——落地时预期为 spec-vs-impl 口径记录 |
 
-**矩阵外增补条目**（测试仓自增，非方案矩阵）：B6 invalid-params（JsonRpcInvalidParamsTest 🟡 red-first）；多轮中断-续跑-投递闭环（CallbackAutoResumeGapTest ✅，FEAT-004 联动）；级联 e2e smoke 与方向/级联探针（CascadeCallbackRealSearchAgentHappyPathTest / PushNotificationDirectionProbeTest / PushNotificationCascadeProbeTest，manual）。tenant 双条已随契约移交 FEAT-024，不再挂本板。
+| E1 | SSE 断开与 Task 生命周期解耦 | ⬜ | **待建**（2026-08-17 矩阵新条目，§5.1.8 缓存块；底层 SSE 客户端中途断连 + GetTask 轮询终态） |
+| E2 | 断开后快照续查一致性 | ⬜ | **待建**（快照不早于已见事件；随 E1 同拓扑落地） |
+| E3 | 活动 Task 重订阅 | ⬜ | **待建**（SubscribeToTask 首帧快照+新事件+不重执行；SDK 驱动支持度待确认，必要时 wire 直发） |
+| E4 | 终态/竞态重订阅回退 | ⬜ | **待建**（UnsupportedOperation 类错误码值钉 L2 → GetTask 回退） |
 
-**台账快照（2026-08-17）**：29 条中 ✅ 21 · 🟡 6（A2/C5/C7/C8/C9/D6）· ⬜ 2（D7/D10）。
+**矩阵外增补条目**（测试仓自增，非方案矩阵）：多轮中断-续跑-投递闭环（CallbackAutoResumeGapTest ✅，FEAT-004 联动）；级联 e2e smoke 与方向/级联探针（CascadeCallbackRealSearchAgentHappyPathTest / PushNotificationDirectionProbeTest / PushNotificationCascadeProbeTest，manual）。tenant 双条已随契约移交 FEAT-024，不再挂本板。
+
+**台账快照（2026-08-17，矩阵扩至 34 条后）**：✅ 21 · 🟡 7（A2/B6/C5/C7/C8/C9/D6）· ⬜ 6（D7/D10/E1~E4）。
 
 **下一步优先级**：
 1. **P1** D6 sender 重试半面（先给 MockCallbackReceiver 加可控响应码/首响 5xx 注入）
 2. **P1** D7 streaming 分离、D10 大载荷引用（D10 预期产出 spec-vs-impl 记录）
-3. **P2** C9 专用正/反向用例补建；C8 复跑过账
-4. **跟修**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径与开发对齐
+3. **P1** E1~E4 缓存与断点续行组（2026-08-17 特性档全量对照补入；E1/E2 同拓扑先行，E3/E4 依赖 SubscribeToTask 驱动确认）
+4. **P2** C9 专用正/反向用例补建；C8 复跑过账
+5. **跟修**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径与开发对齐
 
 ## 2. 前置条件与共享约定
 

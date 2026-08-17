@@ -100,53 +100,50 @@ related_docs:
 
 ### 1.2 覆盖进度看板
 
-> 最新真机进展与缺陷对时见 §7（滚动记录）。
+> **对账基准**：本表按 **testplan 方案矩阵的场景 ID**（`develop/04-testplan/FEAT-001-standardized-agent-service-entrypoint-deepagent.md` §5，29 条稳定契约）逐条对账——场景条目固定，代码落点随测试仓演进。旧版看板自有编号体系（D1~D7/E1/E2/F 系）已废止，历史对照见 git 历史。
+> **图例**：✅ 已建已验；🟡 partial / 半建 / red-first 设计内；⬜ 待建。最新真机进展与缺陷对时见 §7（滚动记录）。
 
-> **用法**：随开发推进直接改 ✅ / ⬜ 状态位；子用例语义已在 §3 展开，此表只做单页进度对照。
-> **图例**：✅ 已落地并 PASS；🟡 已落地但 partial（受评审 / SUT 限制）；⬜ 待落地；🚫 阻塞（评审 / 能力）；⏸ deferred（能力缺失）
+| 矩阵 ID | 场景 | 状态 | 落点与备注 |
+|---|---|---|---|
+| A1 | Agent Card 多入口等价发现 | ✅ | AgentCardDiscoveryTest |
+| A2 | 公开 base URL 解析 | 🟡 | AgentCardPublicBaseUrlTest（partial） |
+| A3 | capabilities 声明真实性 | ✅ | AgentCardCapabilitiesTest（含 composite 检查） |
+| A4 | skills 声明真实性 | ✅ | AgentCardSkillsTest |
+| B1 | 尾斜杠等价 | ✅ | JsonRpcEndpointSlashTest |
+| B2 | parse error | ✅ | JsonRpcParseErrorTest |
+| B3 | invalid request | ✅ | JsonRpcInvalidRequestTest |
+| B4 | method-not-found | ✅ | JsonRpcMethodNotFoundTest |
+| B5 | Push Config CRUD 不可用表面 | ✅ | PushConfigCrudTest（5 method 全 -32601，2026-08-17 真机 PASS） |
+| C1 | blocking SendMessage 成功 | ✅ | SyncSendMessageTest |
+| C2 | streaming SSE 语义 | ✅ | StreamingSendMessageTest |
+| C3 | GetTask 快照与负路径 | ✅ | GetTaskTest |
+| C4 | 状态序列单调收束 | ✅ | StreamingSendMessageTest（生命周期硬断言段） |
+| C5 | 下游中途被杀 | 🟡 | DownstreamAgentKilledMidStreamTest + TaskFailedPayloadTest（manual；结构化 payload 层设计内红，BUG-005） |
+| C6 | 虚构工具 LLM 拒答 | ✅ | NonexistentToolRefusalTest |
+| C7 | 空文本输入 | 🟡 | EmptyTextInputTest（分支式合规断言） |
+| C8 | 阻塞等待窗口 | 🟡 | BlockingWaitWindowTest（已建；2026-08-17 轮未复跑，待过账） |
+| C9 | input-required 中断语义 | 🟡 | **半建**：正向驻留断言已并入 CallbackAutoResumeGapTest Phase1（GetTask 观察面，PASS）；专用正/反向用例待补（旧板标 ✅ 的 InputRequiredFakeCompletedTest 文件不存在，系旧板失真，已修正） |
+| D1 | 内联 push config 异步接受 | ✅ | InlinePushConfigAsyncAcceptTest（manual；2026-08-17 PASS） |
+| D2 | COMPLETED 结果 callback 投递 | ✅ | CallbackDeliveryContractTest（payload/token/trigger 三断言，PR#151 前后两轮 PASS） |
+| D3 | FAILED callback 携错 | ✅ | FailedCallbackErrorCodeTest + FailedSenderFireTest（PR#151 后 PASS；错误码位于 status.message.metadata."openjiuwen.error"） |
+| D4 | 非法 callback URL 拒绝 | ✅ | CallbackUrlValidationTest + InlinePushConfigUntrustedHostTest |
+| D5 | 中间态不推送 | ✅ | CallbackDeliveryContractTest trigger-scope + CallbackAutoResumeGapTest Phase1（INPUT_REQUIRED 驻留 0 推送） |
+| D6 | 投递失败重试（id 稳定+终态不变） | 🟡 | **半建**：接收侧幂等半面 = PushNotificationIdempotencyTest（red-first，body 信封 spec-gap 见 §7.2）；**sender 重试半面待建**，前置：MockCallbackReceiver 需增加「首响 5xx」故障注入能力 |
+| D7 | callback 与 streaming 分离 | ⬜ | **待建**（原旧板 E1 deferred）。D5 已挡「恰好一次终态」，独有断言面 = SendStreamingMessage 路径下 callback 行为不变、不含 SSE 帧 |
+| D8 | receiver 暴露表面 | ✅ | PushNotificationCallbackReceiverTest（capability⇔可达 PASS、malformed PASS；valid/auth 两条 red-first 记录 spec-gap，见 §7.2） |
+| D9a | receiver 鉴权强制（绿路） | ✅ | CallbackReceiverAuthTest（callback-auth profile 激活 3/3 PASS）；级联侧 CascadeCallbackReceiverAuthTest（manual） |
+| D9b | 幂等重放缺陷看守 | ✅ | CallbackReplayIdempotencyTest（设计内 FAIL 站岗：first=404→replay=200，issue #77 未修，2026-08-17 新包复验仍在） |
+| D10 | callback 大载荷引用 | ⬜ | **待建**（原旧板 E2 deferred）。2026-08-17 实测观察：COMPLETED 回调 body 30KB 内联直发（artifacts 全量），未走「引用 + GetTask 取回」形态——落地时预期为 spec-vs-impl 口径记录 |
 
-| 类别 | ID | 子用例 | 状态 | 落点 |
-|---|---|---|---|---|
-| **A. Agent Card 发现（4）** | A1 | agent-card 双入口 | ✅ | [AgentCardDiscoveryTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardDiscoveryTest.java)（三入口等价性硬断言） |
-| | A2 | agent-card-public-base-url | 🟡 | [AgentCardPublicBaseUrlTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardPublicBaseUrlTest.java) |
-| | A3 | agent-card-capabilities | ✅ | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) |
-| | A4 | agent-card-skills | ✅ | [AgentCardSkillsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardSkillsTest.java) |
-| **B. JSON-RPC 错误面（6）** | B1 | jsonrpc-endpoint-slash | ✅ | [JsonRpcEndpointSlashTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcEndpointSlashTest.java) |
-| | B2 | jsonrpc-parse-error | ✅ | [JsonRpcParseErrorTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcParseErrorTest.java) |
-| | B3 | jsonrpc-invalid-request | ✅ | [JsonRpcInvalidRequestTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidRequestTest.java) |
-| | B4 | jsonrpc-method-not-found | ✅ | [JsonRpcMethodNotFoundTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcMethodNotFoundTest.java) |
-| | B5 | jsonrpc-id-preserved | ✅ | 并入 B2 / B3 / B4 |
-| | B6 | jsonrpc-invalid-params | 🟡 | [JsonRpcInvalidParamsTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/JsonRpcInvalidParamsTest.java)(params=[] runnable;结构合法但字段错 red-first L2 §1.3) |
-| **C. 核心 A2A 方法（5）** | C1 | send-message-blocking | ✅ | SyncSendMessageTest（DA-02） |
-| | C2 | send-streaming-message | ✅ | StreamingSendMessageTest（DA-03） |
-| | C3 | downstream-agent-killed-mid-stream | 🟡 | [DownstreamAgentKilledMidStreamTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/DownstreamAgentKilledMidStreamTest.java)(watchdog + @manual;层 1 绿,层 2 expected-red · [BUG-005](../bugs/BUG-005-remote-agent-failure-not-propagated-to-task-status-message.md)) |
-| | C4 | get-task / not-found | ✅ | GetTaskTest（DA-04 + F） |
-| | C5 | nonexistent-tool-refusal | ✅ | [NonexistentToolRefusalTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/NonexistentToolRefusalTest.java) |
-| **D. Push Config / Callback 家族(6, 2026-08-04 spec 反转 + 新增)** | D1 | push-config-crud(反转:5 method 应返 -32601) | ✅ | [PushConfigCrudTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushConfigCrudTest.java) |
-| | D2 | inline-push-config-async-accept | ✅ | [InlinePushConfigAsyncAcceptTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigAsyncAcceptTest.java)(`@manual`) |
-| | D3 | inline-push-config-untrusted-host | ✅ | [InlinePushConfigUntrustedHostTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InlinePushConfigUntrustedHostTest.java) |
-| | D4 | push-notification-callback-receiver | ✅ | [PushNotificationCallbackReceiverTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationCallbackReceiverTest.java) |
-| | D5 | push-notification-idempotency | ✅ | [PushNotificationIdempotencyTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/PushNotificationIdempotencyTest.java) |
-| | D6 | agent-card-callback-composite | ✅ | [AgentCardCapabilitiesTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/AgentCardCapabilitiesTest.java) 扩展 |
-| | D7 | cascade-callback-real-search-happy-path (端到端 smoke + FEAT-004 gap 兜底) | 🟡 | [CascadeCallbackRealSearchAgentHappyPathTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/CascadeCallbackRealSearchAgentHappyPathTest.java)(双向透明代理 wire 抓包;assertion 1-3 绿 · assertion 4 [FEAT-004](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) auto-resume gap 常红 · `@manual`) |
-| **E. Webhook 家族剩余项(2 项 deferred / OUT)** | E1 | webhook-vs-streaming | ⏸ | 剩余 mid-state / streaming 分离细节等 SUT 侧联测形态明确后再列 |
-| | E2 | webhook-payload-ref | ⏸ | v2 §2 承接为 MUST 但 SUT 侧阈值/落地形态未确认,等联测 |
-| **F. Tenant / 输入 / 生命周期(6)** | F1 | tenant-id-propagation | ⬜ | TenantIdPropagationTest |
-| | F2 | tenant-isolation | ⬜ | TenantIsolationTest |
-| | F3 | empty-text-input | 🟡 | [EmptyTextInputTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/EmptyTextInputTest.java)(§5.1.6 反推:任一拒绝分支合规,仅 FAIL 于 COMPLETED+artifact 非空) |
-| | F4 | task-lifecycle | ✅ | [StreamingSendMessageTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/StreamingSendMessageTest.java#L117-L133)(DA-03 扩展:严格顺序 + 无回退硬断言,已 PASS) |
-| | F5 | task-failed-payload | 🟡 | [TaskFailedPayloadTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/TaskFailedPayloadTest.java)(watchdog + @manual;层 1/2 硬 MUST,层 3「程序化判断」当前 SUT 阶段**预期红**) |
-| | F6 | input-required-fake-completed | ✅ | [InputRequiredFakeCompletedTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/InputRequiredFakeCompletedTest.java)(v2 §5.1.7 反向,dual-stack + @manual) |
+**矩阵外增补条目**（测试仓自增，非方案矩阵）：B6 invalid-params（JsonRpcInvalidParamsTest 🟡 red-first）；多轮中断-续跑-投递闭环（CallbackAutoResumeGapTest ✅，FEAT-004 联动）；级联 e2e smoke 与方向/级联探针（CascadeCallbackRealSearchAgentHappyPathTest / PushNotificationDirectionProbeTest / PushNotificationCascadeProbeTest，manual）。tenant 双条已随契约移交 FEAT-024，不再挂本板。
 
-**进度**(2026-08-09 wire evidence 后):已落地 25 / 32(其中 ✅ 硬 PASS 20、🟡 partial 5);⬜ 待落地 2(tenant 双条);⏸ deferred 2(mid-state / payload-ref 联测形态待定)。
+**台账快照（2026-08-17）**：29 条中 ✅ 21 · 🟡 6（A2/C5/C7/C8/C9/D6）· ⬜ 2（D7/D10）。
 
-**下一步优先级**:
-1. **P0** 等 jar 到位后跑通新增 8 条测试(P0×3 / P1×3 / P2×2),验证 SUT 侧 v2 spec 实现程度 —— 预期 jsonrpc-invalid-params 结构场景 + push-callback-receiver auth 场景 red-first
-2. **P1** ⬜ F1/F2 tenant 双条(依赖 §7 澄清 X-Tenant-Id 落点)
-3. **P2** 🟡 C3 downstream-agent-killed-mid-stream / F5 task-failed-payload(本地 jar 就绪 + 验证 SEARCH_AGENT_URL env 生效后移除 @manual)—— F5 层 3 预期红,等 SUT 补齐结构化 payload
-4. **Deferred** ⏸ webhook mid-state / payload-ref 剩余细节等 SUT 联测形态明确
-
----
+**下一步优先级**：
+1. **P1** D6 sender 重试半面（先给 MockCallbackReceiver 加可控响应码/首响 5xx 注入）
+2. **P1** D7 streaming 分离、D10 大载荷引用（D10 预期产出 spec-vs-impl 记录）
+3. **P2** C9 专用正/反向用例补建；C8 复跑过账
+4. **跟修**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径与开发对齐
 
 ## 2. 前置条件与共享约定
 

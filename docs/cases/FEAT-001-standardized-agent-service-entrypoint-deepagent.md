@@ -133,7 +133,7 @@ related_docs:
 | D7 | callback 与 streaming 分离 | ✅ | CallbackStreamingSeparationTest（2026-08-17 PASS：流式 10 帧过程观察 vs callback 恰好 1 次 application/json 单文档终态 POST，无 SSE 帧渗透） |
 | D8 | receiver 暴露表面 | ✅ | PushNotificationCallbackReceiverTest（capability⇔可达 PASS、malformed PASS；valid/auth 两条 red-first 记录 spec-gap，见 §7.2） |
 | D9a | receiver 鉴权强制（绿路） | ✅ | CallbackReceiverAuthTest（callback-auth profile 激活 3/3 PASS）；级联侧 CascadeCallbackReceiverAuthTest（manual） |
-| D9b | 幂等重放缺陷看守 | ✅ | CallbackReplayIdempotencyTest（设计内 FAIL 站岗：first=404→replay=200，issue #77 未修，2026-08-17 新包复验仍在） |
+| D9b | 幂等重放缺陷看守 | ✅ | CallbackReplayIdempotencyTest（**issue #77 已修复，看守 2026-08-17 晚转 PASS**：14:55 构建实测 first=404→replay=404，被拒投递不再落幂等库） |
 | D10 | callback 大载荷引用 | ✅ | CallbackLargePayloadReferenceTest（2026-08-17 PASS，25.7KB：顶层键白名单无自造字段 ✓、标准 A2A part 形态 ✓、GetTask 可取回全文 ✓；观察记录：大正文**内联直发**，承载策略阈值待与开发对齐） |
 
 | E1 | SSE 断开与 Task 生命周期解耦 | ✅ | TaskLifecycleSseDisconnectTest（2026-08-17 PASS：WORKING 中断连后即时快照仍 WORKING，断开后 57.7s 自然收束 COMPLETED） |
@@ -147,7 +147,7 @@ related_docs:
 
 **下一步优先级**：
 1. **P2** C9 专用正/反向用例补建；C8 复跑过账；D10 承载策略阈值与开发对齐
-2. **跟修/对齐**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径；D6「投递失败不重试（一次性投递）」策略与 §5.1.9 可观察失败事实的落点确认
+2. **跟修/对齐**：~~issue #77~~（已修复，D9b 转 PASS 常驻回归）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径；D6「投递失败不重试（一次性投递）」策略与 §5.1.9 可观察失败事实的落点确认；conflict-409（首受理后改 payload 重放）语义在新库存留形态待有绑定流验证
 
 ## 2. 前置条件与共享约定
 
@@ -713,3 +713,12 @@ related_docs:
 - `GetTask` 的 result 是**裸 Task**（`result.status.state`），`SendMessage` ack 才包一层（`result.task.status.state`）——两 method 包裹形状不同，取值须双路径兜底；
 - 流式事件帧为 `result.statusUpdate.{taskId,status.state}` / `result.artifactUpdate.taskId`（StreamingEventKind protobuf JSON 名），非 `result.task`；
 - `SubscribeToTask` wire 形状与 `GetTask` 同构（`params.id`）；终态订阅错误码 **-32004**。
+
+### 7.4 2026-08-17（晚）issue #77 修复验证
+
+开发组 14:55-14:57 重新打包（宣称修复 [issue #77](https://gitcode.com/openJiuwen/agent-runtime-java/issues/77)）。验证结果：**确认修复**。
+
+- **看守转绿**：CallbackReplayIdempotencyTest 由设计内 FAIL 转 **PASS**（不变式「首拒 ⇒ 重放不得 2xx」成立）。
+- **新行为签名（裸探）**：未绑定 task 的 callback——首发 404 `binding not found`、**原样重放 404**（旧包 200 `accepted`）、同 nid 改 payload 重放亦 404（旧包 409）。即修复采用「幂等落库移到受理成功之后」方案：被拒投递完全不落库，符合当初建议的修法。
+- **附带口径变化**：改 payload 重放从 409 变 404 是此方案的自然结果（首发既未落库便无从 conflict）；「首发**被受理**后改 payload 重放 → 409」的语义是否保留，需有绑定 task 的级联流验证，挂待办。
+- **相邻面回归**：receiver 4 条 red-first（body 信封/绑定优先/auth 门控 spec-gap）维持原样；COMPLETED 投递恰好一次复验 PASS（批内一次 FAILED 为外部检索瞬时抖动，复跑即 COMPLETED；FAILED 态投递恰好一次亦顺带验证）。

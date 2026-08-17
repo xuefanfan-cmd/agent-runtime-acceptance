@@ -17,10 +17,11 @@ replan 计数与故障自愈。所有 rail 由应用**显式注册**。
 ## 最小用法
 
 ```java
-import com.openjiuwen.agents.reactrails.enforcing.CriteriaVerificationRail;
+import com.openjiuwen.agents.reactrails.observability.ReactRailsObservability;
 import com.openjiuwen.agents.reactrails.replan.ReplanRail;
 import com.openjiuwen.agents.reactrails.replan.ReplanTool;
 import com.openjiuwen.agents.reactrails.selfheal.RootCauseRail;
+import com.openjiuwen.agents.reactrails.verification.CriteriaVerificationRail;
 import com.openjiuwen.agents.reactrails.verification.RuleBasedCriteriaVerifier;
 
 import java.util.List;
@@ -33,6 +34,7 @@ ReplanRail replanRail = new ReplanRail(2);             // rail 2：最多 2 次 
 agent.registerRail(replanRail);
 agent.registerRail(new RootCauseRail());               // rail 3：故障自愈降级
 ReplanTool.registerOnto(agent);                        // 让 LLM 能显式表达 replan 意图
+ReactRailsObservability.install(agent);                // MANDATORY：注册可观测层，缺失会静默丢失全部 rail 事件
 
 Object result = agent.invoke("分析这个投资组合", null);
 ```
@@ -56,9 +58,10 @@ Object result = agent.invoke("分析这个投资组合", null);
 
 ## API 锚点（jar 内类，按依赖可查）
 
-- rail：`com.openjiuwen.agents.reactrails.enforcing.CriteriaVerificationRail`、
+- rail：`com.openjiuwen.agents.reactrails.verification.CriteriaVerificationRail`、
   `...reactrails.replan.ReplanRail` / `ReplanTool`、`...reactrails.selfheal.RootCauseRail`、
   `...reactrails.verification.RuleBasedCriteriaVerifier`
+- observability（MANDATORY 装配）：`com.openjiuwen.agents.reactrails.observability.ReactRailsObservability`
 
 ## See also
 

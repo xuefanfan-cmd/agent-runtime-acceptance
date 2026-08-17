@@ -31,8 +31,9 @@ import java.util.concurrent.TimeUnit;
  * <p><b>与 {@link MockRemoteAgentServer} 的差别</b>:后者扮演 sub-agent(暴露 card + /a2a),
  * 本 mock 扮演 callback 目标(只暴露 /callback)。职责不同,故独立类。
  *
- * <p><b>行为</b>:所有请求默认返 200 + {@code {"status":"ok"}};如需模拟"receiver 侧鉴权失败"
- * 未来可加 mode(暂不实现,避免过度设计)。
+ * <p><b>行为</b>:所有请求默认返 200 + {@code {"status":"ok"}}。
+ * 2026-08-17 增强:{@link #failFirst(int, int)} 可让前 N 次 POST 返回指定错误码(仍然捕获),
+ * 用于 D6「投递失败重试」类用例制造受控投递失败;第 N+1 次起恢复 200。
  *
  * <p><b>线程安全</b>:{@link CopyOnWriteArrayList} 存 captured,并发 poll-wait 由
  * {@link #awaitAtLeast(int, long)} 支持。
@@ -81,6 +82,12 @@ public final class MockCallbackReceiver implements AutoCloseable {
     private final HttpServer server;
     private final String baseUrl;
     private final List<CapturedCallback> captured = new CopyOnWriteArrayList<>();
+    /** 故障注入:剩余需返错的次数(捕获照旧);0 = 正常 200。 */
+    private final java.util.concurrent.atomic.AtomicInteger failRemaining =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+    private volatile int failStatus = 500;
+    /** 每次 POST 实际返回的状态码序列,与 {@link #captured()} 一一对应。 */
+    private final List<Integer> respondedStatuses = new CopyOnWriteArrayList<>();
 
     private MockCallbackReceiver(HttpServer server, String baseUrl) {
         this.server = server;
@@ -105,7 +112,11 @@ public final class MockCallbackReceiver implements AutoCloseable {
                     new String(body, StandardCharsets.UTF_8),
                     headerSnapshot,
                     System.currentTimeMillis()));
-            respond(exchange, 200, "application/json", "{\"status\":\"ok\"}");
+            int status = holder.failRemaining.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0
+                    ? holder.failStatus : 200;
+            holder.respondedStatuses.add(status);
+            respond(exchange, status, "application/json",
+                    status == 200 ? "{\"status\":\"ok\"}" : "{\"status\":\"injected-failure\"}");
         });
 
         // cached pool:并发多路 callback 抵达不排队;与 MockRemoteAgentServer 保持同款。
@@ -125,6 +136,17 @@ public final class MockCallbackReceiver implements AutoCloseable {
 
     public int count() {
         return captured.size();
+    }
+
+    /** 前 {@code n} 次 POST 返回 {@code status}(仍捕获),之后恢复 200——D6 投递失败注入。 */
+    public void failFirst(int n, int status) {
+        this.failStatus = status;
+        this.failRemaining.set(n);
+    }
+
+    /** 每次 POST 实际返回的状态码,与 {@link #captured()} 顺序一一对应。 */
+    public List<Integer> respondedStatuses() {
+        return List.copyOf(respondedStatuses);
     }
 
     public List<CapturedCallback> captured() {

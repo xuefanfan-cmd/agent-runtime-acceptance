@@ -129,28 +129,25 @@ related_docs:
 | D3 | FAILED callback 携错 | ✅ | FailedCallbackErrorCodeTest + FailedSenderFireTest（PR#151 后 PASS；错误码位于 status.message.metadata."openjiuwen.error"） |
 | D4 | 非法 callback URL 拒绝 | ✅ | CallbackUrlValidationTest + InlinePushConfigUntrustedHostTest |
 | D5 | 中间态不推送 | ✅ | CallbackDeliveryContractTest trigger-scope + CallbackAutoResumeGapTest Phase1（INPUT_REQUIRED 驻留 0 推送） |
-| D6 | 投递失败重试（id 稳定+终态不变） | 🟡 | **半建**：接收侧幂等半面 = PushNotificationIdempotencyTest（red-first，body 信封 spec-gap 见 §7.2）；**sender 重试半面待建**，前置：MockCallbackReceiver 需增加「首响 5xx」故障注入能力 |
-| D7 | callback 与 streaming 分离 | ⬜ | **待建**（原旧板 E1 deferred）。D5 已挡「恰好一次终态」，独有断言面 = SendStreamingMessage 路径下 callback 行为不变、不含 SSE 帧 |
+| D6 | 投递失败重试（id 稳定+终态不变） | 🟡 | 两半面均已建：sender 半面 CallbackRetryAfterDeliveryFailureTest（2026-08-17 PASS：首投 500 后终态不变 ✓；**观察窗内无重试**——spec 为 MAY 不判败，一次性投递策略待与开发确认）；接收侧幂等半面 PushNotificationIdempotencyTest（red-first，body 信封 spec-gap 见 §7.2）。MockCallbackReceiver 已具备 failFirst 故障注入 |
+| D7 | callback 与 streaming 分离 | ✅ | CallbackStreamingSeparationTest（2026-08-17 PASS：流式 10 帧过程观察 vs callback 恰好 1 次 application/json 单文档终态 POST，无 SSE 帧渗透） |
 | D8 | receiver 暴露表面 | ✅ | PushNotificationCallbackReceiverTest（capability⇔可达 PASS、malformed PASS；valid/auth 两条 red-first 记录 spec-gap，见 §7.2） |
 | D9a | receiver 鉴权强制（绿路） | ✅ | CallbackReceiverAuthTest（callback-auth profile 激活 3/3 PASS）；级联侧 CascadeCallbackReceiverAuthTest（manual） |
 | D9b | 幂等重放缺陷看守 | ✅ | CallbackReplayIdempotencyTest（设计内 FAIL 站岗：first=404→replay=200，issue #77 未修，2026-08-17 新包复验仍在） |
-| D10 | callback 大载荷引用 | ⬜ | **待建**（原旧板 E2 deferred）。2026-08-17 实测观察：COMPLETED 回调 body 30KB 内联直发（artifacts 全量），未走「引用 + GetTask 取回」形态——落地时预期为 spec-vs-impl 口径记录 |
+| D10 | callback 大载荷引用 | ✅ | CallbackLargePayloadReferenceTest（2026-08-17 PASS，25.7KB：顶层键白名单无自造字段 ✓、标准 A2A part 形态 ✓、GetTask 可取回全文 ✓；观察记录：大正文**内联直发**，承载策略阈值待与开发对齐） |
 
-| E1 | SSE 断开与 Task 生命周期解耦 | ⬜ | **待建**（2026-08-17 矩阵新条目，§5.1.8 缓存块；底层 SSE 客户端中途断连 + GetTask 轮询终态） |
-| E2 | 断开后快照续查一致性 | ⬜ | **待建**（快照不早于已见事件；随 E1 同拓扑落地） |
-| E3 | 活动 Task 重订阅 | ⬜ | **待建**（SubscribeToTask 首帧快照+新事件+不重执行；SDK 驱动支持度待确认，必要时 wire 直发） |
-| E4 | 终态/竞态重订阅回退 | ⬜ | **待建**（UnsupportedOperation 类错误码值钉 L2 → GetTask 回退） |
+| E1 | SSE 断开与 Task 生命周期解耦 | ✅ | TaskLifecycleSseDisconnectTest（2026-08-17 PASS：WORKING 中断连后即时快照仍 WORKING，断开后 57.7s 自然收束 COMPLETED） |
+| E2 | 断开后快照续查一致性 | ✅ | 同 TaskLifecycleSseDisconnectTest（快照未回退 SUBMITTED；终态快照携带 artifacts） |
+| E3 | 活动 Task 重订阅 | ✅ | TaskResubscribeTest（2026-08-17 PASS：SubscribeToTask 已实现，SSE 首帧=当前快照 WORKING、taskId 一致） |
+| E4 | 终态/竞态重订阅回退 | ✅ | TaskResubscribeTest（2026-08-17 PASS：终态订阅返 **-32004** "task is in terminal state"（UnsupportedOperation 实现形态，码值已实测钉死）→ GetTask 回退正常） |
 
 **矩阵外增补条目**（测试仓自增，非方案矩阵）：多轮中断-续跑-投递闭环（CallbackAutoResumeGapTest ✅，FEAT-004 联动）；级联 e2e smoke 与方向/级联探针（CascadeCallbackRealSearchAgentHappyPathTest / PushNotificationDirectionProbeTest / PushNotificationCascadeProbeTest，manual）。tenant 双条已随契约移交 FEAT-024，不再挂本板。
 
-**台账快照（2026-08-17，矩阵扩至 34 条后）**：✅ 21 · 🟡 7（A2/B6/C5/C7/C8/C9/D6）· ⬜ 6（D7/D10/E1~E4）。
+**台账快照（2026-08-17 缺口补建后）**：34 条 = ✅ 27 · 🟡 7（A2/B6/C5/C7/C8/C9/D6）· ⬜ **0**——矩阵全条目有已验证落点。
 
 **下一步优先级**：
-1. **P1** D6 sender 重试半面（先给 MockCallbackReceiver 加可控响应码/首响 5xx 注入）
-2. **P1** D7 streaming 分离、D10 大载荷引用（D10 预期产出 spec-vs-impl 记录）
-3. **P1** E1~E4 缓存与断点续行组（2026-08-17 特性档全量对照补入；E1/E2 同拓扑先行，E3/E4 依赖 SubscribeToTask 驱动确认）
-4. **P2** C9 专用正/反向用例补建；C8 复跑过账
-5. **跟修**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径与开发对齐
+1. **P2** C9 专用正/反向用例补建；C8 复跑过账；D10 承载策略阈值与开发对齐
+2. **跟修/对齐**：issue #77（D9b 看守在岗）；receiver body 信封/绑定优先/auth 门控三处 spec-vs-impl 口径；D6「投递失败不重试（一次性投递）」策略与 §5.1.9 可观察失败事实的落点确认
 
 ## 2. 前置条件与共享约定
 
@@ -699,3 +696,20 @@ related_docs:
 | 环境事实 | search jar 注入 `SEARCH_AGENT_PUSH_NOTIFICATIONS=true` 后 capability 仍为 false（不声明 push），依赖该声明做前置的级联探针在本地拓扑会 INCONCLUSIVE 跳过；「下游异步终态回灌」形态的覆盖须由确定性 mock 下游直驱。 |
 
 **测试侧同步修正**（随整合落入测试仓）：receiver/幂等类用例启动前置补齐 push 开关与公开 URL（否则 receiver 恒 501，断言打不到真实路径）；修复 header 与 body notificationId 不一致的构造笔误；callback body 状态取值补 JSON-RPC result 信封路径；多轮闭环用例的观察窗全部参数化（system property 可调），prompt 收窄为单厂商单维度以控制检索轮次。
+
+### 7.3 2026-08-17 缺口补建与全量真机验证
+
+特性档全量对照审计（矩阵扩至 34 条）后当日补建六条半缺口，全部真机验证：
+
+| 条目 | 用例 | 结果与关键事实 |
+|---|---|---|
+| D6 sender 半面 | CallbackRetryAfterDeliveryFailureTest（+MockCallbackReceiver.failFirst 故障注入） | PASS：首投 500 拒收后终态不变 ✓。**发现：观察窗 45s 内不重试**（一次性投递；spec「可以重试」为 MAY 不判败）——投递失败即通知永久丢失，§5.1.9「可观察失败事实」落点待与开发确认 |
+| D7 | CallbackStreamingSeparationTest | PASS：流式 10 帧过程观察（实测 token 级可达数千帧）vs callback 恰好 1 次 application/json 单文档终态 POST，无 SSE 帧渗透 |
+| D10 | CallbackLargePayloadReferenceTest | PASS（25.7KB）：顶层键 ⊆ {notificationId,jsonrpc,id,result}、标准 part 形态、GetTask 可取回全文。观察：大正文**内联直发**，未走引用形态 |
+| E1+E2 | TaskLifecycleSseDisconnectTest | PASS：WORKING 中粗暴断连 → 即时快照仍 WORKING（非 failed/canceled、未回退 SUBMITTED）→ 断开后 57.7s 自然 COMPLETED，终态快照携带 artifacts |
+| E3+E4 | TaskResubscribeTest | PASS：**SubscribeToTask 当前构建已实现**——活动任务订阅 SSE 首帧=当前快照；终态订阅返 **-32004** "task is in terminal state"（UnsupportedOperation 实现形态）→ GetTask 回退正常 |
+
+**过程中钉死的 wire 事实**（写用例必读）：
+- `GetTask` 的 result 是**裸 Task**（`result.status.state`），`SendMessage` ack 才包一层（`result.task.status.state`）——两 method 包裹形状不同，取值须双路径兜底；
+- 流式事件帧为 `result.statusUpdate.{taskId,status.state}` / `result.artifactUpdate.taskId`（StreamingEventKind protobuf JSON 名），非 `result.task`；
+- `SubscribeToTask` wire 形状与 `GetTask` 同构（`params.id`）；终态订阅错误码 **-32004**。

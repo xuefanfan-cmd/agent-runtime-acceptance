@@ -100,6 +100,8 @@ related_docs:
 
 ### 1.2 覆盖进度看板
 
+> 最新真机进展与缺陷对时见 §7（滚动记录）。
+
 > **用法**：随开发推进直接改 ✅ / ⬜ 状态位；子用例语义已在 §3 展开，此表只做单页进度对照。
 > **图例**：✅ 已落地并 PASS；🟡 已落地但 partial（受评审 / SUT 限制）；⬜ 待落地；🚫 阻塞（评审 / 能力）；⏸ deferred（能力缺失）
 
@@ -657,3 +659,39 @@ related_docs:
 - 本档承接 push cascade 的 **wire 契约**面(outbound pushConfig / 反向 callback / receiver 200 accepted / composite check);cascade smoke 用例 `cascade-callback-real-search-happy-path`(§3.5.f)assertion 1-3 就是本档职责。
 - **auto-resume 语义**(caller 收到 sub-agent callback 后 → wire 回 ReAct 循环 → emit terminal state) 属 FEAT-004 中断-续接域,由 [FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) 承接。§3.5.f assertion 4 只作 **红色兜底** 标记该 gap 存在,不在本档扩展修复责任。
 - **BUG-009 已翻案**:早期 log-grep 推断"outbound pushConfig 未 wire"错误。2026-08-09 双向 [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java) 抓包证明 outbound + callback + receiver 全通,真正 gap 在 auto-resume。BUG-009 doc(untracked)应关闭或降级为"已验证无问题"。
+
+## 7. 真机实测进展记录（滚动，自 testplan 方案文档迁入）
+
+> 方案级设计文档（docs/testplan 同名档）只锚定场景条目，不承载进展；实测进展、缺陷对时与验证结论统一记录在本节（2026-08-17 口径迁入）。
+
+### 7.1 2026-08-14 首轮真机校准
+
+首次以真实 jar（deep-research/search/verify 0.1.0 + DeepSeek v4-pro）拉通后，把若干「纸面口径」落成实测口径：
+
+| 发现 | 证据 | 对用例 / 文档的影响 |
+|---|---|---|
+| callback receiver 鉴权是 **profile 门控**，非「配了 token 即启用」 | `DeepResearchCallbackBearerTokenFilter` 标注 `@Profile("callback-auth")`；只设 `DEEP_RESEARCH_CALLBACK_TOKEN` 不激活 profile 时 filter 不注册、入口裸奔（首轮即此状态，一度误判为「完全无鉴权」） | 原单条 D9「未授权拒绝」拆为独立两条：**D9a** 在 `callback-auth` profile 下断言鉴权强制（PASS）；配置陷阱作为部署告警项写入 §7。 |
+| callback 幂等去重**先于**绑定校验，`DUPLICATE` 分支跳过校验直接 200 | 字节码：`saveIfAbsent(nid,hash)` 先于 `onAccepted(task)`，仅 `CREATED` 调 `onAccepted`；真机复现 首发 404 → 原样重放 200（改 payload 重放 409） | 新增 **D9b** 幂等重放回归看守，断言「首发被拒 ⇒ 重放不得已受理」，缺陷修复前 FAIL。缺陷单 [#77](https://gitcode.com/openJiuwen/agent-runtime-java/issues/77)。 |
+| 特性档的内联 push config 位置 `params.pushNotificationConfig` 在 SDK 1.0.0.Final **不存在**，实测入口为 `params.configuration.taskPushNotificationConfig`（`id` 必填） | D4 真机实测：唯有后者被 runtime 消费 | D1/D4 及 wire 断言以实测位置为准；spec 与 impl 的这处口径分歧需与开发对齐（改文档或 runtime 补旧入口）。 |
+| callback 仅在**终态**（COMPLETED / FAILED）触发 | 用户澄清 + 观察 | D 组 callback 用例 payload 一律用终态；非终态回调属契约外。 |
+| C9（input-required）状态**可达** | 长调研欠定 prompt 稳定触发 `TASK_STATE_INPUT_REQUIRED` | C9 从条件用例转常规用例。 |
+| push=true 的启动前置：`DEEP_RESEARCH_PUBLIC_URL` 必填；`SEARCH/VERIFY_AGENT_URL` 做非空存在性校验但下游不可达不阻塞启动 | boot fail-fast 信息 + 启动日志（`Failed to discover ...retry every 30s` 仍就绪） | D9a/D9b/D8 的 fixture 启动参数据此固定；只测 callback 入口的用例可注入 dummy 下游 URL。 |
+| **D2 出向终态投递无法用真实下游链路复现**：带真实 search/verify jar 时，deep-research ReAct 首轮调 `search-agent`，该子代理交互以 `state=INPUT_REQUIRED` 冒泡为父任务 `INPUT_REQUIRED`（`controller - Task ... requires interaction`），任务**驻留 INPUT_REQUIRED、不达终态**；callback 仅终态触发，故出向 POST 不可达 | D2 真机日志（2026-08-14）：deep-research `search-agent state=INPUT_REQUIRED latencyMs=1904` → `requires interaction`；search-agent 系统提示把 `ask_user` 设为歧义触发的一等路径，叠加真实 Tavily/web_search 依赖，实链天然非确定且收敛到 INPUT_REQUIRED（对齐 C9「input-required 可达」） | D2 已建但**核心断言（终态后收到出向 POST）在实链下无法被触发**。**结局（2026-08-17）**：不再走「mock 下游喂 deep-research」路线——终态投递用例（上游整合后的实现）换用 **search-agent 作单节点 sender SUT**（一跳确定性收束终态），真机全过，终态投递闭环实证（见 §7.2）；原 deep-research 级联版实现退役。D1（异步接受）此前已实测 PASS，闭环入口形态已证。 |
+
+### 7.2 2026-08-17 上游用例整合与两轮真机验证
+
+测试仓上游（main@cd1c1f1）平行建成了整套 push notification 用例与配套 fixture。按「同域覆盖以上游为准、真机验证能用后退役本仓平行实现、保留独有覆盖」的原则完成整合：D1、D2、D4、B5、D8 五条场景的本仓平行实现及旧接收桩已退役删除；保留本仓独有覆盖 D9a（`callback-auth` profile 激活的鉴权绿路）、D9b（「首拒⇒重放不得 2xx」缺陷看守，issue #77）与 C8。代码到场景的映射以测试仓当前代码为准。
+
+当日完成**两轮真机**：上午为 PR [#151](https://gitcode.com/openJiuwen/agent-runtime-java/merge_requests/151)（runtime 主干 2026-08-11 合入，修 issue #68/#69/#70）**之前**的构建，下午刷新为其**之后**的构建并回归。按场景条目归档：
+
+| 场景/条目 | 结论 |
+|---|---|
+| D2+D5+token（终态投递闭环，sender=search） | **两轮均 PASS**：COMPLETED 后恰好一次 POST（观察窗内无中间态/重复投递）；payload 为 JSON-RPC 信封复用 Task 表面（`result.task` + artifacts + `metadata._agentcore_terminal:true`），`notificationId` header/body 双写一致；`SendMessage` config.token 以 `Authorization: Bearer` 携出。出向终态投递闭环首次实证。 |
+| D1（异步接受）、D4（非法/未受信 URL 拒绝）、B5（CRUD OUT 全 -32601）、receiver 冒烟（capability⇔可达、malformed 400、token 校验） | 均 PASS。 |
+| D3（FAILED 携错投递） | **缺陷闭环样本**：旧包复现「FAILED 任务 60s 零投递」（异常兜底路径吞事件，sender 不触发）；与开发对时确认即 issue #69，PR#151 已修——新包回归 FAILED 投递 **t+1.3~1.4s** 到达，PASS。issue #70（稳定错误码）同 PR 修复：错误码实测位于 `result.task.status.message.metadata."openjiuwen.error"`，结构化错误断言层首次执行并通过。 |
+| issue #77（callback 幂等去重越过绑定校验） | **未修**：新包上 D9b 看守仍复现 first=404 `binding not found` → 原样重放=200 `accepted`。PR#151 的幂等修改仅涉成功投递侧；此缺陷需单独跟修，看守保持 FAIL 站岗。 |
+| receiver 独测 spec-vs-impl 缺口 | 维持 red-first 记录：实现要求 body 为 JSON-RPC result 信封（扁平 body 400）、绑定优先（无绑定 task→404，不符 spec §2.7 的 200/202）、鉴权 profile 门控默认关（错误 auth 非 401/403）。属契约口径分歧，待 spec 与实现对齐后收敛，非本轮回归对象。 |
+| issue #68（callback 回灌自动续跑） | **无反证，已实证生效**：多轮闭环用例（中断驻留→澄清续跑→终态→投递，GetTask 为父任务状态观察面）新包真机 PASS——`INPUT_REQUIRED` 驻留期 0 推送、澄清后父任务达 COMPLETED、登记 URL 收到引用父 taskId 的终态投递；服务端日志同时实锤自动续跑循环（下游子任务 COMPLETED→回灌→**无人工消息**的父任务 RESUME→下一轮检索）。注意旧「auto-resume gap」用例把修复前行为写为期望、且其 Phase1 在本拓扑测的是「下游驻留澄清态」而非续跑缺失，已按新契约重写。 |
+| 环境事实 | search jar 注入 `SEARCH_AGENT_PUSH_NOTIFICATIONS=true` 后 capability 仍为 false（不声明 push），依赖该声明做前置的级联探针在本地拓扑会 INCONCLUSIVE 跳过；「下游异步终态回灌」形态的覆盖须由确定性 mock 下游直驱。 |
+
+**测试侧同步修正**（随整合落入测试仓）：receiver/幂等类用例启动前置补齐 push 开关与公开 URL（否则 receiver 恒 501，断言打不到真实路径）；修复 header 与 body notificationId 不一致的构造笔误；callback body 状态取值补 JSON-RPC result 信封路径；多轮闭环用例的观察窗全部参数化（system property 可调），prompt 收窄为单厂商单维度以控制检索轮次。

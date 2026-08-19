@@ -41,7 +41,7 @@ agent.configure(agentConfig);
 **❌ 不要这样**
 
 ```java
-// 凭空 new，不调 configure — 模型未配置，运行时 NPE
+// 凭空 new 且传 null card — 构造器内 card.getId() 立即 NPE（与"没调 configure/模型没配置"无关）
 ReActAgent agent = new ReActAgent(null);
 ```
 
@@ -93,7 +93,7 @@ DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
 
 ```java
 // 直接 new DeepAgent — 跳过了 Workspace 初始化、SubAgent 注册等内部装配
-DeepAgent agent = new DeepAgent(card, config);
+DeepAgent agent = new DeepAgent(card, config, workspace);
 ```
 
 **💡 为什么这是推荐的**
@@ -148,8 +148,8 @@ workflow.setEndComp("end", new End(), Map.of("answer", "${tool.output}"), null);
 workflow.addConnection("start", "tool");
 workflow.addConnection("tool", "end");
 
-// 5) 将 Workflow 添加到 Agent（列表必须可变）
-agent.addWorkflows(new ArrayList<>(List.of(workflow)));
+// 5) 将 Workflow 添加到 Agent（addWorkflows 只遍历参数、不修改，传不可变集合也安全）
+agent.addWorkflows(List.of(workflow));
 ```
 
 **💡 为什么这是推荐的**
@@ -176,6 +176,8 @@ agent.addWorkflows(new ArrayList<>(List.of(workflow)));
 import com.openjiuwen.service.adapters.agentcore.agentfw.JiuwenCoreAgentHandler;
 import com.openjiuwen.service.spec.spi.AgentHandler;
 import com.openjiuwen.service.app.config.llm.LlmConfigResolver;
+import com.openjiuwen.service.app.config.llm.ResolvedLlmConfig;
+import com.openjiuwen.service.demo.example.support.ExampleReActAgentFactory;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication(scanBasePackages = "com.openjiuwen.service.app")
@@ -215,11 +217,16 @@ openjiuwen:
 
 ```java
 // 自己 implements AgentHandler 从零写——
-// 你需要自己管理 Runner.start/stop/query/stream/release 的全部生命周期
+// AgentHandler 有 2 个抽象方法（query / streamQuery）+ 3 个 default 方法（start/stop/clearSession 可覆写也可不覆写）
 public class MyAgentHandler implements AgentHandler {
     @Override
     public QueryResponse query(ServeRequest request) {
         // 你要自己调 Runner，自己处理会话，自己管理线程...
+    }
+
+    @Override
+    public void streamQuery(ServeRequest request, QueryStreamObserver observer) {
+        // 还得自己实现流式查询
     }
 }
 ```
@@ -268,7 +275,8 @@ AgentHandler agentHandler(
 
 ```java
 // 直接 new SandboxClient — 缺少超时、重试、熔断、审计等横切能力
-SandboxClient sandbox = new SandboxClient("http://localhost:8321");
+SandboxClient sandbox = new SandboxClient(
+        SandboxGatewayConfig.builder().gatewayUrl("http://localhost:8321").build());
 ```
 
 **💡 为什么这是推荐的**
@@ -289,7 +297,7 @@ SandboxClient sandbox = new SandboxClient("http://localhost:8321");
 
 ```java
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.LocalFunction;
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 
 // 1) 定义工具描述（LLM 可见）
 ToolCard card = ToolCard.builder()
@@ -339,7 +347,7 @@ Rail 是 Agent 推理循环中的拦截器链，在工具调用前后插入自�
 
 ### 4.1 通用 Rail — 拦截工具调用
 
-继承 `AgentRail`，重写 `onBeforeToolCall` / `onAfterToolCall` 等方法。框架在每次工具调用前后依次回调注册的 Rail 链。
+继承 `AgentRail`，重写 `beforeToolCall` / `afterToolCall` 等回调方法。框架在每次工具调用前后依次回调注册的 Rail 链。所有回调均返回 `void`，入参统一为单个 `AgentCallbackContext`。
 
 **✅ 推荐写法**
 
@@ -347,27 +355,30 @@ Rail 是 Agent 推理循环中的拦截器链，在工具调用前后插入自�
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
-import com.openjiuwen.core.singleagent.rail.RailDecision;
 
 /**
- * 记录每次工具调用的耗时和参数。
+ * 记录每次工具调用的名称和参数。
+ * <p>注：本类为教学示例的自定义类，与 agent-solution（edp-agent-java）真实的
+ * {@code LogRail(EdpConfig)} 同名但无关——真实类需要传配置对象构造。</p>
  */
 public class LogRail extends AgentRail {
 
     public LogRail() {
-        setPriority(100);          // 越低越先执行
+        setPriority(100);          // 数值越大越先执行（默认 50）
     }
 
     @Override
-    public RailDecision onBeforeToolCall(AgentCallbackContext ctx, ToolCallInputs inputs) {
-        log.info("工具调用开始: {} 参数: {}", inputs.getToolName(), inputs.getArguments());
-        return RailDecision.proceed();    // 放行
+    public void beforeToolCall(AgentCallbackContext ctx) {
+        if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+            log.info("工具调用开始: {} 参数: {}", inputs.getToolName(), inputs.getToolArgs());
+        }
     }
 
     @Override
-    public RailDecision onAfterToolCall(AgentCallbackContext ctx, ToolCallInputs inputs, Object result) {
-        log.info("工具调用结束: {} 耗时: {}ms", inputs.getToolName(), ctx.getElapsedMs());
-        return RailDecision.proceed();
+    public void afterToolCall(AgentCallbackContext ctx) {
+        if (ctx.getInputs() instanceof ToolCallInputs inputs) {
+            log.info("工具调用结束: {}", inputs.getToolName());
+        }
     }
 }
 
@@ -382,12 +393,15 @@ agent.registerRail(new LogRail());
 
 ```java
 import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
-import com.openjiuwen.core.singleagent.interrupt.InterruptDecision;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
-import com.openjiuwen.core.singleagent.interrupt.ToolInterruptException;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
 /**
  * 当 LLM 调用 ask_user 工具时，暂停并等待用户输入。
+ * <p>注：本类为教学示例的自定义类，与 agent-solution（edp-agent-java）真实的
+ * {@code AskUserTemplateRail(EdpConfig, SysScriptsConfig)} 同名但无关。</p>
  */
 public class AskUserTemplateRail extends BaseInterruptRail {
 
@@ -405,8 +419,9 @@ public class AskUserTemplateRail extends BaseInterruptRail {
         }
 
         // 发起中断
+        String arguments = toolCall.getArguments() == null ? "" : toolCall.getArguments();
         InterruptRequest req = InterruptRequest.builder()
-            .message(toolCall.getArguments().get("question").toString())
+            .message(arguments)
             .build();
         return interrupt(req);
     }
@@ -454,17 +469,16 @@ public class MyAgentHandler implements AgentHandler {
 public class MyAgentEnhancer {
 
     public void enhance(DeepAgent agent, MyConfig config) {
-        // 1) 注册业务工具
+        // 1) 注册业务工具（registerHarnessTool 内部封装了 addTool + abilityManager.add 两步）
         List<Tool> tools = buildTools(config);
         for (Tool tool : tools) {
-            agent.getAbilityManager().add(tool.getCard());
-            Runner.resourceMgr().addTool(tool, agent.getCard().getId(), true);
+            agent.registerHarnessTool(tool);
         }
 
         // 2) 注册业务 Rails
         List<AgentRail> rails = buildRails(config);
         for (AgentRail rail : rails) {
-            agent.registerRail(rail);
+            agent.getAgent().registerRail(rail);
         }
     }
 
@@ -478,10 +492,12 @@ public class MyAgentEnhancer {
     }
 
     private List<AgentRail> buildRails(MyConfig config) {
+        // 真实 agent-solution（edp-agent-java）的 Rail 构造器都要传配置对象：
+        // LogRail(EdpConfig)、ExecutionLimitRail(ActRuleConfig)、AskUserTemplateRail(EdpConfig, SysScriptsConfig)
         return List.of(
-            new LogRail(),
-            new ExecutionLimitRail(50),
-            new AskUserTemplateRail()
+            new LogRail(config.getEdpConfig()),
+            new ExecutionLimitRail(config.getActRuleConfig()),
+            new AskUserTemplateRail(config.getEdpConfig(), config.getScriptsConfig())
         );
     }
 }
@@ -502,15 +518,15 @@ AgentHandler agentHandler(...) {
 AgentHandler agentHandler() {
     DeepAgent agent = HarnessFactory.createDeepAgent(...);
 
-    // 工具注册散落在各处
-    agent.getAbilityManager().add(hotelCard);
+    // 工具注册散落在各处（DeepAgent 上没有 getAbilityManager/registerRail，须先 getAgent()）
+    agent.getAgent().getAbilityManager().add(hotelCard);
     Runner.resourceMgr().addTool(hotelTool, agentId, true);
 
-    agent.getAbilityManager().add(flightCard);          // 漏了 addTool
+    agent.getAgent().getAbilityManager().add(flightCard);          // 漏了 addTool
     // ... 50 行后
-    agent.registerRail(new LogRail());
+    agent.getAgent().registerRail(new LogRail(edpConfig));
     // ... 100 行后
-    agent.registerRail(new ExecutionLimitRail(50));
+    agent.getAgent().registerRail(new ExecutionLimitRail(actRuleConfig));
     // 新增一个工具要找半天该插哪
 
     return new JiuwenCoreAgentHandler(agent);
@@ -537,12 +553,14 @@ AgentHandler agentHandler() {
 
 ```java
 import com.openjiuwen.service.spec.lifecycle.AgentInitHook;
+import com.openjiuwen.service.spec.lifecycle.AgentShutdownHook;
 import com.openjiuwen.service.spec.lifecycle.AgentLifecycleContext;
 import org.springframework.stereotype.Component;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.Ordered;
 
 @Component
-@Order(1)                  // 数值越小越先执行，沙箱初始化通常放前面
+@Order(Ordered.HIGHEST_PRECEDENCE + 100)   // 数值越小越先执行（init 不反转），沙箱初始化尽量靠前
 public class SandboxInitHook implements AgentInitHook {
 
     @Override
@@ -555,7 +573,7 @@ public class SandboxInitHook implements AgentInitHook {
 }
 
 @Component
-@Order(100)                // 关闭时后执行
+@Order(Ordered.LOWEST_PRECEDENCE)          // 关闭钩子会反转执行：数值越大越先执行
 public class SandboxShutdownHook implements AgentShutdownHook {
 
     @Override
@@ -587,8 +605,8 @@ public class MyService {
 
 **💡 为什么推荐 Hook 而非 `@PostConstruct`/`@PreDestroy`**
 
-1. **时序保证** — `AgentInitHook` 在 `AgentHandler.start()` 之前执行，`AgentShutdownHook` 在 `AgentHandler.stop()` 之后执行。Spring 的 `@PostConstruct` 时序不确定
-2. **框架感知** — Hook 有 `AgentLifecycleContext` 参数，可以访问 `AgentHandler` 实例和运行状态
+1. **时序保证** — `AgentInitHook` 在 `AgentHandler.start()` 之前执行，`AgentShutdownHook` 在 `AgentHandler.stop()` 之前执行（先清理资源再停 handler）。Spring 的 `@PostConstruct` 时序不确定
+2. **框架感知** — Hook 有 `AgentLifecycleContext` 参数，可读写自定义属性（`getAttribute`/`setAttribute`）；但它**不**暴露 `AgentHandler` 实例（只有 `getAppName()`/`getAttributes()`/`getAttribute`/`setAttribute` 四个方法）
 3. **可排序** — `@Order` 控制多个 Hook 的执行顺序，`@PostConstruct` 的顺序依赖 Spring 容器内部逻辑
 4. **统一的错误处理** — `onInit()` 抛异常时框架根据 `init-fail-fast` 配置决定是否阻止启动，`@PostConstruct` 抛异常直接导致容器启动失败
 
@@ -673,7 +691,7 @@ DeepAgent 内置 6 种预置 SubAgent，各自配备专用工厂和内置工具�
 | Plan Agent | `PlanAgentFactory.createPlanAgent(language, workspace)` | 任务规划/分解 |
 | Research Agent | `ResearchAgentFactory.createResearchAgent(language, workspace)` | 信息检索/汇总 |
 | Verification Agent | `VerificationAgentFactory.createVerificationAgent(language, workspace)` | 结果校验 |
-| Browser Agent | `BrowserAgentFactory.createBrowserAgent(settings, language, workspace, headless)` | 网页浏览 |
+| Browser Agent | `BrowserAgentFactory.createBrowserAgent(settings, language, workspace, tools, subagents)` | 网页浏览 |
 
 全部工厂位于 `com.openjiuwen.harness.subagents` 包。
 
@@ -683,35 +701,36 @@ DeepAgent 内置 6 种预置 SubAgent，各自配备专用工厂和内置工具�
 import com.openjiuwen.harness.subagents.CodeAgentFactory;
 import com.openjiuwen.harness.subagents.ResearchAgentFactory;
 import com.openjiuwen.harness.factory.HarnessFactory;
+import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 Workspace workspace = Workspace.builder()
     .rootPath("target/agents/my-agent")
     .language("zh-CN")
     .build();
 
-// 主 Agent（自动注册全部 6 种 SubAgent）
+// SubAgent 通过 DeepAgentConfig.subagents 配置，工厂负责统一装配
+DeepAgentConfig config = DeepAgentConfig.builder()
+    .systemPrompt("你是深度研究助手...")
+    .subagents(List.of(
+            CodeAgentFactory.createCodeAgent("zh-CN", workspace),
+            ResearchAgentFactory.createResearchAgent("zh-CN", workspace)))
+    .build();
 DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
-// HarnessFactory 内部会自动调用各 SubAgentFactory 注册
-
-// 如果只想注册特定 SubAgent（用重载版本）：
-DeepAgent agent2 = HarnessFactory.createDeepAgent(card, config, workspace,
-    List.of(CodeAgentFactory.createCodeAgent("zh-CN", workspace),
-            ResearchAgentFactory.createResearchAgent("zh-CN", workspace)));
 ```
 
 **❌ 不要这样**
 
 ```java
-// 自己 new SubAgent，缺少 Rail/工具注册
-DeepAgent codeAgent = new DeepAgent(card, config);
+// 自己 new DeepAgent（跳过工厂），缺少 SubAgent/Rail 自动装配
+DeepAgent codeAgent = new DeepAgent(card, config, workspace);
 // 然后手动注册到主 Agent — 顺序、优先级、Rail 管够不全
 ```
 
 **💡 为什么这是推荐的**
 
 1. **SubAgent 不是裸 DeepAgent** — 每个工厂内部做了三件事：创建 AgentCard + 绑定专用工具（读写文件/搜索/校验）+ 注册专用 Rail（权限/日志）。自己 `new` 拿不到这些
-2. **HarnessFactory 已经集成** — `createDeepAgent()` 全自动注册 6 种 SubAgent，你不需要手动管理
-3. **可裁剪** — 重载版本接受 `List<DeepAgent>` 参数，只注册需要的
+2. **HarnessFactory 统一装配** — `createDeepAgent()` 负责注入默认 Rail（SecurityRail 等）、SysOperation 与 KVStore，SubAgent 由 `DeepAgentConfig.subagents` 指定
+3. **可裁剪** — 通过 `config.subagents(...)` 只传入需要的 SubAgent 实例；general-purpose 子代理默认关闭（`isGeneralPurposeAgentEnabled=false`），需显式 `addGeneralPurposeAgent(true)` 才注入
 
 ---
 
@@ -719,17 +738,19 @@ DeepAgent codeAgent = new DeepAgent(card, config);
 
 > 核心仓库：**agent-core-java**
 
-框架通过 Provider + Factory 模式抽象向量存储、KV 存储、对象存储三层 SPI。业务代码只依赖 `VectorStore`/`KVStore`/`ObjectStorage` 接口，切换后端只需改配置，不动代码。
+框架通过 Provider + Factory 模式抽象向量存储、KV 存储、对象存储三类 SPI。向量存储有「检索层 + SPI 底层」两层（业务代码依赖检索层 `VectorStore`）；KV/Object 存储只有 `spi.store` 这一层（业务代码直接依赖 `BaseKVStore` / `BaseObjectStorageClient`）。切换后端只需改配置，不动代码。
 
 ### 9.1 三种存储 SPI
 
 | 存储类型 | SPI 接口 | 工厂 | 内置实现 |
 |---------|---------|------|---------|
-| 向量存储 | `VectorStoreProvider` | `VectorStoreFactory` | InMemory / Milvus / PGVector / Elasticsearch / Chroma |
-| KV 存储 | `KVStoreProvider` | `KVStoreFactory` | InMemoryKVStore |
-| 对象存储 | `ObjectStorageProvider` | `ObjectStorageFactory` | BaseObjectStorageClient |
+| 向量存储 | `VectorStoreProvider` | `VectorStoreFactory` | InMemoryVectorStore / MilvusVectorStore / PGVectorStore / ElasticsearchVectorStore / ChromaVectorStore |
+| KV 存储 | `KVStoreProvider` | `KVStoreFactory` | InMemoryKVStore / SqliteKVStore / RedisStore |
+| 对象存储 | `ObjectStorageProvider` | `ObjectStorageFactory` | 无默认注册 |
 
 全部位于 `com.openjiuwen.spi.store` 包。
+
+> ⚠️ KV 存储的三个 provider（`in_memory` / `sqlite` / `redis`）经 `META-INF/services` 注册，其中 `sqlite` 为持久化后端、`redis` 走 Redis 扩展。对象存储**默认未注册任何 provider**（`META-INF/services/.../ObjectStorageProvider` 为空文件），直接 `ObjectStorageFactory.create(type, conf)` 会抛 `IllegalArgumentException`；需自行实现 `ObjectStorageProvider` 并 `ObjectStorageFactory.register(...)` 后才能使用。
 
 **✅ 推荐写法（检索层 — 业务代码依赖这一层）**
 
@@ -783,7 +804,7 @@ VectorStore store = VectorStoreFactory.create("milvus", config); // ❌ 类型�
 
 1. **两层解耦** — 底层 `VectorStoreProvider.typeName()` + `create(conf)` 由 `VectorStoreFactory` 用 ServiceLoader 发现并注册；检索层 `createVectorStore(VectorStoreConfig)` 按 `storeType` 路由。切换向量库只需改 `storeProvider`，不碰业务代码
 2. **统一接口** — 检索层工厂返回 `core.retrieval.vector_store.VectorStore` 接口，业务代码只依赖接口，不感知底层实现
-3. **同样适用于 KV/Object** — 检索层另有 `KVStore` / `ObjectStorage` 抽象，底层 `spi.store` 是扩展点，模式一致
+3. **KV/Object 只有单层 SPI** — 与向量存储不同，KV/Object 没有独立的「检索层」抽象，业务代码直接依赖 `spi.store` 层的 `BaseKVStore` / `BaseObjectStorageClient`（`DeepAgent` 内部直接持有 `BaseKVStore` 字段）；扩展新后端通过 `KVStoreProvider` / `ObjectStorageProvider` 实现
 
 ---
 
@@ -793,13 +814,14 @@ VectorStore store = VectorStoreFactory.create("milvus", config); // ❌ 类型�
 
 Checkpointer 负责 Agent 会话状态的快照持久化，是生产环境中中断/恢复机制的基石。支持 InMemory（开发期）和 Redis（生产）两种后端，纯 yaml 配置，零代码接入。
 
-### 10.1 三种后端
+### 10.1 两种后端（yaml 可配）
 
 | 后端 | type 配置 | 适用场景 |
 |------|----------|---------|
 | InMemory | `in_memory` | 开发/测试（JVM 内存，不序列化，重启丢失） |
 | Redis | `redis` | 生产（持久化，7 天 TTL，跨请求恢复） |
-| Persistence | `persistence` | 自定义持久化（需实现 `KVStoreProvider`） |
+
+> ⚠️ 运行时 yaml 层（`openjiuwen.service.middleware.checkpointer`）只识别 `in_memory` 和 `redis` 两个值（`AgentCoreCheckpointerConfigAssembler` 对其他值直接抛 `IllegalArgumentException`）。`persistence` 是底层 SPI 后端（经 `CheckpointerFactory` 的 ServiceLoader 加载，内部通过 `KVStoreFactory.create(...)` 委托给 `com.openjiuwen.spi.store.KVStoreProvider` 的实现——如 `SqliteKVStoreProvider`——创建底层存储），不能通过该 yaml 前缀配置。
 
 **✅ 推荐写法（Redis 后端）**
 
@@ -843,16 +865,17 @@ openjiuwen:
 
 1. **纯配置，零代码** — 不需要写一行 Java。框架在 `AgentHandler.start()` 时自动组装 `CheckpointerConfig` → `CheckpointerFactory.create()` → 注册到 `RunnerConfig`
 2. **中断恢复自动完成** — Agent 执行中触发中断时，Checkpointer 自动保存快照到 Redis（Key: `{sessionId}:agent:{agentId}:agent_state_blobs`）。下一次请求时自动检测并恢复
-3. **Redis Key 生命周期** — 默认 TTL 7 天，`refresh_on_read=false`（读不刷新）。正常完成时 `postAgentExecute` 自动清理 key，避免残留
+3. **Redis Key 生命周期** — 默认 TTL 7 天，`refresh_on_read=false`（读不刷新）。`postAgentExecute` 只做 `agentStorage.save`（保存快照），真正的清理在 `postWorkflowExecute`（且只清 workflow 状态，不清 agent 状态）
 4. **⚠️ InMemory 的局限** — 仅适合单机开发。不序列化到外部存储，进程重启全丢，不支持跨请求恢复。上生产必须切 Redis
 
 ---
 
 ## 11. A2A 远程调用
 
-> 核心仓库：**agent-runtime-java**
+> 核心仓库：**agent-runtime-java**（卡发现 + 调用路由）
+> 工具自动注册 + 中断处理：**agent-solution** 的 `agent-runtime-ext-java` 扩展模块
 
-框架通过 `RemoteAgentCaller` + `RemoteAgentCardResolver` 两个 SPI 支持 Agent 间互相发现与调用，实现多 Agent 编排。远端 Agent 通过 yaml 声明式配置，框架自动完成卡发现、工具注册、调用路由和中断透传。
+框架通过 `RemoteAgentCaller` + `RemoteAgentCardResolver` 两个 SPI 支持 Agent 间互相发现与调用，实现多 Agent 编排。远端 Agent 通过 yaml 声明式配置。卡发现（`A2AAgentCardDiscovery`）与调用路由（`A2AEnabledServeOrchestrator`）由 agent-runtime-java 自动完成；工具自动注册与中断处理需引入 agent-solution 的 `agent-runtime-ext-java` 扩展模块（`RemoteA2aToolInstaller` + `RemoteA2aInterruptRail`，走 `JiuwenCoreAgentExtHandler`）。纯 agent-runtime-java 需手写委派 Rail（参考 `agent-service-demo/example/a2a/A2aDelegateRail`）。
 
 ### 11.1 架构
 
@@ -896,7 +919,7 @@ openjiuwen:
 框架启动时自动：
 1. `A2AAgentCardDiscovery` 向每个 agent 的 `/.well-known/agent-card.json` 拉取 AgentCard
 2. 缓存到 `A2ARemoteAgentCardRegistry`
-3. 将 `delegate_to_{agentName}` 工具注册到本地 Agent
+3.（需 agent-solution 扩展模块）将远端 Agent 声明的工具注册到本地 Agent（工具名 = yaml 里的 `name`，如 `hotel-agent`），并挂上 `RemoteA2aInterruptRail` 处理调用与中断
 
 **❌ 不要这样**
 
@@ -909,10 +932,10 @@ HttpResponse<String> resp = client.send(request, BodyHandlers.ofString());
 
 **💡 为什么这是推荐的**
 
-1. **协议完整性** — `A2ARemoteAgentClient` 封装了完整的 A2A 协议：AgentCard 发现 → SendStreamingMessage → Task 状态跟踪 → 终端状态（COMPLETED/INPUT_REQUIRED/FAILED）→ 结果提取
+1. **协议完整性** — `A2ARemoteAgentClient` 封装了完整的 A2A 协议：AgentCard 发现 → SendStreamingMessage → Task 状态跟踪 → 终端状态（COMPLETED/FAILED）与中断态（INPUT_REQUIRED）→ 结果提取
 2. **中断透传** — 远端 Agent 返回 `INPUT_REQUIRED` 时，本地 Orchestrator 自动转换为本地中断类型（`a2a_delegate`），用户输入后自动 resume
 3. **SPI 可替换** — `RemoteAgentCaller` 和 `RemoteAgentCardResolver` 是 SPI，部署环境可通过 `A2AGatewayRemoteAgentCaller` 走网关路由，不需要直接访问远端 agent
-4. **纯 yaml 配置** — 加一个 agent 只需两行 yaml，不需要写 Java 代码
+4. **纯 yaml 配置** — 加一个 agent 只需两行 yaml，不需要写 Java 代码（前提：已引入 agent-solution 的 `agent-runtime-ext-java` 扩展模块；纯 agent-runtime-java 需手写委派 Rail）
 
 ---
 
@@ -947,10 +970,14 @@ Agent 自动获得两个工具：
 
 LLM 在对话中自主决定何时调用。业务代码通常不需要手动操作 Memory。
 
+> 注：`MemoryToolRegistrar` 操作的目标类型是 `ReActAgent`，而 `registerHarnessTool()` 只在 `DeepAgent` 上、`ReActAgent` 没有该方法，因此它内部走的是手动两步注册（`Runner.resourceMgr().addTool(...)` + `agent.getAbilityManager().add(...)`），这不是反例——是 `ReActAgent` 上唯一可行的写法。
+
 **✅ 如需自定义 Memory 实现**
 
 ```java
 import com.openjiuwen.core.memory.external.MemoryProvider;
+import java.util.List;
+import java.util.Map;
 
 @Component
 public class MyMemoryProvider implements MemoryProvider {
@@ -967,19 +994,23 @@ public class MyMemoryProvider implements MemoryProvider {
     }
 
     @Override
+    public List<Map<String, Object>> getToolSchemas() {
+        // 暴露给 LLM 的记忆工具 schema（memory_search / memory_add）
+        return List.of();
+    }
+
+    @Override
     public String prefetch(String query, Map<String, Object> kwargs) {
         // 查询相关记忆，注入 system prompt
-        return memoryStore.search(query);
+        // 示例：return yourMemoryBackend.searchUserMem(query, 5, userId, scopeId, 0.3);
+        return "";
     }
 
     @Override
     public void syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs) {
         // 每轮对话结束后存储
-        memoryStore.add(userMsg, assistantMsg);
+        // 示例：yourMemoryBackend.addMessages(List.of(userMsg, assistantMsg), ...);
     }
-
-    @Override
-    public List<Map<String, Object>> getToolSchemas() { return List.of(); }
 
     @Override
     public String handleToolCall(String toolName, Map<String, Object> args) {
@@ -991,12 +1022,12 @@ public class MyMemoryProvider implements MemoryProvider {
 **❌ 不要这样**
 
 ```java
-// 绕过 MemoryProvider SPI，在 Rail 中直接调向量库
+// 绕过 MemoryProvider SPI，在 Rail 回调里直接调向量库
 public class MemoryRail extends AgentRail {
     @Override
-    public RailDecision onBeforeAgentCall(...) {
-        // QueryContext 中硬编码 prompt 拼接记忆内容
-        ctx.appendSystemPrompt(milvusClient.search(userMsg));
+    public void beforeModelCall(AgentCallbackContext ctx) {
+        // 绕过 SPI：在回调里硬编码向量库查询并塞回上下文
+        ctx.pushSteering(milvusClient.search(userMsg).toString());
     }
 }
 ```
@@ -1005,7 +1036,7 @@ public class MemoryRail extends AgentRail {
 
 1. **SPI 统一入口** — `MemoryProvider` 定义了 7 个抽象方法（`getName` / `isAvailable` / `initialize` / `getToolSchemas` / `handleToolCall` / `prefetch` / `syncTurn`）+ 4 个 default 方法（`systemPromptBlock` / `shutdown` / `onSessionEnd` / `isInitialized`），框架自动在合适时机回调
 2. **框架管理生命周期** — `initialize()` / `shutdown()` / `onSessionEnd()` 由框架统一调度，不需要手动管理
-3. **工具自动暴露** — 实现 `getToolSchemas()` / `handleToolCall()` 后，框架自动注册为 Agent 工具，LLM 可见
+3. **工具自动暴露** — 实现 `handleToolCall()` 后，框架自动注册为 Agent 工具，LLM 可见
 4. **不要和 Checkpointer 混淆** — Memory 跨 session 用，Checkpointer 单 session 用。不要用 Memory 存 checkpoint 快照
 
 ---
@@ -1015,16 +1046,16 @@ public class MemoryRail extends AgentRail {
 | ❌ 不要这样 | ✅ 应该这样 | 仓库 |
 |------------|------------|------|
 | `new DeepAgent(...)` | `HarnessFactory.createDeepAgent(...)` | agent-core-java |
-| `new SubAgent(...)` | `XxxAgentFactory.createXxxAgent(...)` | agent-core-java |
+| `new SubAgent(...)`（无此真实类，6 个 SubAgent 工厂返回的都是 `DeepAgent`） | `XxxAgentFactory.createXxxAgent(...)` | agent-core-java |
 | `new MilvusClient(...)` 直接操作向量库 | `VectorStoreFactory.createVectorStore(new VectorStoreConfig("milvus", "my_vectors"))` | agent-core-java |
-| `new SandboxClient(...)` / `new McpClient(...)` | `sandboxClientFactory.create(serverId)` | agent-runtime-java |
+| `new SandboxClient(...)` | `AgentCoreSandboxClientFactory.create(serverId)` | agent-runtime-java |
+| `new McpClient(...)` | `McpClientFactory.create(config)` | agent-core-java |
 | 自己 `implements AgentHandler`（接入 openjiuwen 引擎时） | `new JiuwenCoreAgentHandler(agent)` 注册为 `@Bean` | agent-runtime-java |
 | Checkpointer 用 InMemory 跑生产 | 配置 `type: redis` | agent-runtime-java |
-| 用 `HttpClient` 手写远端 agent 调用 | yaml 配 `remote-agents`，框架自动走 A2A 协议 | agent-runtime-java |
+| 用 `HttpClient` 手写远端 agent 调用 | yaml 配 `remote-agents`，框架自动走 A2A 协议 | agent-runtime-java（工具注册/中断需 agent-solution 扩展） |
 | 绕过 `MemoryProvider` SPI 直接调向量库 | `implements MemoryProvider` + `@Component` | agent-core-java |
-| `agent.getAbilityManager().add(card)` 然后忘记 `addTool` | 两步都做：`add(card)` + `addTool(fn, id, true)` | agent-core-java |
+| 手动两步 `agent.getAgent().getAbilityManager().add(card)` + `Runner.resourceMgr().addTool(...)`，且漏掉 `addTool` | 直接 `agent.registerHarnessTool(tool)` 一步封装 | agent-core-java |
 | 在 Handler 层 `if-else` 判断工具名 | `extends BaseInterruptRail` 拦截指定工具 | agent-core-java |
 | `@PostConstruct` 管理沙箱初始化 | `implements AgentInitHook` + `@Bean` | agent-runtime-java |
 | 工具/Rail 注册散落在 Handler 各处 | Enhancer 模式集中注册 | agent-solution |
 | `new VersatileProperties()` 忘记设 `ambiguousIntentId=""` | 显式 `setAmbiguousIntentId("")` | agent-solution |
-| 跨 agent 硬编码 `if (text.equals("信用卡"))` 路由 | 让 agent 声明 `isUnhandledInput`，路由层只做优先级调度 | agent-solution |

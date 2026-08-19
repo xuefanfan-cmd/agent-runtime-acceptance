@@ -65,13 +65,20 @@ import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
+// 0) LLM 连接配置（示例值，实际从环境变量/配置中心注入）
+String modelName = "deepseek-chat";
+String apiKey = "sk-xxx";
+String apiBase = "https://api.example.com/v1";
+
 // 1) 配置
 DeepAgentConfig config = DeepAgentConfig.builder()
     .systemPrompt("你是深度研究助手...")
     .maxIterations(15)
-    .language("zh-CN")
+    .language("cn")               // 语言代码只识别 "cn"（非 "zh-CN"）
     .workspacePath("target/agents/my-agent")
-    .model(model)
+    .model(Map.of("model", modelName, "temperature", 0.1, "top_p", 0.8))   // model 传 Map：请求参数，合法 key 见 DeepAgent.applyModelConfig（model/model_name/modelName、temperature、top_p/topP 等）
+    .backend(Map.of("provider", "OpenAI", "api_key", apiKey,
+            "api_base", apiBase, "verify_ssl", true, "timeout", 120L))    // backend 传 Map：连接配置，provider/apiKey/apiBase 三者缺一即被静默丢弃（DeepAgent.applyBackendConfig）
     .enableTaskLoop(true)
     .restrictToWorkDir(true)
     .rails(List.of(myRail))       // 可选：注册 Rail
@@ -79,7 +86,7 @@ DeepAgentConfig config = DeepAgentConfig.builder()
 
 Workspace workspace = Workspace.builder()
     .rootPath("target/agents/my-agent")
-    .language("zh-CN")
+    .language("cn")
     .build();
 
 AgentCard card = AgentCard.builder()
@@ -87,6 +94,7 @@ AgentCard card = AgentCard.builder()
 
 // 2) 工厂创建
 DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
+agent.ensureInitialized();          // 显式初始化（幂等，框架内部执行/查询入口也会自动懒调用）
 ```
 
 **❌ 不要这样**
@@ -705,15 +713,15 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 Workspace workspace = Workspace.builder()
     .rootPath("target/agents/my-agent")
-    .language("zh-CN")
+    .language("cn")
     .build();
 
 // SubAgent 通过 DeepAgentConfig.subagents 配置，工厂负责统一装配
 DeepAgentConfig config = DeepAgentConfig.builder()
     .systemPrompt("你是深度研究助手...")
     .subagents(List.of(
-            CodeAgentFactory.createCodeAgent("zh-CN", workspace),
-            ResearchAgentFactory.createResearchAgent("zh-CN", workspace)))
+            CodeAgentFactory.createCodeAgent("cn", workspace),
+            ResearchAgentFactory.createResearchAgent("cn", workspace)))
     .build();
 DeepAgent agent = HarnessFactory.createDeepAgent(card, config, workspace);
 ```

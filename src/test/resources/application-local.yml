@@ -84,6 +84,14 @@ sut:
       group: com.openjiuwen.example
       artifact: agent-verify
       version: 0.1.0
+    # —— EDPAgent（FEAT-028 EDPA 场景下子任务并行验收的委托方 SUT）——
+    # 装载 jar 内置 governance/planrule.yaml；本方案不启用业务场景
+    # （scenario-home 指向不存在路径 → 走内置通用并行规划路径）。
+    # 被委托方通过环境变量 EDP_AGENT_SEARCH_A2A_URL / EDP_AGENT_VERSATILE_A2A_URL 注入。
+    edp-agent:
+      group: com.openjiuwen.example
+      artifact: edp-agent-engine
+      version: 0.1.0
   # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
   # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
   # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.

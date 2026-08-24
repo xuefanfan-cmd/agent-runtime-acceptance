@@ -1049,6 +1049,388 @@ public class MemoryRail extends AgentRail {
 
 ---
 
+## 13. OpenTelemetry 可观测性
+
+> 引擎实现来自：**agent-core-java**（`extensions/tracerotel` 与 `agentteams/observability`，`@since 0.1.7`）
+> 服务化装配来自：**agent-solution**（`agent-service-adapters-agentcore-ext` 的 `middleware/otel` 包）
+
+OpenTelemetry（OTel）是 CNCF 的跨语言可观测性标准，用统一的 Span / Trace / 属性模型描述一次调用链。openJiuwen 引擎内置了自研的 trace 事件模型（`com.openjiuwen.core.session.tracer` 的 `TraceAgentSpan` / `Tracer`），并在其上提供 OTel 扩展，把内置事件翻译成标准 OTLP span 上报到 Jaeger、Langfuse、Grafana Tempo 等后端。
+
+框架的 OTel 能力分三层，职责不重叠：
+
+| 层 | 包 | 职责 | 何时用 |
+|---|---|---|---|
+| 引擎扩展 | `com.openjiuwen.extensions.tracerotel` | Agent / Workflow 维度的 OTel span 翻译 | 引擎侧直接埋点、自建运行时 |
+| Team 观测 | `com.openjiuwen.agentteams.observability` | TeamAgent 多智能体观测、Langfuse Basic 鉴权对接 | TeamAgent 场景 |
+| 服务化装配 | `com.openjiuwen.service.adapters.agentcore.ext.middleware.otel` | Spring Boot 自动装配、HTTP 入口 span、A2A 出站 span | 服务化运行（edp-agent 等） |
+
+三层共享同一套依赖（OpenTelemetry BOM 1.64.0），但 tracerotel 与 observability 各自持有独立的 `SdkTracerProvider` 引用、**都不调用 `GlobalOpenTelemetry.set()`**，互不污染全局状态，可同时启用。
+
+### 13.1 依赖引入
+
+**✅ 推荐写法**（agent-core-java 的 pom.xml 真实片段）
+
+```xml
+<properties>
+    <open-telemetry.version>1.64.0</open-telemetry.version>
+</properties>
+
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-bom</artifactId>
+            <version>${open-telemetry.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-api</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-sdk</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-otlp</artifactId>
+        <exclusions>
+            <exclusion>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+            </exclusion>
+        </exclusions>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-sender-jdk</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-sender-grpc-managed-channel</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-logging</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-sdk-testing</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+```
+
+**💡 为什么这样引入**
+
+1. **版本收敛** — 所有 OTel 组件版本统一由 `opentelemetry-bom` 导入管理，业务模块不各自声明版本号，避免 `api` / `sdk` 版本错配导致的运行时异常
+2. **导出器按需裁剪** — 框架用 `opentelemetry-exporter-sender-jdk`（HTTP）与 `sender-grpc-managed-channel`（gRPC）替换默认的 OkHttp sender，显式 `exclusion` 掉 `sender-okhttp`，避免引入多余 HTTP 客户端依赖
+3. **`sdk-testing` 仅测试用** — 提供 `InMemorySpanExporter`（见 13.2 单测写法），生产不打入
+
+### 13.2 引擎侧：tracerotel 扩展三步接入
+
+概念先行：tracerotel 扩展由四块组成——配置 `OtelTracerConfig`（Builder 模式）、初始化 `OtelTracerSetup.initOtelTracer()`（产出 `io.opentelemetry.api.trace.Tracer`）、事件翻译 `OtelAgentHandler` / `OtelWorkflowHandler`（把内置 tracer 事件翻译成 OTel span）、埋点 Rail `OtelRail`（在 Agent 回调里创建内置 span 并触发事件）。接入按「初始化 → 注册 handler → 挂 Rail」三步走。
+
+**✅ 推荐写法**
+
+第一步：初始化 Tracer（一次）
+
+```java
+import com.openjiuwen.extensions.tracerotel.OtelTracerConfig;
+import com.openjiuwen.extensions.tracerotel.OtelTracerSetup;
+import io.opentelemetry.api.trace.Tracer;
+
+OtelTracerConfig config = OtelTracerConfig.builder()
+        .exporterType("otlp")                       // "otlp" | "console"
+        .exporterEndpoint("http://localhost:4318")  // OTLP 导出端点
+        .protocol("http")                           // "grpc" | "http"
+        .serviceName("edp-agent")                   // Resource service.name，默认 "openjiuwen"
+        .serviceVersion("1.0.0")                    // 默认 null → "unknown"
+        .sampleRate(1.0)                            // 采样率 [0.0, 1.0]，越界 build() 抛 IllegalArgumentException
+        .isRedactionEnabled(true)                   // 总脱敏开关，默认 true
+        .build();
+Tracer otelTracer = OtelTracerSetup.initOtelTracer(config);
+```
+
+第二步：注册扩展 Handler（全局一次，须在 `invoke` 之前）
+
+```java
+import com.openjiuwen.core.session.tracer.TracerHandlerRegistry;
+import com.openjiuwen.extensions.tracerotel.OtelAgentHandler;
+import com.openjiuwen.extensions.tracerotel.OtelWorkflowHandler;
+
+TracerHandlerRegistry.registerHandler("otel_agent",
+        new OtelAgentHandler(otelTracer, config));
+TracerHandlerRegistry.registerHandler("otel_workflow",
+        new OtelWorkflowHandler(otelTracer, config));
+```
+
+第三步：给 Agent 注册埋点 Rail
+
+```java
+agent.registerRail(new OtelRail());
+```
+
+链路如何串起来：`OtelRail` 在 `beforeInvoke` / `beforeModelCall` / `beforeToolCall` 里通过 session 的 `Tracer` 创建内置 `TraceAgentSpan` 并触发 `tracer_agent` 事件；内置 `TraceAgentHandler` 收到事件后 `dispatchExt()` 分发给所有注册的扩展 handler；`OtelAgentHandler` 把事件翻译成 OTel span——LLM 用 `SpanKind.CLIENT` + `gen_ai.*` 属性，其余用 `SpanKind.INTERNAL` + `openjiuwen.agent.*`。`Tracer.init()` 会把 traceId 注入扩展 handler，用于桥接 OTel trace 与内置 tracer 的 UUID。
+
+**❌ 不要这样**
+
+```java
+// 1. 自己 new SdkTracerProvider 并覆盖全局 provider
+SdkTracerProvider provider = SdkTracerProvider.builder().build();
+GlobalOpenTelemetry.set(OpenTelemetrySdk.builder().setTracerProvider(provider).build());
+
+// 2. 用保留名注册，或忘记注册 handler 就开跑
+TracerHandlerRegistry.registerHandler("tracer_agent", new OtelAgentHandler(otelTracer, config));
+//     ↑ 抛 IllegalArgumentException：tracer_agent 是内置 handler 的保留名
+
+// 3. 只 new 不注册，指望它自动生效
+new OtelAgentHandler(otelTracer, config); // 不会生效——必须进 TracerHandlerRegistry
+```
+
+**💡 为什么推荐三步走**
+
+1. **不碰全局 provider** — `GlobalOpenTelemetry.set()` 是进程级一次性操作，会与 `agentteams.observability` 冲突；`OtelTracerSetup` 刻意只返回 `provider.get(name)` 的引用、不 set 全局
+2. **扩展 handler 走注册表** — `TracerHandlerRegistry` 是全局注册表，`Tracer.init()` 据此注入 traceId、内置 `TraceAgentHandler` 据此 `dispatchExt()`；注册名不能是 `tracer_agent` / `tracer_workflow` 保留名，重复注册也会抛异常
+3. **事件翻译对业务零侵入** — `OtelAgentHandler` 每个方法都有 try/catch 保护，OTel 失败只打 warn 日志、绝不向上抛给业务流
+
+单测写法（不依赖真实后端，用 `InMemorySpanExporter` 断言 span）：
+
+```java
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
+
+InMemorySpanExporter exporter = InMemorySpanExporter.create();
+SdkTracerProvider provider = SdkTracerProvider.builder()
+        .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+        .build();
+Tracer otelTracer = provider.get("openjiuwen.tracer.otel.test");
+// ... 调用 handler 后 ...
+List<SpanData> spans = exporter.getFinishedSpanItems(); // 断言 span 数量与属性
+```
+
+### 13.3 服务化侧：Spring Boot 自动装配
+
+概念先行：服务化运行时（edp-agent 等）无需手写 13.2 的三步，`middleware/otel` 提供 `OtelAutoConfiguration` 自动装配。激活条件有两个：配置 `openjiuwen.service.otel.enabled=true`（`@ConditionalOnProperty`），且 classpath 上存在 tracerotel 扩展（`@ConditionalOnClass(OtelTracerSetup.class)`）；不满足时宿主行为与未装配完全一致。
+
+**✅ 推荐写法**（application.yaml）
+
+```yaml
+openjiuwen:
+  service:
+    otel:
+      enabled: true
+      endpoint: http://localhost:4318     # 回退 OTEL_EXPORTER_OTLP_ENDPOINT
+      protocol: http                      # grpc | http，回退 OTEL_EXPORTER_OTLP_PROTOCOL，默认 grpc
+      service-name: edp-agent             # 回退 OTEL_SERVICE_NAME，默认 edp-agent
+      service-version: 1.0.0              # 回退 OTEL_SERVICE_VERSION
+      service-instance-id: ${HOSTNAME:}   # 回退 OTEL_SERVICE_INSTANCE_ID，空则随机 UUID
+      sample-rate: 1.0                    # 回退 OTEL_TRACES_SAMPLER_ARG
+      timeout: 30s                        # 回退 OTEL_EXPORTER_OTLP_TIMEOUT（毫秒）
+      headers:                            # 设置后整体替代 OTEL_EXPORTER_OTLP_HEADERS
+        authorization: "Basic ..."
+```
+
+配置优先级（`OtelEnvProperties`）：**Spring 配置 `openjiuwen.service.otel.*` > `OTEL_*` 环境变量 > 内置默认值**（protocol=grpc、endpoint 按 protocol 默认 `localhost:4317/4318`、service.name=`edp-agent`、timeout=10s）。装配后自动完成：`OtelProviderHolder` 建 provider（`SessionIdSpanProcessor → BatchSpanProcessor → OtelCompatSpanExporter → OTLP`）、`OtelAgentRegistrar` 注册 `OtelJsonAgentHandler`（注册名 `otel_agent`）、`HttpRequestSpanFilter` 拦 `/a2a`、`/a2a/*`、`/v1/*` 入口、`OtelRemoteAgentCallerPostProcessor` 包 A2A 出站、`OtelJiuwenCoreAgentHandler`（`@ConditionalOnMissingBean(AgentHandler.class)`）每次请求 bind Rail。
+
+**❌ 不要这样**
+
+```java
+// 在业务 AgentHandler 里自己 new provider + 手写 if-else 开关
+public class MyAgentHandler extends JiuwenCoreAgentHandler {
+    private final SdkTracerProvider provider = SdkTracerProvider.builder().build(); // 重复造轮子
+    @Override
+    public QueryResponse query(ServeRequest req) {
+        if (otelEnabled) { /* 手动开 span */ }
+        return super.query(req);
+    }
+}
+```
+
+**💡 为什么用自动装配**
+
+1. **开关收敛到配置项** — 用 `@ConditionalOnProperty` 而非运行期 `if-else`，关掉后零副作用
+2. **不绕既定链路** — 自建 provider 会绕过 `SessionIdSpanProcessor`（`session.id` 注入）、`OtelCompatSpanExporter`（兼容层）、`OtelSdkFactory` 的 `service.instance.id` Resource 组装
+
+注意：装配层的 `OtelEnvProperties.toTracerConfig()` 按产品决策强制 `isRedactionEnabled=false`、`maxAttrLength=-1`（不脱敏不截断），与引擎侧默认值不同，见 13.6。
+
+### 13.4 全链路父子 Span 打通
+
+概念先行：服务化运行时一条请求的 span 树是 `http.request(SERVER) → agent 根 span → llm/tool 子 span → 远端 agent(CLIENT，A2A 出站)`，各环节由不同组件负责，但落在同一条 trace 上。
+
+| 环节 | 组件 | 说明 |
+|---|---|---|
+| HTTP 入口 | `HttpRequestSpanFilter` | 产生 `http.request` SERVER 根 span，缓存 body、解析 `conversationId`，SSE 用 `AsyncListener` 结束 span，支持 `traceparent` 头接远程父上下文 |
+| 跨线程传递 | `HttpContextBridge` | 按 `conversationId` 把 http 根 span 从请求线程传给 loop 线程 |
+| 会话 id 注入 | `SessionIdSpanProcessor` | `onStart` 时把 `session.id` 写到每个 span（读 `SessionContextHolder`） |
+| 引擎 span | `OtelRail` + `OtelAgentHandler` | agent / llm / tool 三级 span |
+| A2A 出站 | `OtelRemoteAgentCallerDecorator` | 产生 `sub_agent.dispatch` / `service.versatile_adapter` CLIENT span，父上下文来自 `EgressContextStash`（回退 `HttpContextBridge`） |
+
+**✅ 推荐写法**（自定义扩展一个 SpanProcessor：给每个 span 打上自己的属性）
+
+```java
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.SessionContextHolder;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.sdk.trace.ReadWriteSpan;
+import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.SpanProcessor;
+
+/** 把 session.id 写到每个 span 的起始处（对齐真实 SessionIdSpanProcessor 的写法）。 */
+public class SessionIdSpanProcessor implements SpanProcessor {
+    private static final AttributeKey<String> SESSION_ID = AttributeKey.stringKey("session.id");
+
+    @Override
+    public void onStart(Context parentContext, ReadWriteSpan span) {
+        Session session = SessionContextHolder.getCurrentSession();
+        if (session == null || session.getSessionId() == null || session.getSessionId().isBlank()) {
+            return;
+        }
+        span.setAttribute(SESSION_ID, session.getSessionId());
+    }
+
+    @Override
+    public boolean isStartRequired() {
+        return true;
+    }
+
+    @Override
+    public void onEnd(ReadableSpan span) {
+        // 属性只在 start 时写，end 无需处理
+    }
+
+    @Override
+    public boolean isEndRequired() {
+        return false;
+    }
+}
+```
+
+**❌ 不要这样**
+
+```java
+// 把属性名硬编码成字符串，两个 handler 各写各的，拼写漂移后后端查不到
+span.setAttribute("gen_ai.promt", prompt);    // 拼错了没人发现
+span.setAttribute("openjiuwen.invokeid", id); // 命名不统一，与语义约定脱节
+```
+
+**💡 为什么统一约定**
+
+1. **SemConv 常量收敛** — 所有属性 key 集中在 `SemConv` 常量类：`gen_ai.*` 对齐 GenAI 语义约定，`openjiuwen.agent.*` / `openjiuwen.workflow.*` 是项目扩展；集中一处避免 typo 漂移（见 13.5）
+2. **SpanKind 决定归类** — LLM 调用是出站客户端语义用 `SpanKind.CLIENT`，工具/检索/链是内部逻辑用 `SpanKind.INTERNAL`，HTTP 入口用 `SpanKind.SERVER`；错标 kind 会让后端把内部步骤误当成外部依赖
+
+### 13.5 语义约定常量
+
+概念先行：`SemConv` 把三类属性 key 定义成 `public static final String` 常量——标准 `gen_ai.*`（对齐 GenAI / OpenLLMetry 语义约定）、项目扩展 `openjiuwen.agent.*`（非 LLM 类型）与 `openjiuwen.workflow.*`（工作流）、桥接字段 `openjiuwen.trace.id` / `openjiuwen.invoke_id` 等。
+
+**✅ 推荐写法**
+
+```java
+import com.openjiuwen.extensions.tracerotel.SemConv;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+
+Span span = tracer.spanBuilder("llm." + modelName)
+        .setSpanKind(SpanKind.CLIENT)   // LLM 用 CLIENT，其余业务用 INTERNAL
+        .startSpan();
+span.setAttribute(SemConv.GEN_AI_SYSTEM, SemConv.GEN_AI_SYSTEM_VALUE);  // "openjiuwen"
+span.setAttribute(SemConv.GEN_AI_OPERATION_NAME, "chat");
+span.setAttribute(SemConv.GEN_AI_REQUEST_MODEL, modelName);
+span.setAttribute(SemConv.OJ_AGENT_INVOKE_TYPE, InvokeType.LLM.getValue());
+span.setAttribute(SemConv.OJ_TRACE_ID, traceId);   // 桥接内置 tracer UUID
+```
+
+**❌ 不要这样**
+
+```java
+// 每个 handler 各自定义一遍属性 key，两处定义不一致即产生不可见的数据断裂
+private static final String GEN_AI_PROMPT = "gen_ai.prompt";
+// ...另一个类里...
+span.setAttribute("gen_ai.prompt", prompt); // 手写字符串，无人保证与 SemConv 一致
+```
+
+**💡 为什么用常量类**
+
+1. **单点维护** — 新增/改名属性只需改 `SemConv` 一处，所有 handler 自动同步
+2. **桥接字段有明确语义** — `openjiuwen.trace.id` 把 OTel trace 与内置 tracer 的 UUID 关联，便于在 OTel 后端反查引擎侧轨迹；`openjiuwen.parent_invoke_id` / `openjiuwen.child_invoke_ids` 表达父子关系
+
+### 13.6 脱敏与截断
+
+概念先行：prompt / completion 可能含敏感信息，上报前要脱敏。`OtelTracerConfig` 提供总开关 `isRedactionEnabled`（默认 true，SHA-256 哈希）+ 两个细粒度覆盖项 `shouldRedactPrompts` / `shouldRedactCompletions`（`Boolean`，null 时回退总开关）+ 截断上限 `maxAttrLength`（默认 4096）。
+
+**✅ 推荐写法**（演示用：prompt 保留原文、completion 脱敏）
+
+```java
+OtelTracerConfig config = OtelTracerConfig.builder()
+        .isRedactionEnabled(true)
+        .shouldRedactPrompts(false)      // 细粒度覆盖：prompt 保留原文便于排查
+        .shouldRedactCompletions(true)   // completion 脱敏
+        .maxAttrLength(4096)             // 属性值截断上限
+        .build();
+```
+
+**❌ 不要这样**
+
+```java
+// 明知会带敏感数据仍全量上报，且不做任何哈希/截断
+OtelTracerConfig config = OtelTracerConfig.builder()
+        .isRedactionEnabled(false)   // 生产环境关闭脱敏前先评估合规风险
+        .build();
+```
+
+**💡 为什么这样设计**
+
+1. **两级覆盖** — `shouldRedactPrompts` / `shouldRedactCompletions` 是 `Boolean`（可 null），null 回退总开关、true/false 强制覆盖，比单个总开关更灵活
+2. **默认值分层不同** — 引擎侧 `OtelTracerConfig` 默认脱敏；服务化装配层 `OtelEnvProperties.toTracerConfig()` 按产品决策强制 `isRedactionEnabled=false`、`maxAttrLength=-1`（不脱敏不截断），因为 Langfuse 等评估后端需要原始内容。写配置前先确认自己走的是哪一层
+
+### 13.7 TeamAgent 观测（observability 模块）
+
+概念先行：`agentteams.observability` 面向 TeamAgent 多智能体场景，独立于 tracerotel。`ObservabilityConfig` 用 Lombok `@Data @Builder`，`ObservabilitySetup` 提供 `initObservability()` / `shutdownObservability()` / `startTeamTrace(teamName, sessionId)` / `finalizeTeamTrace(teamName)` 等生命周期入口，并内置 Langfuse Basic 鉴权（`publicKey:secretKey` → Base64 `authorization` 头）。
+
+**✅ 推荐写法**
+
+```java
+import com.openjiuwen.agentteams.observability.ObservabilityConfig;
+import com.openjiuwen.agentteams.observability.ObservabilitySetup;
+
+ObservabilityConfig config = ObservabilityConfig.builder()
+        .isEnabled(true)
+        .exporter("otlp_http")                 // otlp_grpc | otlp_http | console | file
+        .endpoint("https://cloud.langfuse.com") // http 协议下自动补 /v1/traces
+        .serviceName("openjiuwen-agent-teams")
+        .langfusePublicKey("pk-lf-...")
+        .langfuseSecretKey("sk-lf-...")
+        .shouldRedactPrompts(false)
+        .build();
+
+ObservabilitySetup.initObservability(config);          // 启动 provider 并 set 全局
+ObservabilitySetup.startTeamTrace("finance-team", sessionId);  // 开 team 根 span
+// ... TeamAgent 执行 ...
+ObservabilitySetup.finalizeTeamTrace("finance-team"); // 结束 team span 并 flush
+```
+
+**❌ 不要这样**
+
+```java
+// 把 tracerotel 与 observability 混用：两个模块各自 set 全局 provider，后 set 的覆盖先 set 的
+ObservabilitySetup.initObservability(observabilityConfig);
+OtelTracerSetup.initOtelTracer(tracerConfig); // 若它 set 全局，会覆盖 observability 的 provider
+```
+
+**💡 为什么分两个模块**
+
+1. **避免全局状态打架** — 两个模块都持有独立 `SdkTracerProvider` 引用、不 `set` 全局（observability 的 javadoc 明确注明「holds a direct reference rather than setting global」），因此可共存
+2. **场景定位不同** — tracerotel 面向单 Agent / Workflow 的细粒度埋点；observability 面向 TeamAgent 的多智能体 team 维度 span 与 Langfuse 对接
+
+---
+
 ## 附录：反模式速查表
 
 | ❌ 不要这样 | ✅ 应该这样 | 仓库 |
@@ -1067,3 +1449,9 @@ public class MemoryRail extends AgentRail {
 | `@PostConstruct` 管理沙箱初始化 | `implements AgentInitHook` + `@Bean` | agent-runtime-java |
 | 工具/Rail 注册散落在 Handler 各处 | Enhancer 模式集中注册 | agent-solution |
 | `new VersatileProperties()` 忘记设 `ambiguousIntentId=""` | 显式 `setAmbiguousIntentId("")` | agent-solution |
+| 在业务代码硬编码 `"gen_ai.prompt"` 等属性名字符串 | 用 `SemConv.GEN_AI_PROMPT` 等常量 | agent-core-java |
+| 自己 `new SdkTracerProvider` + `GlobalOpenTelemetry.set` 覆盖全局 | 用 `OtelTracerSetup.initOtelTracer(config)`（只持引用不设全局） | agent-core-java |
+| `new OtelAgentHandler(...)` 不注册就指望生效 | `TracerHandlerRegistry.registerHandler("otel_agent", handler)` | agent-core-java |
+| 在 AgentHandler 里 `if-else` 判断是否上报 trace | yaml `openjiuwen.service.otel.enabled=true` 条件装配 | agent-solution |
+| 用 `String.valueOf(map)` 序列化 agent 输入输出 | `OtelJsonAgentHandler` 预序列化 JSON | agent-solution |
+| 硬编码 OTLP endpoint / Langfuse 地址 | `OTEL_EXPORTER_OTLP_ENDPOINT` 或 `openjiuwen.service.otel.endpoint` | agent-solution |

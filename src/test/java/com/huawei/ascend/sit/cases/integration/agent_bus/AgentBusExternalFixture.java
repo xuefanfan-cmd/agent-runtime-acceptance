@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Assumptions;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -38,7 +39,7 @@ public final class AgentBusExternalFixture {
         this.busGatewayUrl = strip(busGatewayUrl);
     }
 
-    static AgentBusExternalFixture forEndpoints(String rdcUrl, String directGatewayUrl, String busGatewayUrl) {
+    public static AgentBusExternalFixture forEndpoints(String rdcUrl, String directGatewayUrl, String busGatewayUrl) {
         return new AgentBusExternalFixture(rdcUrl, directGatewayUrl, busGatewayUrl);
     }
 
@@ -95,12 +96,34 @@ public final class AgentBusExternalFixture {
         assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
     }
 
+    void deregisterRuntime(String agentId) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(rdcUrl
+                        + "/api/registry/deregister/" + segment(TENANT) + "/" + segment(agentId)))
+                .timeout(Duration.ofSeconds(10)).DELETE().build());
+        assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
+    }
+
     public HttpResponse<String> direct(String agentId, String text) throws Exception {
         return post(directGatewayUrl, create(agentId, text, false), "application/json", TOKEN);
     }
 
     HttpResponse<String> directStreaming(String agentId, String text) throws Exception {
         return post(directGatewayUrl, create(agentId, text, true), "text/event-stream", TOKEN);
+    }
+
+    HttpResponse<String> directGetTask(String taskId) throws Exception {
+        return post(directGatewayUrl, taskOperation("GetTask", taskId), "application/json", TOKEN);
+    }
+
+    HttpResponse<String> directSubscribeTask(String taskId) throws Exception {
+        return post(directGatewayUrl, taskOperation("SubscribeToTask", taskId),
+                "text/event-stream", TOKEN);
+    }
+
+    HttpResponse<InputStream> directSubscribeTaskStream(String taskId) throws Exception {
+        HttpRequest request = postRequest(directGatewayUrl,
+                taskOperation("SubscribeToTask", taskId), "text/event-stream", TOKEN);
+        return http.send(request, HttpResponse.BodyHandlers.ofInputStream());
     }
 
     public HttpResponse<String> bus(String agentId, String text) throws Exception {
@@ -166,7 +189,20 @@ public final class AgentBusExternalFixture {
         return JSON.writeValueAsString(root);
     }
 
+    private static String taskOperation(String method, String taskId) throws Exception {
+        ObjectNode root = JSON.createObjectNode();
+        root.put("jsonrpc", "2.0");
+        root.put("id", UUID.randomUUID().toString());
+        root.put("method", method);
+        root.putObject("params").put("id", taskId);
+        return JSON.writeValueAsString(root);
+    }
+
     private HttpResponse<String> post(String baseUrl, String body, String accept, String token) throws Exception {
+        return send(postRequest(baseUrl, body, accept, token));
+    }
+
+    private static HttpRequest postRequest(String baseUrl, String body, String accept, String token) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + "/a2a"))
                 .timeout(Duration.ofSeconds(90))
                 .header("Content-Type", "application/json")
@@ -174,7 +210,7 @@ public final class AgentBusExternalFixture {
         if (token != null) {
             request.header("Authorization", "Bearer " + token);
         }
-        return send(request.POST(HttpRequest.BodyPublishers.ofString(body)).build());
+        return request.POST(HttpRequest.BodyPublishers.ofString(body)).build();
     }
 
     private HttpResponse<String> send(HttpRequest request) throws Exception {

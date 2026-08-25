@@ -2,9 +2,12 @@ package com.huawei.ascend.sit.cases.integration.agent_bus;
 
 import com.openjiuwen.client.api.AgentClient;
 import com.openjiuwen.client.api.AgentClients;
+import com.openjiuwen.client.api.EndpointType;
 import com.openjiuwen.client.api.InvocationCall;
 import com.openjiuwen.client.api.InvocationEvent;
-import com.openjiuwen.client.transport.a2a.A2aHttpTransportProvider;
+import com.openjiuwen.client.transport.a2a.GatewayTransportProvider;
+import com.openjiuwen.client.transport.a2a.RuntimeTransportProvider;
+import com.openjiuwen.client.transport.spi.TransportProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
@@ -21,7 +24,7 @@ import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** HTTP/SSE fixture at the public Gateway boundary used by FEAT-006/007 SDK tests. */
+/** Controllable Runtime/Gateway HTTP/SSE peer for tests of the public Client SDK. */
 final class ClientSdkBlackboxFixture implements AutoCloseable {
     static final ObjectMapper JSON = new ObjectMapper();
     private final MockWebServer gateway = new MockWebServer();
@@ -31,9 +34,23 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
     }
 
     AgentClient client() {
+        return client(EndpointType.GATEWAY);
+    }
+
+    AgentClient client(EndpointType endpointType) {
         return AgentClients.builder()
-                .transport(new A2aHttpTransportProvider(gateway.url("/").toString(), JSON,
-                        Duration.ofSeconds(3)))
+                .endpointType(endpointType)
+                .endpointUrl(gateway.url("/").toString())
+                .credentialProvider(conversationId -> "acceptance-token")
+                .build();
+    }
+
+    AgentClient client(EndpointType endpointType, Duration idleTimeout) {
+        TransportProvider transport = endpointType == EndpointType.RUNTIME
+                ? new RuntimeTransportProvider(gateway.url("/").toString(), JSON, idleTimeout)
+                : new GatewayTransportProvider(gateway.url("/").toString(), JSON, idleTimeout);
+        return AgentClients.builder()
+                .transport(transport)
                 .credentialProvider(conversationId -> "acceptance-token")
                 .build();
     }
@@ -43,15 +60,28 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
     }
 
     void enqueueSse(String... resultJson) {
+        enqueueSse(0, resultJson);
+    }
+
+    void enqueueDelayedSse(long bodyDelayMillis, String... resultJson) {
+        enqueueSse(bodyDelayMillis, resultJson);
+    }
+
+    private void enqueueSse(long bodyDelayMillis, String... resultJson) {
         StringBuilder body = new StringBuilder();
         for (String result : resultJson) {
-            body.append("data: {\"jsonrpc\":\"2.0\",\"id\":\"acceptance\",\"result\":")
-                    .append(result).append("}\n\n");
+            body.append(sseFrame(result));
         }
         gateway.enqueue(new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "text/event-stream")
                 .setHeadersDelay(100, TimeUnit.MILLISECONDS)
+                .setBodyDelay(bodyDelayMillis, TimeUnit.MILLISECONDS)
                 .setBody(body.toString()));
+    }
+
+    private static String sseFrame(String resultJson) {
+        return "data: {\"jsonrpc\":\"2.0\",\"id\":\"acceptance\",\"result\":"
+                + resultJson + "}\n\n";
     }
 
     void enqueueJson(String resultJson) {
@@ -67,12 +97,36 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
                 .setBody("{\"code\":\"" + code + "\",\"message\":\"rejected\"}"));
     }
 
+    void enqueueJsonRpcError(int code, String message) {
+        gateway.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"jsonrpc\":\"2.0\",\"id\":\"acceptance\",\"error\":{\"code\":"
+                        + code + ",\"message\":" + json(message) + "}}"));
+    }
+
     JsonNode takeRequest() throws Exception {
+        return takeRequest(true);
+    }
+
+    JsonNode takeRequest(boolean expectAuthorization) throws Exception {
+        return takeTimedRequest(expectAuthorization).body();
+    }
+
+    TimedRequest takeTimedRequest(boolean expectAuthorization) throws Exception {
         var request = gateway.takeRequest(5, TimeUnit.SECONDS);
+        long receivedAtNanos = System.nanoTime();
         assertThat(request).as("Gateway request").isNotNull();
         assertThat(request.getPath()).isEqualTo("/a2a");
-        assertThat(request.getHeader("Authorization")).isEqualTo("Bearer acceptance-token");
-        return JSON.readTree(request.getBody().readUtf8());
+        if (expectAuthorization) {
+            assertThat(request.getHeader("Authorization")).isEqualTo("Bearer acceptance-token");
+        } else {
+            assertThat(request.getHeader("Authorization")).isNull();
+        }
+        return new TimedRequest(JSON.readTree(request.getBody().readUtf8()), receivedAtNanos);
+    }
+
+    boolean hasRequestWithin(Duration timeout) throws InterruptedException {
+        return gateway.takeRequest(timeout.toMillis(), TimeUnit.MILLISECONDS) != null;
     }
 
     static String status(String taskId, String contextId, String state, String text) {
@@ -108,6 +162,13 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
                 + ",\"status\":{\"state\":" + json(state) + message + "}}}";
     }
 
+    static String taskSnapshot(String taskId, String contextId, String state, String text) {
+        String artifacts = text == null ? "" : ",\"artifacts\":[{\"artifactId\":\"result\","
+                + "\"parts\":[{\"text\":" + json(text) + "}]}]";
+        return "{\"id\":" + json(taskId) + ",\"contextId\":" + json(contextId)
+                + ",\"status\":{\"state\":" + json(state) + "}" + artifacts + "}";
+    }
+
     private static String json(String value) {
         try {
             return JSON.writeValueAsString(value);
@@ -120,6 +181,9 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
         EventProbe probe = new EventProbe();
         call.events().subscribe(probe);
         return probe;
+    }
+
+    record TimedRequest(JsonNode body, long receivedAtNanos) {
     }
 
     @Override

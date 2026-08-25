@@ -29,9 +29,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class ToxiproxyFaultLink implements FaultLink {
 
-    /** 容器内视角的 upstream 主机（test JVM / SUT 所在宿主机）。 */
-    static final String DEFAULT_UPSTREAM_HOST = "172.17.0.1";
-
     private static final int FIRST_PROXIED_PORT = 8666;
     private static final int LAST_PROXIED_PORT = 8697;
 

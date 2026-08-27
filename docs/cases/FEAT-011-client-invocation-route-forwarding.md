@@ -3,7 +3,7 @@ feature_id: FEAT-011
 feature_title: 网关组件客户端调用路由转发
 sut: 正式 agent-gateway（DIRECT）-> registry-discovery-center -> Runtime；ReAct/DeepAgent/WorkflowAgent 风险导向 E2E
 status: partial
-status_note: 当前重连合同 11 项中 7 PASS、4 项产品 blocked；ReAct 与 DeepAgent Gateway E2E 各 PASS 1/1
+status_note: 当前 Gateway 重连合同 13/13 PASS；ReAct 与 DeepAgent Gateway E2E 各 PASS 1/1；owner TTL 等依赖场景保持 not-automated
 tags: [blackbox, integration, gateway, feat-011]
 ---
 
@@ -60,8 +60,8 @@ black-box client -> Gateway(DIRECT) -> RDC -> travel-mainplan -> travel-trip -> 
 | `FEAT-011.direct.create-and-stream` | Feature §2/§4/§5.1.2；L2 IN-2-4 | blackbox | blocked, P0 | implemented | 显式/默认路由、同步/流式超时、SSE、拓扑隐藏、断开释放 | Gateway HTTP/SSE、Agent canary、公开审计 | 需外部 DIRECT 栈 URL |
 | `FEAT-011.direct.governance-and-routing-failure` | Feature §2/§5.1.0/§5.1.3；L2 IN-1/5 | blackbox | blocked, P0 | implemented | 鉴权、租户清洗、参数、创建幂等、审计、选路失败 | HTTP 错误、Agent 零增量、审计 | 需外部 DIRECT 栈 URL |
 | `FEAT-011.direct.sticky-continuation` | Feature §5.1.2；L2 IN-6/7 | blackbox | blocked, P0 | implemented | 用户输入/工具结果续跑粘滞和关联失败 | taskId、实例请求审计、Task 结果 | 需外部 DIRECT 栈 URL |
-| `F011-R01-R03` | 当前 Feature/L2 查询恢复 | contract + E2E | partial, P0 | partial；GetTask owner/无重建、完整快照、未知 owner、失效 routeHandle、Runtime TaskNotFound 透传 PASS；owner TTL 与 Runtime 不可达 blocked | owner 路由、快照透明、重复 GetTask 无副作用、路由解析受控失败、下游 `-32001` 原样保留 | Gateway/Runtime 请求序列、Task 快照、canary | 配置 1 秒 TTL 后仍转发到原 owner，产品缺口保留证据 |
-| `F011-S01-S04` | 当前 Feature/L2 SSE 重订阅 | contract + E2E | partial, P0 | partial；owner/无重建与主动断开释放 PASS 2/2，SSE media type 与终态错误 2 blocked | 回原 owner、首帧快照、无新建、断开不 Cancel、终态竞态 | 原始 SSE、下游 method 序列、taskId、Bridge 释放日志 | 两项产品缺口保留证据 |
+| `F011-R01-R03` | 当前 Feature/L2 查询恢复 | contract + E2E | partial, P0 | partial；GetTask owner/无重建、完整快照、未知 owner、失效 routeHandle、Runtime TaskNotFound 透传和 owner Runtime 不可达均 PASS；owner TTL 待合法 Oracle 后自动化 | owner 路由、快照透明、重复 GetTask 无副作用、路由解析受控失败、下游 `-32001` 原样保留 | Gateway/Runtime 请求序列、Task 快照、canary | 原 1 秒 TTL 用例 Oracle 无效，已移除且不作为产品问题 |
+| `F011-S01-S04` | 当前 Feature/L2 SSE 重订阅 | contract + E2E | runnable, P0 | implemented；owner/无重建、主动断开释放、SSE media type 和终态错误 4/4 PASS | 回原 owner、首帧快照、无新建、断开不 Cancel、终态竞态 | 原始 SSE、下游 method 序列、taskId、Bridge 释放日志 | Gateway ISSUE #137/#138 已精确回归并关闭 |
 | `F011-E01` | 当前 Feature 真实链路 | E2E | runnable, P0 | implemented，Failsafe PASS 1/1 | ReAct travel 经 Gateway 断点重连 | 正式制品、业务 canary、拓扑清洗 | 92.995 秒，0 skipped/failure/error |
 | `F011-E02` | DeepAgent 长流真实链路 | E2E | runnable, P1 | implemented，Failsafe PASS 1/1 | DeepAgent 经 Gateway 恢复原 owner Task | 正式制品、原 taskId、业务 marker | 120.017 秒；远程节点恰好一次 Oracle partial |
 | `FEAT-011.deferred.cancel` | 当前 L2 未实现 | boundary | deferred | design-only | CancelTask | 白名单拒绝证据 | 不生成成功路径测试 |
@@ -229,10 +229,9 @@ JAR、LLM、测试 Bearer/RDC 接线和真实场景执行。测试输入、证�
 ```
 
 测试结束关闭 Gateway/Agent/RDC 和代理，恢复故障链路并确认端口、容器、线程和临时目录清理。
-历史 XML：`GatewayReconnectBlackboxTest` 4 项中 2 PASS、2 产品 blocked；改用 WSL 原生 Docker + WSL Maven 后当前 11 项执行结果为
-7 PASS、4 skipped/blocked、0 failure、0 error。缺失 `taskId`、未知 `taskId`、完整 Task 快照、失效 routeHandle、Runtime TaskNotFound 透传和 Client 主动断开释放场景 PASS；TTL 失效与 Runtime 不可达场景 blocked。TTL 场景实际启动参数包含 `--gateway.routing.sticky-ttl-ms=1000`，等待 1.3 秒后 `GetTask` 仍到达原 Runtime 并返回 WORKING 快照，不能写成 PASS。
+当前指定 XML 中 `GatewayReconnectBlackboxTest` 为 13 selected / 13 executed / 13 PASS / 0 skipped / 0 failure / 0 error。SSE media type、终态订阅错误和 owner Runtime 不可达均已精确回归通过。原 1 秒 TTL 用例的 Oracle 与活动 Task owner 保留语义冲突，已经移除且不作为产品问题；正确的 TTL 场景等待 TaskStore TTL、活动刷新和终态查询窗口形成合法 Oracle 后再自动化。
 跨租户 `tenantId + taskId` 尚未执行：当前测试 Gateway 只有一个可信 credential→tenant 映射，不能用自报 tenant header/body 伪造第二租户。
 ReAct Gateway E2E 已实际执行 PASS 1/1（92.995 秒），DeepAgent Gateway E2E PASS 1/1（120.017 秒），
-均为 0 skipped/failure/error；这些结果不覆盖上述 Gateway 合同 blocked。退出标准：Gateway 公共合同、
+均为 0 skipped/failure/error；这些结果不替代 owner TTL 和跨租户等尚未执行场景。退出标准：Gateway 公共合同、
 ReAct/DeepAgent 风险 E2E 与最小受影响回归通过或有明确 INCONCLUSIVE/blocked 证据；
 不以直连 Runtime、内部表、开发单测或 fake Gateway 结果宣称 FEAT-011 通过。

@@ -14,7 +14,6 @@ import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -242,7 +241,6 @@ class GatewayReconnectBlackboxTest {
         assertThat(totalCount("CancelTask")).isEqualTo(cancelsBefore);
     }
 
-    @Disabled("blocked: current Gateway response omits Content-Type after writing SubscribeToTask SSE")
     @Test
     @Story("F011-S01.media-type: SubscribeToTask 使用标准 SSE media type")
     @DisplayName("Feat-011 SubscribeToTask 响应声明 text/event-stream")
@@ -256,7 +254,6 @@ class GatewayReconnectBlackboxTest {
                 .containsIgnoringCase("text/event-stream");
     }
 
-    @Disabled("blocked: Gateway must preserve terminal SubscribeToTask JSON-RPC error before this can pass")
     @Test
     @Story("F011-S04: 终态订阅错误透明返回")
     @DisplayName("Feat-011 终态订阅保留 UnsupportedOperation 供 Client 回退 GetTask")

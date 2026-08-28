@@ -15,7 +15,6 @@ import com.openjiuwen.client.api.TaskState;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -319,7 +318,7 @@ class ClientReconnectBlackboxTest {
                     "task-subscribe-reset", "ctx-subscribe-reset", "TASK_STATE_COMPLETED", "done"));
 
             try (AgentClient client = endpoint.client(EndpointType.GATEWAY)) {
-                InvocationSnapshot snapshot = invoke(client, "subscription-counter-reset")
+                InvocationSnapshot snapshot = invoke(client, EndpointType.GATEWAY, "subscription-counter-reset")
                         .completion().toCompletableFuture().get(10, TimeUnit.SECONDS);
 
                 assertThat(snapshot.state()).isEqualTo(TaskState.COMPLETED);
@@ -368,29 +367,38 @@ class ClientReconnectBlackboxTest {
     }
 
     @Test
-    @Disabled("blocked: current Client does not settle deterministic SubscribeToTask JSON-RPC errors; completion times out")
-    @Story("F006-B05: 确定性协议错误不进入基础设施重试")
-    @DisplayName("Feat-006 终态订阅协议错误直接结束当前 invocation 且不继续重试")
+    @Story("F006-B05: 终态订阅错误经 GetTask 对账且不计基础设施失败")
+    @DisplayName("Feat-006 终态订阅错误不消耗失败次数并经 GetTask 收敛")
     void deterministicSubscriptionProtocolErrorDoesNotTriggerInfrastructureRetry() throws Exception {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-protocol-error", "ctx-protocol-error", "TASK_STATE_WORKING", "planning"));
             endpoint.enqueueJsonRpcError(-32602, "invalid task state for subscription");
+            endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
+                    "task-protocol-error", "ctx-protocol-error", "TASK_STATE_COMPLETED", "done"));
 
-            try (AgentClient client = endpoint.client(EndpointType.RUNTIME)) {
-                InvocationCall call = invoke(client, "protocol-error");
-                assertThatThrownBy(() -> call.completion().toCompletableFuture()
-                        .get(8, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class);
+            RetryPolicy policy = RetryPolicy.builder()
+                    .maxConsecutiveFailures(1)
+                    .build();
+            try (AgentClient client = AgentClients.builder()
+                    .endpointType(EndpointType.RUNTIME)
+                    .endpointUrl(endpoint.baseUrl())
+                    .credentialProvider(conversationId -> "acceptance-token")
+                    .retryPolicy(policy)
+                    .build()) {
+                InvocationSnapshot completed = invoke(client, "protocol-error")
+                        .completion().toCompletableFuture().get(8, TimeUnit.SECONDS);
 
-                List<JsonNode> requests = takeRequests(endpoint, false, 2);
+                assertThat(completed.state()).isEqualTo(TaskState.COMPLETED);
+                assertThat(completed.outputText()).isEqualTo("done");
+                List<JsonNode> requests = takeRequests(endpoint, false, 3);
                 assertThat(requests).extracting(node -> node.path("method").asText())
-                        .containsExactly("SendStreamingMessage", "SubscribeToTask");
+                        .containsExactly("SendStreamingMessage", "SubscribeToTask", "GetTask");
                 assertThat(requests.get(1).at("/params/id").asText())
                         .isEqualTo("task-protocol-error");
-                assertThat(requests).noneMatch(node ->
-                        "GetTask".equals(node.path("method").asText())
-                                || "CancelTask".equals(node.path("method").asText()));
+                assertThat(requests.get(2).at("/params/id").asText())
+                        .isEqualTo("task-protocol-error");
+                assertThat(requests).noneMatch(node -> "CancelTask".equals(node.path("method").asText()));
             }
         }
     }
@@ -408,7 +416,7 @@ class ClientReconnectBlackboxTest {
                         taskId, "ctx-" + type.name().toLowerCase(), "TASK_STATE_COMPLETED", "done"));
 
                 try (AgentClient client = endpoint.client(type)) {
-                    InvocationSnapshot snapshot = invoke(client, "endpoint-" + type.name().toLowerCase())
+                    InvocationSnapshot snapshot = invoke(client, type, "endpoint-" + type.name().toLowerCase())
                             .completion().toCompletableFuture().get(8, TimeUnit.SECONDS);
                     assertThat(snapshot.state()).isEqualTo(TaskState.COMPLETED);
 
@@ -424,8 +432,14 @@ class ClientReconnectBlackboxTest {
     }
 
     private static InvocationCall invoke(AgentClient client, String scenario) {
-        return client.invoke(InvocationRequest.builder()
-                .agentId("travel-mainplan")
+        return invoke(client, EndpointType.RUNTIME, scenario);
+    }
+
+    private static InvocationCall invoke(AgentClient client, EndpointType endpointType, String scenario) {
+        InvocationRequest.Builder request = endpointType == EndpointType.GATEWAY
+                ? InvocationRequest.gatewayBuilder("travel-mainplan")
+                : InvocationRequest.runtimeBuilder();
+        return client.invoke(request
                 .conversationId("ctx-" + scenario)
                 .invocationId("inv-" + UUID.randomUUID())
                 .mode(InvocationMode.STREAMING)

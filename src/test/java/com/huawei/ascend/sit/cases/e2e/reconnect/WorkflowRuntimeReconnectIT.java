@@ -17,7 +17,6 @@ import io.qameta.allure.Feature;
 import io.qameta.allure.Stories;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -49,7 +48,6 @@ class WorkflowRuntimeReconnectIT {
             "帮我审核这笔报销：机票5000，酒店3晚每晚800共2400，客户晚餐800";
 
     @Test
-    @Disabled("blocked: Client getInvocation omits the Runtime terminal Workflow DataPart from the public call tree")
     @Stories({
             @Story("F006-E03: Workflow INPUT_REQUIRED 断流恢复"),
             @Story("F001-E03: 原 Task 复杂快照查询与续轮")
@@ -61,8 +59,7 @@ class WorkflowRuntimeReconnectIT {
         try (WorkflowReconnectFixture environment = WorkflowReconnectFixture.runtimeDirect();
              AgentClient client = environment.client()) {
             String conversationId = "workflow-reconnect-" + UUID.randomUUID();
-            InvocationCall initial = client.invoke(InvocationRequest.builder()
-                    .agentId(WorkflowReconnectFixture.agentId())
+            InvocationCall initial = client.invoke(InvocationRequest.runtimeBuilder()
                     .conversationId(conversationId)
                     .invocationId("inv-" + UUID.randomUUID())
                     .mode(InvocationMode.STREAMING)
@@ -123,6 +120,7 @@ class WorkflowRuntimeReconnectIT {
             assertThat(rawTask.artifactPartShapes())
                     .as("raw GetTask terminal Workflow artifact should retain structured data")
                     .contains("data");
+            assertStructuredApprovalResult(completed, "continuation completion");
             assertStructuredApprovalResult(queriedCompleted, "queried terminal snapshot");
         }
     }

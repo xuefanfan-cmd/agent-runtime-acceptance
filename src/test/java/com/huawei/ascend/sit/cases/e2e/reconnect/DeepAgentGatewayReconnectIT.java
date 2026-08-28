@@ -47,8 +47,7 @@ class DeepAgentGatewayReconnectIT {
         try (DeepAgentReconnectFixture environment = DeepAgentReconnectFixture.gateway();
              AgentClient client = environment.client()) {
             String conversationId = "deep-reconnect-" + UUID.randomUUID();
-            InvocationCall call = client.invoke(InvocationRequest.builder()
-                    .agentId(DeepAgentReconnectFixture.agentId())
+            InvocationCall call = client.invoke(InvocationRequest.gatewayBuilder(DeepAgentReconnectFixture.agentId())
                     .conversationId(conversationId)
                     .invocationId("inv-" + UUID.randomUUID())
                     .mode(InvocationMode.STREAMING)

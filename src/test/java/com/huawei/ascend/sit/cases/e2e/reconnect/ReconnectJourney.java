@@ -3,6 +3,7 @@ package com.huawei.ascend.sit.cases.e2e.reconnect;
 import com.huawei.ascend.sit.fault.FaultLink;
 import com.huawei.ascend.sit.fixtures.reconnect.ReActReconnectFixture;
 import com.openjiuwen.client.api.AgentClient;
+import com.openjiuwen.client.api.EndpointType;
 import com.openjiuwen.client.api.InvocationCall;
 import com.openjiuwen.client.api.InvocationEvent;
 import com.openjiuwen.client.api.InvocationMode;
@@ -32,8 +33,10 @@ final class ReconnectJourney {
         String conversationId = "reconnect-" + UUID.randomUUID();
         String invocationId = "inv-" + UUID.randomUUID();
         try (AgentClient client = environment.client()) {
-            InvocationCall call = client.invoke(InvocationRequest.builder()
-                    .agentId(ReActReconnectFixture.agentId())
+            InvocationRequest.Builder request = environment.endpointType() == EndpointType.GATEWAY
+                    ? InvocationRequest.gatewayBuilder(ReActReconnectFixture.agentId())
+                    : InvocationRequest.runtimeBuilder();
+            InvocationCall call = client.invoke(request
                     .conversationId(conversationId)
                     .invocationId(invocationId)
                     .mode(InvocationMode.STREAMING)

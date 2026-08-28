@@ -21,7 +21,7 @@ snippets: ../snippets/rest-custom-channel.py、../snippets/rest-error-contract.j
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/rest/`](../../docs/examples/rest/README.md)。
+完整源码：[`docs/examples/rest/`](../examples/rest/README.md)。
 
 ```python
 from agent_runtime.adapters.inbound.rest.mobile_bank import MobileBankChannel

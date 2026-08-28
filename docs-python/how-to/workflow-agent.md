@@ -20,7 +20,7 @@ examples: ../../docs/examples/workflow/
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/workflow/`](../../docs/examples/workflow/README.md)，DAG 形态为
+完整源码：[`docs/examples/workflow/`](../examples/workflow/README.md)，DAG 形态为
 `start -> transform(LLM) -> check(Tool) -> route(Branch) -> {confirm(HITL) | finish(LLM)} -> end`。
 
 语义层关键接线（`src/workflow_agent/agent/definition.py`）：

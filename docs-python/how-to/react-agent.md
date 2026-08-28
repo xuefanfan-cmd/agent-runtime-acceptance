@@ -21,7 +21,7 @@ examples: ../../docs/examples/react/
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/react/`](../../docs/examples/react/README.md)。以下只摘录两层的关键接线。
+完整源码：[`docs/examples/react/`](../examples/react/README.md)。以下只摘录两层的关键接线。
 
 语义层（`src/react_agent/agent/definition.py`）—— 只依赖 `openjiuwen`，构造期不出网：
 

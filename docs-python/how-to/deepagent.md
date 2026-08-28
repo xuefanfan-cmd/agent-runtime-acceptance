@@ -20,7 +20,7 @@ examples: ../../docs/examples/deepagent/
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/deepagent/`](../../docs/examples/deepagent/README.md)。
+完整源码：[`docs/examples/deepagent/`](../examples/deepagent/README.md)。
 
 语义层（`src/deepagent/agent/definition.py`）：
 

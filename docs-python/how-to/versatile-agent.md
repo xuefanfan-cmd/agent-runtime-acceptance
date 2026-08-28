@@ -21,7 +21,7 @@ snippets: ../snippets/remote-versatile-config.py
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/versatile/`](../../docs/examples/versatile/README.md)，含 fake remote 与探针，可在无外部依赖下覆盖成功、错误与断连三条路径。
+完整源码：[`docs/examples/versatile/`](../examples/versatile/README.md)，含 fake remote 与探针，可在无外部依赖下覆盖成功、错误与断连三条路径。
 
 ```python
 from agent_runtime.adapters.outbound.remote.client import VersatileClient

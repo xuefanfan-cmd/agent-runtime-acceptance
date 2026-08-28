@@ -16,10 +16,10 @@ audience: ai-coding
 
 | 入口 | 指南 | 源码工程 | 状态 |
 |---|---|---|---|
-| **ReAct Agent**（模型自主决策工具调用） | [react-agent.md](react-agent.md) | [`docs/examples/react/`](../../docs/examples/react/README.md) | 已核验 |
-| **Workflow**（DAG 编排 + 人工审批） | [workflow-agent.md](workflow-agent.md) | [`docs/examples/workflow/`](../../docs/examples/workflow/README.md) | 已核验 |
-| **DeepAgent**（目标导向任务循环） | [deepagent.md](deepagent.md) | [`docs/examples/deepagent/`](../../docs/examples/deepagent/README.md) | 已核验 |
-| **Versatile 对接**（远端工作流包成 Agent） | [versatile-agent.md](versatile-agent.md) | [`docs/examples/versatile/`](../../docs/examples/versatile/README.md) | 已核验 |
+| **ReAct Agent**（模型自主决策工具调用） | [react-agent.md](react-agent.md) | [`docs/examples/react/`](../examples/react/README.md) | 已核验 |
+| **Workflow**（DAG 编排 + 人工审批） | [workflow-agent.md](workflow-agent.md) | [`docs/examples/workflow/`](../examples/workflow/README.md) | 已核验 |
+| **DeepAgent**（目标导向任务循环） | [deepagent.md](deepagent.md) | [`docs/examples/deepagent/`](../examples/deepagent/README.md) | 已核验 |
+| **Versatile 对接**（远端工作流包成 Agent） | [versatile-agent.md](versatile-agent.md) | [`docs/examples/versatile/`](../examples/versatile/README.md) | 已核验 |
 
 选型还没定，先读 [Agent 开发路径](agent-development-path.md)。
 

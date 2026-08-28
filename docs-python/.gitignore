@@ -1,0 +1,13 @@
+# 运行示例工程的测试会产生这些，不入库
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+logs/
+.coverage
+# 部署环境：样例可跟踪，实际配置不入库
+.env
+.env.*
+!.env.example

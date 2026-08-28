@@ -21,7 +21,7 @@ snippets: ../snippets/a2a-card-config.yml、../snippets/a2a-send-request.json
 
 ## 最小完整示例
 
-完整源码：[`docs/examples/a2a/`](../../docs/examples/a2a/README.md)（协议闭环，确定性替身）；接真实 agent-core Agent 的形态见 [`docs/examples/react/`](../../docs/examples/react/README.md)。
+完整源码：[`docs/examples/a2a/`](../examples/a2a/README.md)（协议闭环，确定性替身）；接真实 agent-core Agent 的形态见 [`docs/examples/react/`](../examples/react/README.md)。
 
 ```python
 from agent_runtime.bootstrap.a2a_app import create_a2a_app

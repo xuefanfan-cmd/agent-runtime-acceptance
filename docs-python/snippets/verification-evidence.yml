@@ -1,0 +1,6 @@
+capability: a2a-task-lifecycle
+source_anchor: pending
+unit_test: pending
+deployment_e2e: pending
+wire_assertion: pending
+status: not-run

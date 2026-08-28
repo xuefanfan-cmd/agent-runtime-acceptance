@@ -1,0 +1,30 @@
+# 资源配置层。两个命名空间分域：
+#   runtime.*              宿主命名空间，由本工程 runtime/configuration.py 的 HostConfig 读取，
+#                          环境变量覆盖它（默认值 < 本文件 < 环境变量）
+#   openjiuwen.service.*   runtime 配置树，由 runtime 的 ConfigLoader 绑定
+# 密钥不写在这里：模型凭据只从环境变量来（见 deploy/.env.example）。
+# 本文件不做 ${VAR} 插值——runtime 的 ConfigLoader 不解析占位符，写了只会得到字面量字符串。
+runtime:
+  server:
+    host: 127.0.0.1
+    port: 18091
+  model:
+    name: gpt-4o-mini
+    provider: openai
+
+openjiuwen:
+  service:
+    a2a_access:
+      description: "ReAct 推理循环 + 本地工具调用"
+      version: "1.0.0"
+      capabilities:
+        streaming: true
+      skills:
+        - id: analyze_text
+          name: analyze_text
+          description: "使用 ReAct 推理循环分析文本，必要时调用统计工具"
+          tags: ["react", "text"]
+      default_input_modes: ["text"]
+      default_output_modes: ["text"]
+    lifecycle:
+      shutdown_timeout_s: 30

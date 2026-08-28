@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent 服务工程的共享最小构建模板
+#
+# 三类语义 Agent 工程（react / workflow / deepagent）共享同一份工程基线，
+# 各示例目录不各自携带构建配置。
+#
+# 复制为目标工程的 pyproject.toml 后改三处：name、要打包的 package、入口模块。
+#
+# 本文件是**唯一允许携带版本字面量的例外**：版本口径的唯一来源仍是
+# ../compatibility.md，两处必须同步。这里之所以写死，是因为「装哪几个包、
+# 精确到哪个版本」不是能自由推导的通用知识——协议库换版本即换对外 wire 契约。
+# ─────────────────────────────────────────────────────────────────────────────
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-agent-service"          # 改这里
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "OpenJiuwen Python Agent 服务"
+
+dependencies = [
+    # agent-core：Agent 语义层（ReAct / Workflow / DeepAgent、Tool、Rail）
+    "openjiuwen==0.1.16",
+    # runtime SDK：托管、协议暴露、状态与生命周期
+    "openjiuwen-agent-runtime==0.1.0",
+    # A2A 协议 SDK：对外 wire 契约由它决定，换版本即换契约
+    "a2a-sdk==1.0.0",
+    # 服务面与出站 HTTP
+    "fastapi==0.139.2",
+    "uvicorn[standard]==0.51.0",
+    "sse-starlette==3.4.6",
+    "httpx==0.28.1",
+    # 配置载体
+    "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+# 状态外置：只有配了 openjiuwen.service.middleware 段才需要
+redis = ["redis==8.0.1"]
+# 装配门禁
+test = ["pytest", "pytest-asyncio"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

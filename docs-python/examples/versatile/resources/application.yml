@@ -1,0 +1,7 @@
+runtime:
+  agent:
+    name: versatile-remote-agent
+  remote:
+    base_url: http://127.0.0.1:8091
+    connect_timeout_s: 3
+    read_timeout_s: 30

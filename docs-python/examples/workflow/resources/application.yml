@@ -1,0 +1,29 @@
+# 资源配置层。两个命名空间分域：
+#   runtime.*              宿主命名空间，由 runtime/configuration.py 的 HostConfig 读取，
+#                          环境变量覆盖它（默认值 < 本文件 < 环境变量）
+#   openjiuwen.service.*   runtime 配置树，由 runtime 的 ConfigLoader 绑定
+# 模型凭据走环境变量（见 deploy/.env.example），不写进本文件；也不写 ${VAR} 占位符——加载器不做插值。
+runtime:
+  server:
+    host: 127.0.0.1
+    port: 18090
+  model:
+    name: gpt-4o-mini
+    provider: openai
+
+openjiuwen:
+  service:
+    a2a_access:
+      description: "执行流水线：LLM 处理 -> 工具校验 -> 分支 -> 人工/自动收尾"
+      version: "1.0.0"
+      capabilities:
+        streaming: true
+      skills:
+        - id: run_pipeline
+          name: run_pipeline
+          description: "执行流水线：LLM 处理 -> 工具校验 -> 分支 -> 人工/自动收尾"
+          tags: ["workflow", "pipeline"]
+      default_input_modes: ["text"]
+      default_output_modes: ["text"]
+    lifecycle:
+      shutdown_timeout_s: 30

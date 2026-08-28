@@ -1,0 +1,31 @@
+# 资源配置层。两个命名空间分域：
+#   runtime.*              宿主命名空间，由 runtime/configuration.py 的 HostConfig 读取，
+#                          环境变量覆盖它（默认值 < 本文件 < 环境变量）
+#   openjiuwen.service.*   runtime 配置树，由 runtime 的 ConfigLoader 绑定
+# 模型凭据与工作区路径走环境变量（见 deploy/.env.example），本文件不写密钥、不写 ${VAR} 占位符。
+runtime:
+  server:
+    host: 127.0.0.1
+    port: 18092
+  model:
+    name: gpt-4o-mini
+    provider: openai
+  workspace:
+    path: ./data/deep-workspace
+
+openjiuwen:
+  service:
+    a2a_access:
+      description: "任务循环 + 受限工作区文件工具"
+      version: "1.0.0"
+      capabilities:
+        streaming: true
+      skills:
+        - id: maintain_artifacts
+          name: maintain_artifacts
+          description: "任务循环维护工作区交付物：创建/更新/复读检查 Markdown 文件"
+          tags: ["deepagent", "artifacts"]
+      default_input_modes: ["text"]
+      default_output_modes: ["text"]
+    lifecycle:
+      shutdown_timeout_s: 30

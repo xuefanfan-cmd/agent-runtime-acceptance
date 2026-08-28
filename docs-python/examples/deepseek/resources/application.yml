@@ -1,0 +1,11 @@
+# 声明式配置（可叠加片段）。本验收宿主用它承载配置形态，不参与运行时合并。
+# `runtime` 是宿主自己的命名空间；`openjiuwen.service` 才是 runtime 配置根。
+runtime:
+  name: deepseek-validation
+  backend: fixture
+  host: 127.0.0.1
+  port: 8090
+openjiuwen:
+  service:
+    lifecycle:
+      shutdown_timeout_s: 30

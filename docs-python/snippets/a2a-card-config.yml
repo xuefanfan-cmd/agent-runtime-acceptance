@@ -1,0 +1,7 @@
+a2a:
+  name: runtime-demo
+  description: Contract test agent
+  public_url: http://127.0.0.1:8080
+  capabilities:
+    streaming: true
+    push_notifications: false

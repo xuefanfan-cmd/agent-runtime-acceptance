@@ -1,0 +1,6 @@
+service: agent-runtime
+checks:
+  - card_reachable: false
+  - rest_sse_verified: false
+  - shared_task_store: false
+  - graceful_shutdown_verified: false

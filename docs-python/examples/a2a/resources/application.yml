@@ -1,0 +1,8 @@
+runtime:
+  agent:
+    name: a2a-fixture-agent
+    version: 1.0.0
+  server:
+    host: 127.0.0.1
+    port: 8090
+  task_store: memory

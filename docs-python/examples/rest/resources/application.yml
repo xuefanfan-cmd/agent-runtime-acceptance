@@ -1,0 +1,7 @@
+runtime:
+  agent:
+    id: mobile_bank_agent
+  server:
+    host: 127.0.0.1
+    port: 8090
+  backend: fixture

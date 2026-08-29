@@ -39,12 +39,14 @@ envs:
 
   openjiuwen:
     java-home: ${JAVA_HOME_21:}
+    maven:
+      flags: "-Dagent-runtime-java.version=0.1.2 -Dformatter.skip=true"
     sources:
       agent-core-java:
         # SDK the examples resolve. Fill `repo` to enable lazy clone; on a dev box
         # point AGENT_CORE_DIR at your checkout (e.g. ~/agent_java/agent-core-java).
         repo: https://gitcode.com/openJiuwen/agent-core-java.git
-        ref:  730
+        ref:  830
         dir:  ${AGENT_CORE_DIR:third_party/agent-core-java}
       agent-runtime-java:
         repo: https://gitcode.com/openJiuwen/agent-runtime-java.git
@@ -59,10 +61,13 @@ envs:
       # agent-runtime-java locally (they are not under a shared parent pom with the
       # examples, so a clean reactor won't pick them up). Uncomment as needed:
       - { source: agent-core-java, module: "." }
-      - { source: agent-runtime-java, module: "." }
+      - { source: agent-runtime-java, module: service/agent-service-spec }
+      - { source: agent-runtime-java, module: service/agent-service-adapters/agent-service-adapters-common }
+      - { source: agent-runtime-java, module: service/agent-service-adapters/agent-service-adapters-agentcore }
+      - { source: agent-runtime-java, module: service/agent-service-app }
       - { source: agent-solution, module: common/agent-core-ext-java }
       - { source: agent-solution, module: common/agent-runtime-ext-java }
-      - { source: agent-solution, module: common/agent-service-spec-ext }
+      - { source: agent-solution, module: common/agent-runtime-ext-java/agent-service-spec-ext }
       - { source: agent-solution, module: common/agent-bus/registry-discovery-center }
       - { source: agent-solution, module: common/example/multi-react-travel-demo }
       - { source: agent-solution, module: common/example/multi-deep-research-demo }

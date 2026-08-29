@@ -10,6 +10,7 @@ import com.openjiuwen.client.transport.a2a.RuntimeTransportProvider;
 import com.openjiuwen.client.transport.spi.TransportProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 
@@ -98,10 +99,23 @@ final class ClientSdkBlackboxFixture implements AutoCloseable {
     }
 
     void enqueueJsonRpcError(int code, String message) {
+        enqueueJsonRpcError(code, message, null);
+    }
+
+    void enqueueJsonRpcError(int code, String message, String dataCode) {
+        ObjectNode error = JSON.createObjectNode()
+                .put("code", code)
+                .put("message", message);
+        if (dataCode != null) {
+            error.putObject("data").put("code", dataCode);
+        }
+        ObjectNode response = JSON.createObjectNode()
+                .put("jsonrpc", "2.0")
+                .put("id", "acceptance")
+                .set("error", error);
         gateway.enqueue(new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody("{\"jsonrpc\":\"2.0\",\"id\":\"acceptance\",\"error\":{\"code\":"
-                        + code + ",\"message\":" + json(message) + "}}"));
+                .setBody(response.toString()));
     }
 
     JsonNode takeRequest() throws Exception {

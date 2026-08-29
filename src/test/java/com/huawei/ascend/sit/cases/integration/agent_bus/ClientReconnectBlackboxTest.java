@@ -17,6 +17,8 @@ import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -93,7 +95,8 @@ class ClientReconnectBlackboxTest {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-terminal", "ctx-terminal", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueJsonRpcError(-32004, "task is already terminal");
+            endpoint.enqueueJsonRpcError(-32602, "task is already terminal",
+                    "TASK_NOT_SUBSCRIBABLE_TERMINAL");
             endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
                     "task-terminal", "ctx-terminal", "TASK_STATE_COMPLETED", "final-result"));
 
@@ -159,36 +162,32 @@ class ClientReconnectBlackboxTest {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-circuit", "ctx-circuit", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+            enqueueInfrastructureFailures(endpoint, 6);
             endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
                     "task-circuit", "ctx-circuit", "TASK_STATE_COMPLETED", "after-recovery"));
 
             try (AgentClient client = endpoint.client(EndpointType.RUNTIME)) {
                 InvocationCall call = invoke(client, "recovery-circuit");
                 List<ClientSdkBlackboxFixture.TimedRequest> automaticRequests =
-                        takeTimedRequests(endpoint, false, 4);
-                assertThatThrownBy(() -> call.completion().toCompletableFuture()
-                        .get(8, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class)
-                        .cause().isInstanceOf(ClassifiedError.class)
-                        .satisfies(error -> assertThat(((ClassifiedError) error).code())
-                                .isEqualTo("RECOVERY_RETRY_EXHAUSTED"));
+                        takeTimedRequests(endpoint, false, 7);
+                assertRecoveryExhausted(call);
 
                 assertThat(automaticRequests).extracting(request -> request.body().path("method").asText())
-                        .containsExactly("SendStreamingMessage", "SubscribeToTask", "GetTask",
-                                "SubscribeToTask");
-                Duration retryDelay = Duration.ofNanos(automaticRequests.get(3).receivedAtNanos()
+                        .containsExactlyElementsOf(recoveryMethods(3));
+                Duration firstRetryDelay = Duration.ofNanos(automaticRequests.get(3).receivedAtNanos()
                         - automaticRequests.get(2).receivedAtNanos());
-                assertThat(retryDelay).as("fixed recovery backoff after the second failure")
-                        .isBetween(Duration.ofMillis(250), Duration.ofSeconds(3));
-                Duration stopObservation = Duration.ofMillis(1_200);
+                Duration secondRetryDelay = Duration.ofNanos(automaticRequests.get(5).receivedAtNanos()
+                        - automaticRequests.get(4).receivedAtNanos());
+                assertThat(firstRetryDelay).as("default backoff after the first failed cycle")
+                        .isBetween(Duration.ofMillis(150), Duration.ofSeconds(2));
+                assertThat(secondRetryDelay).as("default backoff after the second failed cycle")
+                        .isBetween(Duration.ofMillis(300), Duration.ofSeconds(2));
+                Duration stopObservation = Duration.ofMillis(1_000);
                 assertThat(endpoint.hasRequestWithin(stopObservation))
-                        .as("no automatic request after the third consecutive failure")
+                        .as("no fourth recovery cycle after three failed cycles")
                         .isFalse();
-                System.out.printf("F006-B01 observedRetryDelayMs=%d stopObservationMs=%d%n",
-                        retryDelay.toMillis(), stopObservation.toMillis());
+                System.out.printf("F006-B01 firstRetryDelayMs=%d secondRetryDelayMs=%d stopObservationMs=%d%n",
+                        firstRetryDelay.toMillis(), secondRetryDelay.toMillis(), stopObservation.toMillis());
                 assertRecoveryTaskIds(automaticRequests.stream()
                         .map(ClientSdkBlackboxFixture.TimedRequest::body).toList());
 
@@ -205,16 +204,13 @@ class ClientReconnectBlackboxTest {
     }
 
     @Test
-    @Story("F006-B01: 非默认重试间隔与停止阈值可配置")
+    @Story("F006-B02-custom: 非默认重试间隔与停止阈值可配置")
     @DisplayName("Feat-006 公开 RetryPolicy 控制恢复间隔并在配置阈值停止")
     void configuredRetryPolicyControlsRecoveryIntervalAndFailureLimit() throws Exception {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-configured-policy", "ctx-configured-policy", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+            enqueueInfrastructureFailures(endpoint, 8);
             endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
                     "task-configured-policy", "ctx-configured-policy",
                     "TASK_STATE_COMPLETED", "after-configured-policy"));
@@ -233,17 +229,11 @@ class ClientReconnectBlackboxTest {
                     .build()) {
                 InvocationCall call = invoke(client, "configured-recovery-policy");
                 List<ClientSdkBlackboxFixture.TimedRequest> automaticRequests =
-                        takeTimedRequests(endpoint, false, 5);
-                assertThatThrownBy(() -> call.completion().toCompletableFuture()
-                        .get(8, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class)
-                        .cause().isInstanceOf(ClassifiedError.class)
-                        .satisfies(error -> assertThat(((ClassifiedError) error).code())
-                                .isEqualTo("RECOVERY_RETRY_EXHAUSTED"));
+                        takeTimedRequests(endpoint, false, 9);
+                assertRecoveryExhausted(call);
 
                 assertThat(automaticRequests).extracting(request -> request.body().path("method").asText())
-                        .containsExactly("SendStreamingMessage", "SubscribeToTask", "GetTask",
-                                "SubscribeToTask", "GetTask");
+                        .containsExactlyElementsOf(recoveryMethods(4));
                 Duration configuredDelay = Duration.ofNanos(automaticRequests.get(3).receivedAtNanos()
                         - automaticRequests.get(2).receivedAtNanos());
                 assertThat(configuredDelay).as("configured 700 ms recovery interval")
@@ -271,61 +261,99 @@ class ClientReconnectBlackboxTest {
     }
 
     @Test
-    @Story("F006-B03: 有效 Task 响应清零连续失败计数")
-    @DisplayName("Feat-006 有效 GetTask 快照或 Subscribe 帧清零失败计数")
-    void successfulTaskObservationResetsRecoveryFailureCounter() throws Exception {
-        assertGetTaskSuccessResetsRecoveryFailureCounter();
-        assertSubscriptionSuccessResetsRecoveryFailureCounter();
-    }
-
-    private static void assertGetTaskSuccessResetsRecoveryFailureCounter() throws Exception {
+    @Story("F006-B03-gettask-reset: GetTask WORKING 清零连续失败计数")
+    @DisplayName("Feat-006 GetTask WORKING 后重新累计三个完整失败周期")
+    void getTaskWorkingResetsRecoveryFailureCounter() throws Exception {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
-                    "task-reset", "ctx-reset", "TASK_STATE_WORKING", "planning"));
+                    "task-get-reset", "ctx-get-reset", "TASK_STATE_WORKING", "planning"));
+            enqueueInfrastructureFailures(endpoint, 2);
             endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
             endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
-                    "task-reset", "ctx-reset", "TASK_STATE_WORKING", "still-working"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
-                    "task-reset", "ctx-reset", "TASK_STATE_WORKING", "still-working"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
-                    "task-reset", "ctx-reset", "TASK_STATE_COMPLETED", "done"));
+                    "task-get-reset", "ctx-get-reset", "TASK_STATE_WORKING", "still-working"));
+            enqueueInfrastructureFailures(endpoint, 6);
 
-            try (AgentClient client = endpoint.client(EndpointType.RUNTIME)) {
-                InvocationSnapshot snapshot = invoke(client, "counter-reset")
-                        .completion().toCompletableFuture().get(10, TimeUnit.SECONDS);
+            try (AgentClient client = client(endpoint, EndpointType.RUNTIME, fastPolicy(3, 6))) {
+                InvocationCall call = invoke(client, "gettask-counter-reset");
+                List<JsonNode> requests = takeRequests(endpoint, false, 11);
+                assertRecoveryExhausted(call);
 
-                assertThat(snapshot.state()).isEqualTo(TaskState.COMPLETED);
-                assertThat(snapshot.outputText()).isEqualTo("done");
-                assertMethods(endpoint, false,
-                        "SendStreamingMessage", "SubscribeToTask", "GetTask",
-                        "SubscribeToTask", "GetTask", "SubscribeToTask", "GetTask");
+                assertThat(requests).extracting(node -> node.path("method").asText())
+                        .containsExactlyElementsOf(recoveryMethods(5));
+                assertRecoveryTaskIds(requests);
+                assertThat(endpoint.hasRequestWithin(Duration.ofMillis(300))).isFalse();
             }
         }
     }
 
-    private static void assertSubscriptionSuccessResetsRecoveryFailureCounter() throws Exception {
+    @Test
+    @Story("F006-B03-subscribe-reset: Subscribe WORKING 帧清零连续失败计数")
+    @DisplayName("Feat-006 Subscribe WORKING 帧后重新累计三个完整失败周期")
+    void subscribeWorkingFrameResetsRecoveryFailureCounter() throws Exception {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-subscribe-reset", "ctx-subscribe-reset", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+            enqueueInfrastructureFailures(endpoint, 2);
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-subscribe-reset", "ctx-subscribe-reset", "TASK_STATE_WORKING", "reconnected"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+            enqueueInfrastructureFailures(endpoint, 5);
+
+            try (AgentClient client = client(endpoint, EndpointType.GATEWAY, fastPolicy(3, 6))) {
+                InvocationCall call = invoke(client, EndpointType.GATEWAY, "subscription-counter-reset");
+                List<JsonNode> requests = takeRequests(endpoint, true, 9);
+                InvocationSnapshot snapshot = call.completion().toCompletableFuture()
+                        .get(8, TimeUnit.SECONDS);
+
+                assertThat(snapshot.state()).isEqualTo(TaskState.WORKING);
+                assertThat(snapshot.terminal()).isFalse();
+                assertThat(snapshot.maybeRecovery()).isPresent();
+                assertThat(requests).extracting(node -> node.path("method").asText())
+                        .containsExactly(
+                                "SendStreamingMessage", "SubscribeToTask", "GetTask",
+                                "SubscribeToTask", "GetTask", "SubscribeToTask", "GetTask",
+                                "SubscribeToTask", "GetTask");
+                assertRecoveryTaskIds(requests);
+                assertThat(endpoint.hasRequestWithin(Duration.ofMillis(300))).isFalse();
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "known-task budget={0}, total requests={1}")
+    @CsvSource({"2, 5", "6, 13"})
+    @Story("F006-B05-budget: WORKING 不返还已知 Task 总恢复预算")
+    @DisplayName("Feat-006 默认及自定义已知 Task 恢复预算均形成有限结束")
+    void workingSnapshotsDoNotResetKnownTaskRecoveryBudget(int recoveryBudget,
+                                                            int expectedRequestCount) throws Exception {
+        try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
+            String taskId = "task-budget-" + recoveryBudget;
+            String contextId = "ctx-budget-" + recoveryBudget;
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
-                    "task-subscribe-reset", "ctx-subscribe-reset", "TASK_STATE_COMPLETED", "done"));
+                    taskId, contextId, "TASK_STATE_WORKING", "planning"));
+            for (int attempt = 0; attempt < recoveryBudget; attempt++) {
+                endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+                endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
+                        taskId, contextId, "TASK_STATE_WORKING", "still-working-" + attempt));
+            }
 
-            try (AgentClient client = endpoint.client(EndpointType.GATEWAY)) {
-                InvocationSnapshot snapshot = invoke(client, EndpointType.GATEWAY, "subscription-counter-reset")
-                        .completion().toCompletableFuture().get(10, TimeUnit.SECONDS);
+            RetryPolicy policy = fastPolicy(3, recoveryBudget);
+            try (AgentClient client = client(endpoint, EndpointType.GATEWAY, policy)) {
+                InvocationSnapshot snapshot = invoke(client, EndpointType.GATEWAY,
+                        "known-task-budget-" + recoveryBudget)
+                        .completion().toCompletableFuture().get(8, TimeUnit.SECONDS);
+                List<JsonNode> requests = takeRequests(endpoint, true, expectedRequestCount);
 
-                assertThat(snapshot.state()).isEqualTo(TaskState.COMPLETED);
-                assertThat(snapshot.outputText()).isEqualTo("done");
-                assertMethods(endpoint, true,
-                        "SendStreamingMessage", "SubscribeToTask", "SubscribeToTask",
-                        "SubscribeToTask", "SubscribeToTask", "SubscribeToTask");
+                assertThat(expectedRequestCount).isEqualTo(1 + 2 * recoveryBudget);
+                assertThat(snapshot.state()).isEqualTo(TaskState.WORKING);
+                assertThat(snapshot.terminal()).isFalse();
+                assertThat(snapshot.maybeRecovery()).isPresent();
+                assertThat(snapshot.recovery().suggestedAction())
+                        .isEqualTo(InvocationSnapshot.Recovery.Action.QUERY_INVOCATION);
+                assertThat(requests).extracting(node -> node.path("method").asText())
+                        .containsExactlyElementsOf(recoveryMethods(recoveryBudget));
+                assertRecoveryTaskIds(requests);
+                assertThat(endpoint.hasRequestWithin(Duration.ofMillis(300)))
+                        .as("no recovery cycle beyond the configured total budget")
+                        .isFalse();
             }
         }
     }
@@ -337,43 +365,56 @@ class ClientReconnectBlackboxTest {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-isolation-first", "ctx-isolation-first", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
-            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+            enqueueInfrastructureFailures(endpoint, 6);
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-isolation-second", "ctx-isolation-second", "TASK_STATE_WORKING", "planning"));
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-isolation-second", "ctx-isolation-second", "TASK_STATE_COMPLETED", "done"));
+            endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
+                    "task-isolation-first", "ctx-isolation-first", "TASK_STATE_COMPLETED", "first-done"));
 
-            try (AgentClient client = endpoint.client(EndpointType.RUNTIME)) {
+            try (AgentClient client = client(endpoint, EndpointType.RUNTIME, fastPolicy(3, 6))) {
                 InvocationCall first = invoke(client, "isolation-first");
-                assertThatThrownBy(() -> first.completion().toCompletableFuture()
-                        .get(8, TimeUnit.SECONDS))
-                        .isInstanceOf(ExecutionException.class)
-                        .cause().isInstanceOf(ClassifiedError.class)
-                        .satisfies(error -> assertThat(((ClassifiedError) error).code())
-                                .isEqualTo("RECOVERY_RETRY_EXHAUSTED"));
+                List<JsonNode> firstRequests = takeRequests(endpoint, false, 7);
+                assertRecoveryExhausted(first);
 
                 InvocationCall second = invoke(client, "isolation-second");
                 InvocationSnapshot completed = second.completion().toCompletableFuture()
                         .get(8, TimeUnit.SECONDS);
+                List<JsonNode> secondRequests = takeRequests(endpoint, false, 2);
 
                 assertThat(completed.invocationRef()).isEqualTo(second.invocationRef())
                         .isNotEqualTo(first.invocationRef());
                 assertThat(completed.state()).isEqualTo(TaskState.COMPLETED);
                 assertThat(completed.outputText()).isEqualTo("done");
+                assertThat(firstRequests).extracting(node -> node.path("method").asText())
+                        .containsExactlyElementsOf(recoveryMethods(3));
+                assertThat(secondRequests).extracting(node -> node.path("method").asText())
+                        .containsExactly("SendStreamingMessage", "SubscribeToTask");
+                assertRecoveryTaskIds(firstRequests);
+                assertThat(secondRequests.get(1).at("/params/id").asText())
+                        .isEqualTo("task-isolation-second");
+
+                InvocationSnapshot reconciled = client.getInvocation(first.invocationRef())
+                        .toCompletableFuture().get(5, TimeUnit.SECONDS);
+                assertThat(reconciled.state()).isEqualTo(TaskState.COMPLETED);
+                assertThat(reconciled.outputText()).isEqualTo("first-done");
+                JsonNode explicitQuery = endpoint.takeRequest(false);
+                assertThat(explicitQuery.path("method").asText()).isEqualTo("GetTask");
+                assertThat(explicitQuery.at("/params/id").asText()).isEqualTo("task-isolation-first");
             }
         }
     }
 
     @Test
-    @Story("F006-B05: 终态订阅错误经 GetTask 对账且不计基础设施失败")
+    @Story("F006-R04-terminal-error: 结构化终态订阅错误经 GetTask 对账")
     @DisplayName("Feat-006 终态订阅错误不消耗失败次数并经 GetTask 收敛")
     void deterministicSubscriptionProtocolErrorDoesNotTriggerInfrastructureRetry() throws Exception {
         try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
             endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
                     "task-protocol-error", "ctx-protocol-error", "TASK_STATE_WORKING", "planning"));
-            endpoint.enqueueJsonRpcError(-32602, "invalid task state for subscription");
+            endpoint.enqueueJsonRpcError(-32602, "invalid task state for subscription",
+                    "TASK_NOT_SUBSCRIBABLE_TERMINAL");
             endpoint.enqueueJson(ClientSdkBlackboxFixture.taskSnapshot(
                     "task-protocol-error", "ctx-protocol-error", "TASK_STATE_COMPLETED", "done"));
 
@@ -404,6 +445,36 @@ class ClientReconnectBlackboxTest {
     }
 
     @Test
+    @Story("F006-R04-invalid-params: 真正 INVALID_PARAMS 不进入基础设施重试")
+    @DisplayName("Feat-006 非终态 INVALID_PARAMS 有限失败且不触发重试")
+    void invalidParamsDoesNotTriggerInfrastructureRetry() throws Exception {
+        try (ClientSdkBlackboxFixture endpoint = new ClientSdkBlackboxFixture()) {
+            endpoint.enqueueSse(ClientSdkBlackboxFixture.status(
+                    "task-invalid-params", "ctx-invalid-params", "TASK_STATE_WORKING", "planning"));
+            endpoint.enqueueJsonRpcError(-32602, "request parameters are invalid", "INVALID_PARAMS");
+
+            try (AgentClient client = endpoint.client(EndpointType.RUNTIME)) {
+                InvocationCall call = invoke(client, "invalid-params");
+                assertThatThrownBy(() -> call.completion().toCompletableFuture()
+                        .get(8, TimeUnit.SECONDS))
+                        .isInstanceOf(ExecutionException.class)
+                        .cause().isInstanceOf(ClassifiedError.class)
+                        .satisfies(error -> assertThat(((ClassifiedError) error).code())
+                                .isEqualTo("INVALID_PARAMS"));
+
+                List<JsonNode> requests = takeRequests(endpoint, false, 2);
+                assertThat(requests).extracting(node -> node.path("method").asText())
+                        .containsExactly("SendStreamingMessage", "SubscribeToTask");
+                assertThat(requests.get(1).at("/params/id").asText())
+                        .isEqualTo("task-invalid-params");
+                assertThat(endpoint.hasRequestWithin(Duration.ofMillis(500)))
+                        .as("INVALID_PARAMS must not start infrastructure reconciliation or retry")
+                        .isFalse();
+            }
+        }
+    }
+
+    @Test
     @Story("F006-E01: 两种 Endpoint 的恢复请求语义一致")
     @DisplayName("Feat-006 Gateway 与 Runtime 都以原 taskId 订阅恢复")
     void gatewayAndRuntimeUseTheOriginalTaskForRecovery() throws Exception {
@@ -429,6 +500,52 @@ class ClientReconnectBlackboxTest {
                 }
             }
         }
+    }
+
+    private static AgentClient client(ClientSdkBlackboxFixture endpoint, EndpointType endpointType,
+                                      RetryPolicy retryPolicy) {
+        return AgentClients.builder()
+                .endpointType(endpointType)
+                .endpointUrl(endpoint.baseUrl())
+                .credentialProvider(conversationId -> "acceptance-token")
+                .retryPolicy(retryPolicy)
+                .build();
+    }
+
+    private static RetryPolicy fastPolicy(int maxConsecutiveFailures, int maxKnownTaskRecoveryAttempts) {
+        return RetryPolicy.builder()
+                .maxConsecutiveFailures(maxConsecutiveFailures)
+                .maxKnownTaskRecoveryAttempts(maxKnownTaskRecoveryAttempts)
+                .initialDelay(Duration.ofMillis(25))
+                .maxDelay(Duration.ofMillis(25))
+                .multiplier(1.0d)
+                .jitterFactor(0.0d)
+                .build();
+    }
+
+    private static void enqueueInfrastructureFailures(ClientSdkBlackboxFixture endpoint, int count) {
+        for (int i = 0; i < count; i++) {
+            endpoint.enqueueHttpError(503, "SERVICE_UNAVAILABLE");
+        }
+    }
+
+    private static List<String> recoveryMethods(int cycles) {
+        List<String> methods = new ArrayList<>();
+        methods.add("SendStreamingMessage");
+        for (int i = 0; i < cycles; i++) {
+            methods.add("SubscribeToTask");
+            methods.add("GetTask");
+        }
+        return methods;
+    }
+
+    private static void assertRecoveryExhausted(InvocationCall call) {
+        assertThatThrownBy(() -> call.completion().toCompletableFuture()
+                .get(8, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .cause().isInstanceOf(ClassifiedError.class)
+                .satisfies(error -> assertThat(((ClassifiedError) error).code())
+                        .isEqualTo("RECOVERY_RETRY_EXHAUSTED"));
     }
 
     private static InvocationCall invoke(AgentClient client, String scenario) {

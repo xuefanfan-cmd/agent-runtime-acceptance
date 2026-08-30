@@ -10,7 +10,8 @@ import java.util.Optional;
  * <ul>
  *   <li>{@link StepUi} —— 反应式：每步查中台 step-ui 裁定 auto/manual/终态（默认，本期）。</li>
  *   <li>{@link Script} —— 步计数：按声明的 advance/select 序列推进，不查 step-ui、不依赖外部 YAML。</li>
- *   <li>{@link ParallelStepUi} —— 并发扇出：kickoff 后从 _remote_invocation 元数据派生子会话 id，并发驱动每个子会话。</li>
+ *   <li>{@link ParallelStepUi} —— 并发扇出（FEAT-027 线格式）：某轮终态 interrupt 携带 ≥2 个待输入远端成员
+ *       即判定扇出，经中台会话列表发现子会话 id 后并发驱动每个子会话。</li>
  * </ul>
  */
 public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script, DriveMode.ParallelStepUi {
@@ -27,7 +28,10 @@ public sealed interface DriveMode permits DriveMode.StepUi, DriveMode.Script, Dr
     }
 
     /**
-     * 并发扇出：kickoff 后从 kickoff 流的 _remote_invocation 元数据派生子会话 id，并发驱动每个子会话。
+     * 并发扇出（FEAT-027 线格式）：某轮终态 interrupt 携带 ≥2 个待输入远端成员
+     * （{@code _interrupt.items[].toolCallId}）即判定扇出；子会话 mid cid 经中台会话列表发现
+     * （运行时推导 {@code parentCid_<batchId>_<toolCallId>}，不再上线可推导），续传按
+     * {@code parts[].metadata.toolCallId} 路由，交织回复按生产者标签 {@code agentEvent.source} 归属。
      *
      * <p>选择按 <b>step_id 键控</b>：{@code selectionByStepId} 把每个需选择的人工步 step_id 映射到要注入的
      * kv。每个子会话在自己当前的 step 上按 step_id 查表取 kv——与腿序无关。这样当并发腿<b>非对称</b>时

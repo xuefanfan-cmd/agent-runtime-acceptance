@@ -24,13 +24,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.a2aproject.sdk.client.MessageEvent;
 import org.a2aproject.sdk.client.TaskUpdateEvent;
-import org.a2aproject.sdk.spec.Artifact;
-import org.a2aproject.sdk.spec.DataPart;
 import org.a2aproject.sdk.spec.Message;
-import org.a2aproject.sdk.spec.Part;
 import org.a2aproject.sdk.spec.TaskArtifactUpdateEvent;
+import org.a2aproject.sdk.spec.TaskStatusUpdateEvent;
 import org.a2aproject.sdk.spec.TaskState;
-import org.a2aproject.sdk.spec.TextPart;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -81,11 +78,12 @@ import java.util.Set;
  * through the normal serial continuation path below — it threads the prior {@code taskId} like any
  * continuation. {@link ParallelStepDriver} sends ONE multi-part resume per round on this single thread
  * (no fan-out, no concurrency), so there is no race on {@code prevTaskId}/{@code prevState} to protect
- * against. Per-child routing is via each part's {@code metadata.toolCallId} (NOT
- * {@code metadata.runtime.remoteToolInputs}); {@code metadata.body.conversation_id} stays the parent cid.
- * (Whether the runtime expects the kickoff taskId, no taskId, or a child-specific taskId on a batch
- * resume is a Phase-0 wire-contract calibration point — threading the kickoff taskId is the conservative
- * default.)
+ * against. Per-child routing is via each part's {@code metadata.toolCallId} (the runtime's
+ * {@code A2AProtocolAdapter} groups part texts by that key into {@code runtime.remoteToolInputs}; the
+ * refreshed FEAT-027 wire keeps this request-side contract); {@code metadata.body.conversation_id} stays
+ * the parent cid. The interleaved reply carries no per-child toolCallId — each forwarded remote artifact
+ * is labelled with {@code metadata.agentEvent.source.{agentId,taskId}} (see the bridge loop below), so
+ * the reply is demultiplexed by producer label, not by part metadata.
  *
  * <p><b>Wire-contract calibration points</b> (cannot be verified without a real plan-agent + LLM
  * run): (1) the rebuilt envelope matches what the plan-agent's {@code VersatileRequestExtractor}
@@ -360,34 +358,33 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
             }
 
             // Bridge each text-bearing InboundEvent → SseEvent (text under data.text, the shape
-            // RestVersatileTransport produces). STATE/LLM_USAGE carry no text and have no gateway SSE
-            // equivalent, so they are dropped. When an event's raw carries artifact/message-part
-            // metadata (parallel-transfer: TextPart.metadata._remote_invocation), surface it under the
-            // same data key so RemoteInvocationProbe can derive child conversation ids downstream.
+            // RestVersatileTransport produces), projecting the FEAT-027 metadata the refreshed runtime
+            // emits so RemoteInvocationProbe can build the call tree / demux streams downstream:
+            //   data.agentEvent     — the artifact/message metadata.agentEvent map, verbatim
+            //                         ({type:"delegation"|"output"|"status", source:{agentId,taskId},
+            //                         target?, state?}); the producer label (source) is how the client
+            //                         attributes interleaved fan-out streams (FEAT-027 流式输出分流).
+            // STATE/LLM_USAGE events carry no text; a STATE whose statusUpdate carries
+            //   status.message.metadata._interrupt.items[].toolCallId (the round's pending remote
+            //   members) is bridged as data.interruptItems — that list is the only place the refreshed
+            //   wire still names the resume routing keys, and statusUpdates map to text-less STATE
+            //   InboundEvents, so they must be bridged explicitly rather than through the text path.
             for (InboundEvent e : exchange.events()) {
                 if (e.text() != null && !e.text().isEmpty()) {
                     Map<String, Object> data = new LinkedHashMap<>();
                     data.put("text", e.text());
-                    // Collect ALL _remote_invocation projections this event carries. A parallel fan-out
-                    // artifact can bundle several children — one TextPart each — into a single event; the
-                    // prior first-found-wins dropped every child after the first, so a 2-member batch
-                    // surfaced only 1 (the "derived 1" failure). Single → Map (backward compatible);
-                    // multiple → List<Map> so RemoteInvocationProbe derives every child.
-                    List<Map<String, Object>> ris = remoteInvocationsFrom(e.raw());
-                    if (ris.size() == 1) {
-                        data.put("_remote_invocation", ris.get(0));
-                    } else if (ris.size() > 1) {
-                        data.put("_remote_invocation", ris);
-                    }
-                    // Parallel-reply demux: stamp this event's child toolCallId onto data when the source
-                    // event's parts carry one (the runtime tags each per-child reply — confirmed). Lets
-                    // ParallelStepDriver.groupByToolCallId demux a combined batch reply per child. Absent
-                    // on the serial path (no toolCallId) — nothing asserts the absence of keys.
-                    String tcid = toolCallIdOf(e.raw());
-                    if (tcid != null) {
-                        data.put("toolCallId", tcid);
+                    Map<String, Object> agentEvent = agentEventOf(e.raw());
+                    if (agentEvent != null) {
+                        data.put("agentEvent", agentEvent);
                     }
                     collector.add(new SseEvent(e.kind().name().toLowerCase(Locale.ROOT), data));
+                } else {
+                    List<String> interruptItems = interruptToolCallIdsOf(e.raw());
+                    if (!interruptItems.isEmpty()) {
+                        Map<String, Object> data = new LinkedHashMap<>();
+                        data.put("interruptItems", interruptItems);
+                        collector.add(new SseEvent(e.kind().name().toLowerCase(Locale.ROOT), data));
+                    }
                 }
             }
 
@@ -462,103 +459,89 @@ public final class ConversationInteractionAdapter implements ConversationTranspo
     }
 
     /**
-     * Extract ALL {@code _remote_invocation} projections ({@code {batchId, toolCallId}}) the event's
-     * artifact/message parts carry — one per child in a parallel fan-out. A single event can bundle
-     * several children (one {@link TextPart} each), so this collects every projection rather than
-     * stopping at the first (the prior first-found-wins dropped every child after the first, which is
-     * why a 2-member fan-out batch surfaced only 1). Empty list when {@code raw} is null, an unrelated
-     * type, an event subtype without parts, or no part carries a projection.
+     * The FEAT-027 {@code agentEvent} map an A2A event's artifact (or message) metadata carries, or
+     * {@code null}. The refreshed runtime stamps every forwarded remote artifact with
+     * {@code metadata.agentEvent = {type:"delegation"|"output"|"status", source:{agentId,taskId},
+     * target?, state?}} — delegation events build the client's call tree, and the {@code source} label
+     * attributes interleaved fan-out streams to call-tree nodes. Non-SDK raws (REST/synthesised) and
+     * events without the metadata return {@code null}.
      *
-     * <p>Delegates the SDK hierarchy walk to {@link #partsOf(Object)} (the single shared walk over
-     * {@link TaskUpdateEvent}/{@link MessageEvent} → artifact/message → {@code parts()}) and the per-part
-     * projection to {@link #remoteInvocationsFromParts(List)}. The raw is the SDK
-     * {@link org.a2aproject.sdk.client.ClientEvent} for A2A events and something else (or null) for
-     * REST/synthesised events — non-SDK inputs return an empty list.
+     * <p>Public for {@code cases/**} acceptance tests: the FEAT-027 nested multi-hop case consumes raw
+     * {@code ClientEvent}s directly from the SDK collector and reuses this same projection (the ONE
+     * wire-format authority) instead of re-implementing the metadata walk per test.
      */
-    private static List<Map<String, Object>> remoteInvocationsFrom(Object raw) {
-        return remoteInvocationsFromParts(partsOf(raw));
-    }
-
-    /**
-     * The child {@code toolCallId} a batch-reply event is tagged with, or {@code null} if the event's parts
-     * carry none. Reads parts via the shared {@link #partsOf(Object)} walk and inspects each part's
-     * {@code metadata.toolCallId} (the runtime's per-child reply tag — confirmed). Used by the bridge loop
-     * to stamp each emitted {@link SseEvent}'s {@code data.toolCallId} so
-     * {@link ParallelStepDriver#groupByToolCallId(List)} can demux a combined batch reply per child.
-     */
-    static String toolCallIdOf(Object raw) {
-        List<Part<?>> parts = partsOf(raw);
-        if (parts == null) return null;
-        for (Part<?> p : parts) {
-            Map<String, Object> md = partMetadata(p);
-            if (md != null && md.get("toolCallId") instanceof String s && !s.isBlank()) {
-                return s;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * The {@code parts()} list carried by an A2A event's artifact/message, or {@code null}. This is the
-     * single source of truth for the SDK hierarchy walk — both {@link #toolCallIdOf(Object)} and
-     * {@link #remoteInvocationsFrom(Object)} read parts through this channel, so any change to the
-     * {@link TaskUpdateEvent}/{@link MessageEvent} accessor chain lands here once.
-     */
-    private static List<Part<?>> partsOf(Object raw) {
+    public static Map<String, Object> agentEventOf(Object raw) {
         if (raw instanceof TaskUpdateEvent tue) {
-            if (tue.getUpdateEvent() instanceof TaskArtifactUpdateEvent aue && aue.artifact() != null) {
-                return aue.artifact().parts();
+            if (tue.getUpdateEvent() instanceof TaskArtifactUpdateEvent aue
+                    && aue.artifact() != null && aue.artifact().metadata() != null
+                    && aue.artifact().metadata().get("agentEvent") instanceof Map<?, ?> v) {
+                return castMap(v);
             }
         } else if (raw instanceof MessageEvent me) {
             Message m = me.getMessage();
-            return m == null ? null : m.parts();
+            if (m != null && m.metadata() != null && m.metadata().get("agentEvent") instanceof Map<?, ?> v) {
+                return castMap(v);
+            }
         }
         return null;
     }
 
     /**
-     * Every {@code _remote_invocation} entry found across the parts in {@code parts}, in order. See
-     * {@link #remoteInvocationsFrom(Object)} — collect-all so a multi-member fan-out artifact
-     * surfaces every child (the prior first-found-wins dropped all but the first).
+     * The outer (parent-SSE) {@code taskId} of an A2A event frame, or {@code null}. FEAT-027 §5.7 keeps
+     * two task dimensions apart: the frame's own {@code taskId} names the task whose stream the event
+     * rides on (the root task for the client's SSE), while {@code agentEvent.source.taskId} names the
+     * producing agent's task. {@link InboundEvent#taskId()} is only populated for STATE events, so tests
+     * scanning artifact/message frames for the FEAT-027 wire contract read the outer id here instead of
+     * re-walking SDK record shapes per test.
      *
-     * <p>Walks BOTH {@link TextPart}s and {@link DataPart}s. The runtime's {@code ChunkMapper} switched
-     * a {@code TYPE_REMOTE_AGENT_PROGRESS} projection from a TextPart to a {@link DataPart} (its
-     * {@code metadata} still carries {@code _remote_invocation}); the prior {@code instanceof TextPart}-
-     * only walk silently dropped every DataPart-borne projection, so a real fan-out surfaced 0 children.
-     * Both part types expose the same {@code metadata()} map, so the projection lookup is identical.
+     * <p>Public for {@code cases/**} acceptance tests — same rationale as {@link #agentEventOf(Object)}.
      */
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> remoteInvocationsFromParts(List<Part<?>> parts) {
-        if (parts == null) {
+    public static String outerTaskIdOf(Object raw) {
+        if (raw instanceof TaskUpdateEvent tue) {
+            if (tue.getUpdateEvent() instanceof TaskArtifactUpdateEvent aue) {
+                return aue.taskId();
+            }
+            if (tue.getUpdateEvent() instanceof TaskStatusUpdateEvent sue) {
+                return sue.taskId();
+            }
+        } else if (raw instanceof MessageEvent me) {
+            Message m = me.getMessage();
+            return m != null ? m.taskId() : null;
+        }
+        return null;
+    }
+
+    /**
+     * The pending remote members' {@code toolCallId}s from a statusUpdate's
+     * {@code status.message.metadata._interrupt.items[]} — the only place the refreshed wire still
+     * names the resume routing keys (a fan-out round ends with "Multiple remote agents require input"
+     * carrying one item per waiting member). Empty for raws without a pending-member interrupt.
+     *
+     * <p>Public for {@code cases/**} acceptance tests — same rationale as {@link #agentEventOf(Object)}.
+     */
+    public static List<String> interruptToolCallIdsOf(Object raw) {
+        if (!(raw instanceof TaskUpdateEvent tue)
+                || !(tue.getUpdateEvent() instanceof TaskStatusUpdateEvent sue)
+                || sue.status() == null || sue.status().message() == null
+                || sue.status().message().metadata() == null) {
             return List.of();
         }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Part<?> p : parts) {
-            Map<String, Object> md = partMetadata(p);
-            if (md == null) {
-                continue;
-            }
-            Object ri = md.get("_remote_invocation");
-            if (ri instanceof Map<?, ?>) {
-                out.add((Map<String, Object>) ri);
+        Object interrupt = sue.status().message().metadata().get("_interrupt");
+        if (!(interrupt instanceof Map<?, ?> im) || !(im.get("items") instanceof List<?> items)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> m && m.get("toolCallId") instanceof String s && !s.isBlank()) {
+                out.add(s);
             }
         }
         return out;
     }
 
-    /**
-     * The {@code metadata()} map a part carries, or {@code null} for a part type the projection walk
-     * does not inspect. Both {@link TextPart} and {@link DataPart} expose a {@code metadata()} map
-     * (where {@code _remote_invocation} rides); other part types have no projection channel.
-     */
-    private static Map<String, Object> partMetadata(Part<?> p) {
-        if (p instanceof TextPart tp) {
-            return tp.metadata();
-        }
-        if (p instanceof DataPart dp) {
-            return dp.metadata();
-        }
-        return null;
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> m) {
+        return (Map<String, Object>) m;
     }
 
     /**

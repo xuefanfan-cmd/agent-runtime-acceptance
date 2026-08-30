@@ -31,8 +31,8 @@
              `agent-service-app` is the jar that transitively brings spec + adapters-common +
              adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY. -->
         <agent-runtime-java.version>0.1.1</agent-runtime-java.version>
-        <agent-runtime-ext-java.version>0.1.0</agent-runtime-ext-java.version>
-        <registry-discovery-center.version>0.1.0</registry-discovery-center.version>
+        <agent-runtime-ext-java.version>0.1.1</agent-runtime-ext-java.version>
+        <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>
         <rocketmq-client.version>5.1.4</rocketmq-client.version>
     </properties>

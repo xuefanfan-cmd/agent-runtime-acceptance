@@ -57,7 +57,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("integration")
 @Tag("deepagent")
 @Tag("feat-parallel-search")
-@Feature("agent-runtime 同轮多 remote A2A 调用并行分发 · parallel-search")
+@Feature("FEAT-019: 智能体生成并行的下游智能体调用委托")
+@Story("FEAT-019.parallel-search: 一个 turn 批量 fan-out 并 all-settled 单次汇总")
 @Story("da.parallel-search: COMPARISON 一个 turn 批量并行 search")
 class ParallelSearchComparisonTest extends BaseManagedStackTest {
 

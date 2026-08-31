@@ -1,0 +1,53 @@
+docs/cases/FEAT-031-studio-dsl-node-type-extension.md
+  s_336cd5757d8586::t_e4b4825191b8f3 57-58
+  s_336cd5757d8586::t_7453296f1f2cb3 94,99-106
+  s_336cd5757d8586::t_98893b9eefa458 113
+  s_336cd5757d8586::t_33117c8b4112a5 118-123
+  s_336cd5757d8586::t_918ec218c33c42 440
+  s_336cd5757d8586::t_fa7c4950c5ecbb 3
+  s_336cd5757d8586::t_8e23473837dc0e 433-434
+  s_336cd5757d8586::t_f57c0009b41847 245-247
+  s_336cd5757d8586::t_bce8dfbe074028 264-321
+  s_336cd5757d8586::t_3ff1abb67b4f72 59-60
+  s_336cd5757d8586::t_8f65747c7348ad 1-2,4-16,18,30-34,38-56,61-63,65-74,76-79,86-93,95-98,107-112,114-117,124-214,218-221,223-230,234-237,239-244,248-251,253-263,322-369,438-439,441-450
+  s_336cd5757d8586::t_64cf2668cef931 370-392,395-413,416-432,435-437
+  s_336cd5757d8586::t_963797dc17be5e 75,80-85
+  s_336cd5757d8586::t_fd4ef6ac454524 252
+  s_336cd5757d8586::t_49d16bb35f4e1b 35-37
+  s_336cd5757d8586::t_078ec049b1dc72 231-233,238
+  s_336cd5757d8586::t_a3a43cb0088a80 414-415
+  s_336cd5757d8586::t_3c29f7243875a2 64
+  s_336cd5757d8586::t_073652365fd6a2 215-217,222
+  s_336cd5757d8586::t_44e2dbdc6292b0 19,22
+  s_336cd5757d8586::t_c2a12fa44757ee 393-394
+  s_336cd5757d8586::t_9debac23f8b98e 17,20-21,23-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "2b464d6f1da5fcc41f0bd418b579817b7198811d",
+  "prompts": {},
+  "sessions": {
+    "s_336cd5757d8586": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a83c2e9416791fccaf0fffe",
+        "model": "glm-5.2"
+      },
+      "human_author": "JiangCaifu <zhaoxi17@huawei.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "operation_id": "6a954dbfe2107aed0cf37348",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "agent",
+        "tool_id": "SearchReplace",
+        "dedupe_key": "6a83c2e9416791fccaf0fffe:6a954dbfe2107aed0cf37348:afterEdit:4d869ffa",
+        "session_id": "6a83c2e9416791fccaf0fffe",
+        "external_session_id": "6a83c2e9416791fccaf0fffe",
+        "tool_use_id": "6a954dbfe2107aed0cf37348",
+        "source_scene": "unknown"
+      }
+    }
+  }
+}

@@ -1,14 +1,19 @@
 ---
 feature_id: FEAT-006
 feature_title: 客户端发起标准化智能体调用
-sut: 正式 agent-client 制品 -> 受治理 Gateway -> multi-react-travel-demo
-status: designed-dependency-gated
+sut: 合同层=测试 JVM 内的正式 agent-client SDK；E2E=正式 Client SDK -> Runtime / Gateway -> Runtime -> 真实 Agent
+status: partial
 tags: [blackbox, contract, integration, feat-006]
+updated: 2026-08-29
+input_maturity: merged
+automation_status: implemented-and-contract-verified
 ---
 
 # FEAT-006 - 客户端发起标准化智能体调用测试设计
 
-> 由业务应用只使用正式 `agent-client` facade 调用 `travel-mainplan`，验证当前 L2 交付的 STREAMING 创建、只读状态投影、同 conversation 新调用和 `input_required` 续接；不把 A2A `taskId` 当业务操作句柄。
+> 由业务应用只使用正式 `agent-client` facade 调用 `travel-mainplan`，在 Runtime 直连与 Gateway 转发两条路径上
+> 验证既有 STREAMING 行为以及本期新增的已知 Task 断点重连、周期重试和观察熔断；业务侧只操作
+> `invocationRef`，不把 A2A `taskId` 当业务操作句柄。
 
 ## 1. 设计依据与测试范围
 
@@ -16,26 +21,66 @@ tags: [blackbox, contract, integration, feat-006]
 
 | 输入 | 锁定版本 |
 |---|---|
-| Feature | `D:\code-agent\feature-docs\develop\02-features\FEAT-006-standard-agent-client-invocation.md` |
-| L2 | `D:\code-agent\feature-docs\develop\03-architecture\L2-Low-Level-Design\agent-client\Feat-Func-006-standard-agent-client-invocation.md` |
-| Feature/L2 仓 | `main@7e1632dd96d49dad05747d8804631234be3cf457`，读取日期 2026-08-06 |
-| acceptance 仓 | `main@eb5e3f20ca39f0a8bc647c1ca17b8a637370ce05`，读取日期 2026-08-06；本文为工作区设计变更 |
+| Feature | `03-Upstream-Docs/develop/02-features/FEAT-006-standard-agent-client-invocation.md`；file commit `79dadca7`；SHA-256 `07B42090BF7E2A15888D5920765F225EFCD46706F8F215FDEDCE05B865265F6B` |
+| L2 | `03-Upstream-Docs/develop/03-architecture/L2-Low-Level-Design/agent-client/Feat-Func-006-standard-agent-client-invocation.md`；file commit `3479d310`；SHA-256 `A33949F6862F25357E2E1496F6AD7C8F9DBC9FD08E6BD1BB11765B01A41CDC53`；`authority: non-authoritative` |
+| Feature/L2 仓 | `03-Upstream-Docs/main@1277db6c`，读取日期 2026-08-29，merged；Feature 内容未更新 |
+| acceptance 仓 | `feat/reconnect-acceptance@ca7b79a5d63247e693c465ff3c6f7ae98673b758` |
+| Client ISSUE206 复现/校正回归基线 | `common@1cf9b574be46e12380e77575290ac927b9cd2577`；无产品修复 commit；重建 JAR SHA-256 `4200A1F380FFB8F6EE6B5DA26EFC6CB2313AF3A602435977A24E6E6343219376` |
 | 测试 Agent | `com.openjiuwen.example:travel-demo-mainplan/trip/hotel:0.1.0`，由 `application-openjiuwen.yml` 和 `SutStack` 以外部 JAR 拉起 |
 
-L2 明确生产 `agent-client` 尚未落地，且本迭代只交付 STREAMING 最小链路；Feature 中 BLOCKING、ASYNC、查询、取消、重订阅和 UNKNOWN 恢复仍是 MUST，但按 L2 标为 `deferred`，不生成空测试。未查阅 `agent-runtime-java` 或 `agent-solution` 产品源码；当前 Feature/L2 足以确定范围和 Oracle。
+当前权威设计/L2 和最新代码已包含正式 Client 公共 API、`GetTask`、`SubscribeToTask`、恢复重试与两种
+`EndpointType` 路径，不能再沿用“生产 Client 未落地、查询/重订阅全部 deferred”的旧结论。代码只用于确认
+可执行入口和实现准备度，测试 Oracle 仍以权威设计为准；代码存在不等于 SIT 已通过。
+
+2026-08-29 最新增量裁决：L2 把 Subscribe 与其后的 GetTask 定义为一个恢复周期，两者均失败时连续失败只
+增加 1，并新增默认 6 次的已知 Task 总恢复预算。但是 Feature 仍写“连续三次重试请求失败”，且要求
+WORKING 成功后继续重试直到终态或连续三次失败。L2 标明 `non-authoritative`，因此不能单独覆盖 Feature MUST。
+
+| ID | Feature | L2 `3479d310` | 当前处置 |
+|---|---|---|---|
+| `D006-206-01` | 连续 3 个失败重试请求后熔断 | 一个 Subscribe+GetTask 失败周期只计 1 次；默认 3 个周期、6 个恢复请求 | `D006-206-DEC-01` 已确认本期采用 L2，覆盖 `F006-B01/B02/B04/B06` |
+| `D006-206-02` | WORKING 成功后继续重试，直到终态或连续 3 次失败 | WORKING 清零连续失败但不返还总预算；默认最多 6 个恢复周期 | `D006-206-DEC-01` 已确认本期采用 L2，新增 `F006-B05` |
+
+原 ISSUE206 四条 FAIL 保留为历史事实；周期级计数和总预算已由 `D006-206-DEC-01` 冻结为本期 Oracle。更正后自动化在同一 Client 源码基线重建制品上精确执行，结果为 `14 executed / 14 PASS / 0 failure / 0 error / 0 skipped`；XML SHA-256 为 `712B4B408F683DE865F9EEA975B15244EC1247520D5D4118464EB34DC8A0BD91`。合同层已 PASS；GitCode ISSUE206 已于 2026-08-29 回填结论并关闭，远端状态为 `CLOSED`。
 
 ### 1.2 范围
 
-本方案只验证当前 L2 交付给业务应用的 `agent-client` 黑盒行为：`STREAMING invoke`、conversation 传递、invocation 回显、归一化事件流、Task 状态只读投影、用户补充输入续接、端侧工具结果自动续跑入口和 ToolView 上报入口。测试不直接调用 client 内部 transport、映射表或状态存储，也不检查 runtime TaskStore、A2A 信封或 Gateway 路由实现。
+本方案保留既有 `STREAMING invoke`、conversation、invocation 回显、归一化事件、状态投影、继续输入和
+错误分类设计，并增量验证已知 taskId 后的断流恢复、`GetTask` 即时快照、`SubscribeToTask` 重订阅、
+周期重试和观察熔断。测试不直接调用 Client 内部 transport、映射表或状态存储。
 
 FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证；本方案只以“不暴露工具时普通调用不受影响”和 FEAT-007 闭环结果作为等价证据。
 
-当前 `agent-runtime-acceptance` 的 `com.huawei.ascend.sit.client.AgentClient` 是验收辅助类，不是 FEAT-006 产品 SDK；L2 也说明生产实现尚未落地。因此以下用例在正式 `agent-client` 可执行制品和 Gateway 入口可用前均为 **dependency-gated**，不得用 helper/fake 的成功结果宣称 FEAT-006 通过。
+当前 `agent-runtime-acceptance` 的 `com.huawei.ascend.sit.client.AgentClient` 仍只是验收辅助类，不能替代正式
+Client SDK。正式 Client JAR 已可本地构建，但真实 E2E 仍受 travel fixture JAR、LLM 配置和可执行环境门禁；
+公共 MockWebServer 合同成功不能替代 Runtime/Gateway 真实链路结论。
+
+### 1.3 Client SUT 与 fixture 边界
+
+Client SDK 是嵌入业务应用 JVM 的库，不是监听入站端口的独立服务。生产中由业务应用调用其 Java
+facade，SDK 再主动向 Runtime 或 Gateway 发送 HTTP/JSON-RPC/SSE。合同测试中的角色如下：
+
+| 角色 | 当前实现 | 是否属于本层 SUT |
+|---|---|---|
+| SDK 宿主和测试驱动 | JUnit JVM，调用 `client.invoke(...)` 等公开 API | 否；只负责加载和驱动产品库 |
+| 被测对象 | 正式 `agent-client-sdk-for-jvm` JAR 构建的 `AgentClient` 实例 | 是 |
+| 对端 fixture | `ClientSdkBlackboxFixture` 内的 MockWebServer，按脚本返回 HTTP/SSE | 否；它模拟 SDK 所依赖的 Runtime/Gateway 协议边界 |
+
+```text
+合同：JUnit 宿主 -> [正式 Client SDK SUT] -> [可控 Runtime/Gateway 协议端点 fixture]
+E2E： JUnit 宿主 -> [正式 Client SDK -> 正式 Gateway/Runtime -> 真实 Agent]
+```
+
+合同层可精确制造断流、静默 SSE 和错误序列，判定 SDK 自身的恢复行为；它不验证业务应用的独立部署、
+配置装配或真实 Runtime/Gateway 联通性，这些由 E2E 承接。
 
 ## 2. 前置条件与证据
 
+- Client 合同层由 JUnit JVM 直接加载正式 SDK JAR，不需要另外启动“Client 服务”，也不依赖 LLM；
+  MockWebServer 只是 Runtime/Gateway 对端 fixture，不得写成 Client SUT 或真实链路。
 - 由 `SutStack` 按 hotel -> trip -> mainplan 拉起 `multi-react-travel-demo` 三个外部 JAR；使用有效 LLM。
-- 正式 agent-client 只配置 Gateway 地址和测试凭证，业务测试代码不得配置 runtime endpoint、routeHandle、broker、topic 或 taskId。
+- 正式 Client 只切换公开 `EndpointType` 与 endpoint URL：直连时配置 Runtime，主链路时配置 Gateway；
+  业务测试代码不得配置 routeHandle、broker、topic 或 taskId。
 - 每个测试生成唯一 `conversationId`、业务标记和请求文本；服务端响应需包含该轮业务语义。
 - 主要证据为产品 client facade 返回对象、事件流、最终业务结果以及平台公开审计；Gateway/runtime 增量日志只用于证明请求确实到达真实 Agent和敏感字段未泄漏，不检查内部结构。
 - `diagnosticTaskRef` 即使存在也只断言“非必填、非操作性”，测试后续步骤始终使用 `invocationRef`。
@@ -45,16 +90,25 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 | 子用例 ID | Story/来源 | 类型 | 执行状态 | 自动化状态 | 覆盖 | 主要证据 | 等价覆盖/排除 |
 |---|---|---|---|---|---|---|---|
-| `FEAT-006.streaming.lifecycle` | Feature §2/§4/§5.1.1-5.1.4；L2 §2.1 | blackbox | dependency-gated, P0 | design-only | STREAMING 创建、回显、事件、终态、同 conversation 新 invocation | client facade 对象、事件流、真实 Agent 结果 | 启动和无工具基线并入本例 |
-| `FEAT-006.streaming.continue-input` | Feature §2/§4/§5.1.3；L2 §2.1 | blackbox | dependency-gated, P0 | design-only | INPUT_REQUIRED、新 invocation 关联续接、多等待状态消歧、错误关联拒绝 | invocationRef、状态投影、真实 Task 结果 | 工具治理不在本特性 |
-| `FEAT-006.streaming.failure-boundary` | Feature §5.1.4/§5.1.6；L2 §5.2/§6 | blackbox | dependency-gated, P0 | design-only | 网络、路由、服务端、业务失败和 SSE 中断分类 | client 错误、Failed 投影、公开审计 | 未知枚举代理分支不计入本例 |
-| `FEAT-006.streaming.unknown-state-contract` | Feature §5.1.5；L2 §2.1/§3.4 | contract | dependency-gated, P1 | design-only | 未识别 TaskState 映射 UNKNOWN 且不崩溃 | SDK 公开事件/快照 | 协议代理只改写状态枚举，不证明真实 Agent 产生该状态 |
-| `FEAT-006.deferred.lifecycle-operations` | Feature §2/§4/§6；L2 §2.2 | contract/blackbox | deferred | design-only | BLOCKING、ASYNC、查询、取消、重订阅、UNKNOWN 同键恢复和显式降级 | 待公共接口和 runtime/Gateway 依赖交付 | L2 明确本迭代不交付；不生成任何占位测试 |
-| `FEAT-006.streaming.recovery` | Feature §5.1.4/§5.1.6；L2 §4.4/§9.2/§9.5 | blackbox | dependency-gated, P0 | design-only | STREAMING 断线 Subscribe 恢复原 Task、SSE 协议边界、HTTP retryable 矩阵、退避熔断计数 | client 恢复快照、错误分类、completeness=PARTIAL | BLOCKING/ASYNC 恢复 deferred；不影响本例 |
-| `FEAT-006.streaming.concurrency-isolation` | Feature §5.1.4；L2 §4.2/§9.4/§9.6/§9.8 | blackbox | dependency-gated, P0 | design-only | 并发 ≥20 invocation 不串 taskId/计数/pending/资源、close/terminal 竞态资源释放、随机化属性测试 | client 事件流、快照隔离、端口/线程释放 | 调用树 reducer 隔离并入本例 |
-| `FEAT-006.streaming.child-input-boundary` | Feature §5.1.3；L2 §4.6/§9.3 | contract | dependency-gated, P1 | design-only | 子节点 input_required 不结算根、根 INPUT_REQUIRED 才公开 pending、多 pending 全集校验 | 状态投影、pending 列表、树快照 | 多 pending 批量续传依赖多 pending API（⬜ 计划中）；子状态边界不依赖 |
-| `FEAT-006.streaming.sse-protocol-contract` | Feature §5.1.6；L2 §4.3.1/§7/§9.5 | contract | dependency-gated, P1 | design-only | SSE 多 data 行/注释/空行/JSON Content-Type→STREAMING_UNAVAILABLE、延迟启动先 onSubscribe 后发 HTTP | SDK 公开事件/快照、错误码 | STREAMING_UNAVAILABLE 不依赖恢复能力 |
-| `FEAT-006.streaming.runtime-direct` | Feature §2；L2 §4.1/§9.7 | blackbox | dependency-gated, P1 | design-only | Client→Runtime 直连 E2E、Runtime wire 隔离（无 agentId/Authorization/租户 headers）、两种 Endpoint ASYNC 无后台活动交叉证据 | wire fixture、Runtime 事件流、日志无敏感字段 | Gateway 路径由 lifecycle 覆盖；本例补充 Runtime 直连 |
+| `FEAT-006.streaming.lifecycle` | Feature §2/§4/§5.1.1-5.1.4；L2 §2.1 | contract | runnable, P0 | partial（公共合同已实现） | STREAMING 创建、回显、事件、终态、同 conversation 新 invocation | client facade、脚本化 SSE、请求记录 | 真实 Agent 结果由 E2E 补充 |
+| `FEAT-006.streaming.continue-input` | Feature §2/§4/§5.1.3；L2 §2.1 | contract | runnable, P0 | partial（公共合同已实现） | INPUT_REQUIRED、新 invocation 关联续接、多等待状态消歧、错误关联拒绝 | invocationRef、状态投影、请求记录 | 工具治理不在本特性 |
+| `FEAT-006.streaming.failure-boundary` | Feature §5.1.4/§5.1.6；L2 §5.2/§6 | contract | runnable, P0 | partial（公共合同已实现） | 网络、路由、服务端、业务失败和 SSE 中断分类 | client 错误、Failed 投影、请求记录 | 真实网络边界由 E2E 补充 |
+| `FEAT-006.streaming.unknown-state-contract` | Feature §5.1.5；L2 §2.1/§3.4 | contract | runnable, P1 | implemented | 未识别 TaskState 映射 UNKNOWN 且不崩溃 | SDK 公开事件/快照 | 只证明 Client 兼容合同 |
+| `F006-R01` | 当前 Feature/L2 断点续行 | contract + E2E | runnable, P0 | implemented；合同与 ReAct/DeepAgent/Workflow E2E 落点齐备 | 已知 taskId 的 SSE 断开自动恢复原 Task | Client 请求序列、invocation 投影、原 taskId | Workflow 最终结果投影 blocked |
+| `F006-R02` | 当前 Feature/L2 idle timeout | contract + E2E | partial, P1 | implemented | SSE idle timeout 触发恢复 | 公开 transport 短超时、静默订阅、请求序列 | 真实 Agent 未命中空窗可 INCONCLUSIVE |
+| `F006-R03` | 当前 Feature/L2 查询恢复 | contract + E2E | runnable, P0 | implemented；合同与风险 E2E 落点齐备 | `GetTask` 返回即时快照 | Client 公开投影、wire | Workflow 原始 DataPart 存在，但 Client 查询快照未公开，blocked |
+| `F006-R04` | 当前 Feature/L2 终态竞态 | contract + E2E | runnable, P0 | contract-verified；已补结构化终态错误和真正 INVALID_PARAMS 对照 | Subscribe 错误后 GetTask 收敛 | 请求顺序、结构化错误码、单次 future 结算 | message 兼容只作增强证据 |
+| `F006-B01-B04` | 当前 Feature/L2 重试熔断 | contract + E2E | runnable, P0 | contract-verified；按完整失败周期计数 | 周期重试、阈值、成功清零、熔断不 Cancel | 请求/周期数、间隔、错误分类、Task 快照 | 合同层已 PASS；真实 E2E 单独记账 |
+| `F006-B05` | L2 已知 Task 总恢复预算 | contract | runnable, P0 | contract-verified | 默认 6 次及 `maxKnownTaskRecoveryAttempts` 可配置性；WORKING 不返还预算 | 周期数、最终投影、completion、无 Cancel | 默认/自定义预算已 PASS |
+| `F006-B06` | 当前 Feature/L2 invocation 隔离 | contract | runnable, P0 | contract-verified | 连续失败数和总恢复预算按 invocation 隔离 | 两个 invocation 的最终状态、invocationRef、请求序列 | 合同层已 PASS |
+| `F006-E01` | 当前 Feature 双 Endpoint | contract + E2E | runnable, P0 | implemented | Runtime 直连与 Gateway 主链路业务表现一致 | 正式 Client、真实 Agent、taskId/canary | ReAct 双路径落点齐备 |
+| `F006-E02` | DeepAgent Gateway 风险路径 | E2E | runnable, P1 | partial；基础恢复落点已实现，恰好一次 Oracle 待补 | 长流断开后恢复原 Task 并完成 | 原 taskId、最终快照、业务 marker | 远程节点恰好一次 Oracle 仍 partial |
+| `F006-E03` | Workflow INPUT_REQUIRED 风险路径 | E2E | blocked, P1 | implemented；Client 结果投影 blocked | 断流后恢复原 Workflow Task 并续轮 | 原 taskId、INPUT_REQUIRED/COMPLETED 快照、Runtime 原始 DataPart | Client completion/getInvocation 均未公开 Runtime 终态 DataPart |
+| `FEAT-006.deferred.cancel-and-create-retry` | 当前 Feature OUT/既有决策 | boundary | deferred | design-only | Cancel、未取得 taskId 时创建安全重发/幂等 | 不执行 | 后续需求承接 |
+| `FEAT-006.streaming.concurrency-isolation` | Feature §5.1.4；L2 §4.2/§9.4/§9.6/§9.8 | contract | runnable, P0 | implemented（FEAT-026 交叉验证） | 并发 invocation 状态与事件隔离、重复 completion 幂等 | client 事件流、快照隔离、请求计数 | close 竞态等待公开 API |
+| `FEAT-006.streaming.child-input-boundary` | Feature §5.1.3；L2 §4.6/§9.3 | contract | runnable, P1 | implemented（FEAT-026 交叉验证） | 子节点 input_required 不结算根 Task | 状态投影、树快照 | 多 pending 批量续传另行门禁 |
+| `FEAT-006.streaming.sse-protocol-contract` | Feature §5.1.6；L2 §4.3.1/§7/§9.5 | contract | partial, P1 | partial（FEAT-026 交叉验证） | 多订阅、JSON Content-Type 和标准 SSE | SDK 公开事件/快照、错误码 | 自定义多 data/comment 帧待 mock 扩展 |
+| `FEAT-006.streaming.runtime-direct` | Feature §2；L2 §4.1/§9.7 | contract | partial, P1 | partial（FEAT-026 交叉验证） | Runtime 直连 body 级 wire 隔离 | Runtime wire fixture | header 级隔离待 fixture 扩展 |
 
 ### 当前交付能力追踪
 
@@ -66,19 +120,20 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 | 用户补充输入、目标消歧、续接幂等与关联错误 | `FEAT-006.streaming.continue-input` |
 | 网络/路由/A2A/业务/SSE 错误分类和拓扑隐藏 | `FEAT-006.streaming.failure-boundary` |
 | 未识别 TaskState 的 UNKNOWN 兜底 | `FEAT-006.streaming.unknown-state-contract` |
-| STREAMING 断线恢复原 Task、SSE 协议边界、HTTP retryable 矩阵、退避熔断计数 | `FEAT-006.streaming.recovery` |
+| GetTask、SubscribeToTask、恢复重试与观察熔断 | `F006-R01-R04`、`F006-B01-B06` |
+| 双 Endpoint 公开行为一致 | `F006-E01` |
+| Cancel、未取得 taskId 时创建安全重发/幂等 | `FEAT-006.deferred.cancel-and-create-retry` |
 | 并发调用隔离（≥20 invocation）、close/terminal 竞态资源释放、随机化属性测试 | `FEAT-006.streaming.concurrency-isolation` |
 | 子节点 input_required 不结算根、根 INPUT_REQUIRED 才公开 pending | `FEAT-006.streaming.child-input-boundary` |
 | SSE 协议边界（多 data 行/注释/JSON Content-Type→STREAMING_UNAVAILABLE）、延迟启动 | `FEAT-006.streaming.sse-protocol-contract` |
 | Client→Runtime 直连 E2E、Runtime wire 隔离 | `FEAT-006.streaming.runtime-direct` |
-| BLOCKING、ASYNC、查询、取消、重订阅、UNKNOWN 同键恢复、显式降级 | `FEAT-006.deferred.lifecycle-operations`（L2 §2.2，deferred） |
 
 ## 4. 详细用例
 
 ### FEAT-006.streaming.lifecycle - 标准流式调用生命周期
 
-- **状态/优先级**：dependency-gated, P0。
-- **自动化状态**：design-only。
+- **状态/优先级**：runnable, P0。
+- **自动化状态**：partial；`StandardAgentClientBlackboxTest` 已覆盖公共合同，真实 E2E 待补。
 - **Story/来源**：Feature §2、§4、§5.1.1-5.1.4；L2 §2.1、§3.2-§3.5。
 - **测试类型**：blackbox。
 - **Oracle 来源**：Feature 的 conversation/invocation、STREAMING、平台入口和状态投影语义；L2 当前交付的公开 facade 与六类事件。
@@ -101,8 +156,8 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.continue-input - 等待输入续接
 
-- **状态/优先级**：dependency-gated, P0。
-- **自动化状态**：design-only。
+- **状态/优先级**：runnable, P0。
+- **自动化状态**：partial；`StandardAgentClientBlackboxTest` 已覆盖公共合同，真实 E2E 待补。
 - **Story/来源**：Feature §2、§4、§5.1.3；L2 §2.1、§3.4。
 - **测试类型**：blackbox。
 - **Oracle 来源**：Feature 的新 invocation 续接、同 conversation、消歧和关联错误；L2 当前 `continueInput` facade 与 wire 约束。
@@ -122,7 +177,7 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.failure-boundary - 调用失败边界
 
-- **状态/优先级**：dependency-gated, P0；**自动化状态**：design-only。
+- **状态/优先级**：runnable, P0；**自动化状态**：partial，公共合同已实现、真实故障边界 E2E 待补。
 - **Story/来源**：Feature §5.1.4/§5.1.6；L2 §5.2/§6。
 - **测试类型**：blackbox。
 - **Oracle 来源**：Feature 的错误分类与 SSE 中断恢复语义；L2 当前公开错误/事件投影。
@@ -137,7 +192,7 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.unknown-state-contract - 未知状态兼容
 
-- **状态/优先级**：dependency-gated, P1；**自动化状态**：design-only。
+- **状态/优先级**：runnable, P1；**自动化状态**：implemented。
 - **Story/来源**：Feature §5.1.5；L2 §2.1/§3.4。
 - **测试类型**：contract。
 - **Oracle 来源**：Feature 与 L2 的未知 TaskState 只读 UNKNOWN 兜底合同。
@@ -150,21 +205,117 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 - **标签**：`@Tag("contract")`、`@Story("FEAT-006.streaming.unknown-state-contract: 未知状态兼容")`、`@Tag("story-feat-006-streaming-unknown-state-contract")`。
 - **DisplayName**：`Feat-006 未识别状态映射 UNKNOWN 且不阻断后续终态`。
 
+## 5. 本期断点重连增量详细设计
+
+### 5.1 当前实施切片与范围边界
+
+Client 合同本身与 Agent 类型无关，完整协议/重试矩阵只实施一次；Agent 差异通过 Runtime 适配器探针和
+风险导向 E2E 验证。两种 Endpoint 都必须有真实证据，但不机械展开三种 Agent 乘两条路径：
+合同层的“正式 Client”指测试 JVM 内运行的正式 SDK 实例，不是另外启动的进程。
+
+```text
+对照：Client -> Runtime
+主链路：Client -> Gateway -> Runtime
+```
+
+两条路径执行同一旅程：创建流式 Task、取得 taskId、断流、查询/重订阅原 Task、等待最终收敛。
+FEAT-006 只判定 Client 公开行为；Gateway owner 路由、拓扑清洗等额外断言归 FEAT-011。
+
+| SUT 架构 | 当前处置 | 架构特有 Oracle |
+|---|---|---|
+| ReActAgent travel | Runtime 直连与 Gateway 两条 E2E，P0 | trip/hotel 请求 canary 不重复；原 Task 最终收敛 |
+| DeepAgent | Gateway 风险 E2E，P1；Runtime 适配器直连探针 | 长流回原 Task；search/verify 或等价公开 canary 不重复 |
+| WorkflowAgent | Runtime 直连风险 E2E，P1 | 断流后进入 `INPUT_REQUIRED` 或终态；Workflow 快照完整；节点/审批不重复 |
+
+本期明确不测：`CancelTask`、未取得 taskId 时的创建安全重发/幂等、Client 进程重启后的 invocation 映射、
+历史事件逐帧重放、cursor/offset 和完整调用模式矩阵。
+
+### 5.2 F006-R01/R03/R04 - 已知 Task 恢复
+
+- **Given**：正式 Client 以 STREAMING 创建被测 Agent 长任务，业务侧已取得 `invocationRef`，Client 内部已关联服务端 taskId，Task 非终态。
+- **When**：SSE 在终态前断开，Client 自动调用 `SubscribeToTask`；订阅遇到结构化终态错误、能力不可用、基础设施失败、可识别空流或协议不完整时，在同一个恢复周期内进入一次 `GetTask` 对账。
+- **Then**：创建请求只发送一次；恢复始终观察原 taskId；终态/根 INPUT_REQUIRED 由 GetTask 结算，只有 WORKING/SUBMITTED 且总恢复预算未耗尽时才允许启动下一恢复周期；业务侧继续只用原 invocationRef；最终 future 只结算一次。终态竞态固定为一次 Subscribe 加一次 GetTask，连续失败增量 0、总预算消耗 1。
+- **FAIL**：第二次 `SendStreamingMessage`、taskId 改变、重复执行、业务侧必须传 taskId，或终态竞态无可编程恢复结果。
+
+### 5.3 F006-R02/B01-B06 - idle、重试与观察熔断
+
+- **Given**：合同层可脚本化断流、idle、retryable 基础设施失败、确定性协议错误和有效 WORKING 快照；重试间隔与阈值可设为测试值。
+- **When**：Client 进入恢复观察，分别执行“失败达到阈值”和“失败后成功再失败”的序列。
+- **Then（`D006-206-DEC-01` 已确认口径）**：idle 只触发恢复，不直接把 Task 标为 FAILED/CANCELED；一个 Subscribe 及其 GetTask 对账构成一个恢复周期，两者均失败只增加一次连续失败；默认连续 3 个失败周期后停止，即 6 个恢复请求，包含首次创建共 7 个请求；不同 invocation 互不串线；wire 中没有 `CancelTask`。
+- **成功与总预算**：有效 Task 快照或有效 Subscribe 帧清零连续失败；WORKING/SUBMITTED 不返还已消耗的总预算。默认 6 个恢复周期，可由 `RetryPolicy.maxKnownTaskRecoveryAttempts` 配置；预算耗尽时 `completion()` 必须有限结束并投影 `ProgressUncertain` / `RECOVERY_RETRY_EXHAUSTED`。
+- **判定门禁**：周期级失败和独立总预算已由 `D006-206-DEC-01` 确认；锁定 Client 制品的指定 XML 已精确回归通过，本合同层用例判 PASS。
+- **FAIL**：确定性 JSON-RPC 错误被重试、成功不清零、超过阈值仍重试、一个 invocation 熔断其他调用，或熔断取消服务端 Task。
+- **INCONCLUSIVE**：真实 Agent 持续产帧而未命中 idle 窗口；合同层结果仍单独判定。
+- **R02 自动化落点**：通过正式 `RuntimeTransportProvider` 的公开构造器配置短 idle timeout；脚本让初始流
+  返回 `WORKING` 后断开，并让恢复订阅保持无 body 字节。断言 SDK watchdog 使用原 taskId 回退
+  `GetTask`，wire 为 `SendStreamingMessage -> SubscribeToTask -> GetTask`，且无第二次创建、无
+  `CancelTask`、无 FAILED/CANCELED 事件。
+- **B01/B02/B04 自动化落点**：通过公开 `RetryPolicy` 和
+  `AgentClients.Builder.retryPolicy(...)` 注入默认与非默认停止边界。每个阈值单位由完整失败周期构造；达到阈值后不启动下一周期，显式 `getInvocation` 仍使用原 taskId，且 wire 无第二次创建和 `CancelTask`。
+- **默认退避 Oracle**：第 1、2 个失败周期后分别退避 200 ms、400 ms，第 3 个失败周期结束后立即熔断；800 ms 只验证退避函数上限或非默认策略，不作为默认第三段等待。
+- **B03 自动化落点**：拆分验证两种成功清零来源：
+  1. `Subscribe 503 -> GetTask WORKING -> Subscribe 503 -> GetTask WORKING`，证明每个合法 GetTask 快照清零连续失败；
+  2. 一个完整失败周期后重新 Subscribe 并返回有效 WORKING 帧；测试 SSE 闭合触发的强制 GetTask 失败只计为清零后的第 1 次失败，随后再经历两个完整失败周期才达到阈值，证明有效 Subscribe 帧先清零连续失败；
+  3. 前两种成功均不返还已消耗的 `knownTaskRecoveryAttempts`，达到配置总预算后仍停止观察。
+  不再断言 Subscribe 基础设施失败后连续发送 Subscribe；全部恢复请求保持原 taskId 且无 `CancelTask`。
+- **B05 自动化落点**：分别使用默认 6 和较小的自定义 `maxKnownTaskRecoveryAttempts`，让每个周期都返回合法 WORKING，断言连续失败始终被清零，但总预算耗尽后 completion 有限结束；配置存在和外部停止行为必须同时取证。
+
+### 5.3.1 Subscribe 错误分类矩阵
+
+| 输入 | 分类与动作 | 主断言 |
+|---|---|---|
+| `error.data.code=TASK_NOT_SUBSCRIBABLE_TERMINAL` / `SUBSCRIPTION_UNAVAILABLE` | 确定性终态/不可订阅；只调用一次 Subscribe，随后一次 GetTask | GetTask 终态或根 INPUT_REQUIRED 结算，不计为基础设施失败 |
+| `-32602` 且 message 明确为 `invalid task state for subscription` | 终态 message 兼容分支 | 行为同上，但只作为兼容证据；结构化 data.code 是主 Oracle |
+| `error.data.code=INVALID_PARAMS` 且无终态语义 | 真正参数错误；不重复 Subscribe、不进入基础设施重试，必要时最多一次 GetTask | `completion()` 有限结束，不误判为终态不可订阅 |
+| 网络错误、连接/读超时、HTTP 408/429/5xx | 基础设施失败 | 按新 L2，一个 Subscribe+GetTask 失败周期只增加一次连续失败；该 Oracle 待 Feature 同步 |
+
+### 5.4 F006-E01 - ReAct 双路径一致性
+
+- **Given**：相同版本的正式 Client、Runtime、Gateway 与 ReAct travel fixture 可用；Gateway 单实例且测试期间不重启。
+- **When**：仅切换公开 Endpoint 配置，在两条路径执行相同断流恢复旅程。
+- **Then**：invocation 状态、结果类型、恢复线索、原 Task 保持和无重复副作用一致；仅认证/路由 wire 允许不同。
+- **PASS**：公共合同和两条真实链路均有 Surefire/Allure、taskId、请求序列和业务 canary 证据。
+- **INCONCLUSIVE**：LLM 或输入速度未形成活动窗口；不得写成 PASS。
+- **blocked/not-run**：目标 JAR、公开方法或环境不可用；不得用 mock 成功替代。
+
+## 6. 文件、执行与退出标准
+
+保留既有 `StandardAgentClientBlackboxTest` 四个公共 facade 黑盒测试；自动化落点如下：
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  ClientReconnectBlackboxTest.java
+  RuntimeReconnectBlackboxTest.java
+src/test/java/com/huawei/ascend/sit/cases/e2e/reconnect/
+  ClientRuntimeReconnectIT.java
+  ClientGatewayRuntimeReconnectIT.java
+```
+
+执行基线：JDK 21；PowerShell 使用 `.\mvnw.cmd`，WSL/Git Bash 使用 `./mvnw`；Maven 本地仓库默认
+`~/.m2/repository`。正式 Client/Gateway/Runtime 使用本地目标新构建；执行前必须准备 travel fixture JAR、
+LLM 配置和真实场景环境，不得把 acceptance helper 放入正式 Client 的位置。
+
+WSL LLM凭据的安全创建、`~/.llmrc`加载、变量存在性检查和`LLM_SSL_VERIFY`布尔值要求，统一遵循
+`04-Environment/local-sit/README.md`的“WSL LLM环境变量”章节；本测试文档不保存实际凭据。
+## 7. FEAT-026 交叉验证扩展设计
+
+以下用例复用 FEAT-026 的 `MockRemoteAgentServer`、`CallTreeFixtureEvents` 和 Runtime wire fixture，补充 Client 并发隔离、子节点状态边界、SSE 协议边界及 Runtime 直连的交叉验证；这些合同证据不替代 §5 的真实 reconnect 链路。
+
 ### FEAT-006.streaming.recovery - STREAMING 断线恢复与 SSE 协议边界
 
-- **状态/优先级**：dependency-gated, P0。
-- **自动化状态**：design-only。
+- **状态/优先级**：runnable, P0。
+- **自动化状态**：implemented-and-contract-verified；计数单位和总预算已由 `D006-206-DEC-01` 冻结，锁定制品精确回归 14/14 PASS。
 - **Story/来源**：Feature §5.1.4/§5.1.6；L2 §4.4、§9.2、§9.5、§9.8。
 - **测试类型**：blackbox。
 - **Oracle 来源**：L2 §4.4 恢复状态机（OBSERVING→RECOVERING_SUBSCRIBE→MERGING_CURRENT_STATE）、§9.2 恢复与模式验收、§9.5 HTTP/SSE Transport 验收、§9.8 退避与熔断属性。
-- **G**：真实 Agent 或 MockRemoteAgentServer 可在非终态断流后恢复；在 client 与服务端间用 `FaultLink.resetPeer()/restore()` 制造断点；准备 fake clock/fake scheduler 以验证 200/400/800ms 退避序列；mock 可产出 SSE 多 data 行、注释行、空行、半开 idle timeout 和 JSON Content-Type 响应。
-- **W**：参数化执行恢复场景：(1) 非终态断流后 Subscribe 原 Task 恢复观察；(2) SSE 协议边界（多 data 行、注释、空行、正常关流、半开 idle timeout、JSON Content-Type→`STREAMING_UNAVAILABLE`）；(3) HTTP 错误 retryable 矩阵（408/429/500/502/503/504、连接拒绝、读超时、JSON-RPC 确定性错误 INVALID_PARAMS/TASK_NOT_FOUND/METHOD_NOT_FOUND）；(4) 退避与熔断（200/400/800ms 指数退避、成功清零、连续三次熔断后 `RECOVERY_RETRY_EXHAUSTED`）。
+- **G**：真实 Agent 或 MockRemoteAgentServer 可在非终态断流后恢复；在 client 与服务端间用 `FaultLink.resetPeer()/restore()` 制造断点；准备 fake clock/fake scheduler 验证默认 200/400ms 后第 3 次立即熔断及 800ms 退避上限；mock 可产出结构化 JSON-RPC error、SSE 多 data 行、注释行、空行、半开 idle timeout 和 JSON Content-Type 响应。
+- **W**：参数化执行恢复场景：(1) 非终态断流后 Subscribe 原 Task 恢复观察；(2) SSE 协议边界；(3) 408/429/500/502/503/504、连接拒绝、读超时及结构化终态错误/真正 INVALID_PARAMS 分类矩阵；(4) 周期级连续失败、成功清零、默认/非默认阈值熔断和总恢复预算。
 - **T**：
   - 断线后 SDK 对已知 rootTaskId 只 Subscribe 原 Task，不重发创建请求；恢复后继续发布有序事件且 completeness 降为 PARTIAL；
   - 连续失败计数按 invocation 隔离，一个 invocation 熔断不影响其他；
   - SSE 多 data 行正确拼接为单帧；注释和空行被忽略；JSON Content-Type 2xx 响应以 `STREAMING_UNAVAILABLE` 失败，不静默当空 SSE 结束；
-  - 408/429/500/502/503/504 和连接拒绝/读超时计入连续失败（retryable=true）；JSON-RPC INVALID_PARAMS/TASK_NOT_FOUND/METHOD_NOT_FOUND 不重试（retryable=false）；
-  - 退避间隔为 200/400/800ms（使用 fake clock，不使用 Thread.sleep 断言）；任一合法 Task 状态或有效订阅帧清零计数；三次后停止本地观察并投影 `UNKNOWN/ProgressUncertain`，不发送 CancelTask。
+  - 结构化终态错误和真正 INVALID_PARAMS 按 §5.3.1 分类；终态竞态固定为 Subscribe+GetTask，连续失败增量 0、总预算消耗 1；
+  - 按 `D006-206-DEC-01`：408/429/500/502/503/504 和连接拒绝/读超时按完整失败周期计数；默认第 1、2 个失败周期后退避 200/400ms，第 3 个周期结束后停止；合法状态清零连续失败但不返还总预算；熔断后投影 `UNKNOWN/ProgressUncertain`，不发送 CancelTask。
 - **不应断言**：固定超时实现内部、源码异常字符串、内部重试计数字段名、Gateway Subscribe cursor 实现。
 - **失败归类**：恢复未 Subscribe 原 Task 或重发创建为 Failure；SSE 协议误判为 Failure；retryable 分类错误为 Failure；正式制品/FaultLink 缺失为 Skipped；故障代理异常为 Error。
 - **方法**：参数化 `feat006StreamingRecoverySubscribesOriginalTaskAndClassifiesErrors()`。
@@ -173,8 +324,8 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.concurrency-isolation - 并发调用隔离与竞态资源释放
 
-- **状态/优先级**：dependency-gated, P0。
-- **自动化状态**：design-only。
+- **状态/优先级**：runnable, P0。
+- **自动化状态**：implemented（FEAT-026 交叉验证）。
 - **Story/来源**：Feature §5.1.4；L2 §4.2、§9.4、§9.6、§9.8。
 - **测试类型**：blackbox。
 - **Oracle 来源**：L2 §4.2 调用级状态隔离、§9.4 同一 Client 并发不串、§9.6 ≥20 并发 invocation、§9.8 随机化竞态与 future 单次结算。
@@ -195,8 +346,8 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.child-input-boundary - 子节点 INPUT_REQUIRED 不结算根
 
-- **状态/优先级**：dependency-gated, P1。
-- **自动化状态**：design-only。
+- **状态/优先级**：runnable, P1。
+- **自动化状态**：implemented（FEAT-026 交叉验证）。
 - **Story/来源**：Feature §5.1.3；L2 §4.6、§9.3。
 - **测试类型**：contract。
 - **Oracle 来源**：L2 §4.6 根级 INPUT_REQUIRED 与批量续传、§9.3 多输入验收（B1 子状态到达时 B2 仍可输出、根调用不结算）。
@@ -215,8 +366,8 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.sse-protocol-contract - SSE 协议边界与延迟启动
 
-- **状态/优先级**：dependency-gated, P1。
-- **自动化状态**：design-only。
+- **状态/优先级**：partial, P1。
+- **自动化状态**：partial（FEAT-026 交叉验证；自定义 SSE 帧仍待 fixture 扩展）。
 - **Story/来源**：Feature §5.1.6；L2 §4.2.2、§4.3.1、§7、§9.5。
 - **测试类型**：contract。
 - **Oracle 来源**：L2 §4.3.1 STREAMING 2xx JSON Content-Type→`STREAMING_UNAVAILABLE`、§4.2.2 延迟启动与唯一创建、§9.5 SSE 覆盖与先 onSubscribe 后发 HTTP。
@@ -236,8 +387,8 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 
 ### FEAT-006.streaming.runtime-direct - Runtime 直连 E2E
 
-- **状态/优先级**：dependency-gated, P1。
-- **自动化状态**：design-only。
+- **状态/优先级**：partial, P1。
+- **自动化状态**：partial（FEAT-026 交叉验证；header 级 wire 捕获仍待 fixture 扩展）。
 - **Story/来源**：Feature §2；L2 §4.1、§9.7。
 - **测试类型**：blackbox。
 - **Oracle 来源**：L2 §4.1.1 Runtime 请求差异（无 Authorization/agentId/租户 headers/attributes）、§9.7 Client→Runtime 与 Client→Gateway→Runtime 分别 E2E。
@@ -254,7 +405,7 @@ FEAT-007 的工具注册、审批、执行和去重由其单特性用例验证�
 - **标签**：`@Tag("blackbox")`、`@Story("FEAT-006.streaming.runtime-direct: Runtime 直连 E2E")`、`@Tag("story-feat-006-streaming-runtime-direct")`。
 - **DisplayName**：`Feat-006 Runtime 直连正向投影不含 Gateway 身份字段`。
 
-## 5. 文件、执行与退出标准
+### 7.6 文件与执行落点
 
 计划新增一个测试文件，并在已有 FEAT-026 测试文件中补充交叉验证用例：
 
@@ -269,7 +420,7 @@ src/test/java/com/huawei/ascend/sit/cases/integration/deepagent_deepresearch/
 
 FEAT-026 测试文件已具备 `MockRemoteAgentServer` + `CallTreeFixtureEvents` + 正式 `agent-client` SDK 基础设施，STREAMING 恢复、并发隔离、子节点边界和 SSE 协议契约用例直接复用该基础设施，避免重复搭建 mock 和 fixture builder。`RuntimeProducerCallTreeFixture` 扩展为 Runtime 直连 wire allowlist fixture 捕获，与 FEAT-026 §9.7 Provider Contract 联调要求一致。
 
-执行基线：JDK 21；PowerShell 使用 `.\mvnw.cmd`，WSL/Git Bash 使用 `./mvnw`；Maven 本地仓库默认 `~/.m2/repository`。travel JAR 坐标见 §1.1。正式 agent-client 已作为 test-scope Maven 依赖（`com.openjiuwen:agent-client-sdk-for-jvm:0.1.0`）；Gateway 的 group/artifact/version/classifier、构建 SHA 和 `application-openjiuwen.yml` 服务别名尚未交付，是 Gateway 路径用例的当前门禁；不得把 acceptance helper 放入正式 client 的位置。
+执行基线：JDK 21；PowerShell 使用 `.\mvnw.cmd`，WSL/Git Bash 使用 `./mvnw`；Maven 本地仓库默认 `~/.m2/repository`。travel JAR 坐标见 §1.1。正式 agent-client 已作为 test-scope Maven 依赖（`com.openjiuwen:agent-client-sdk-for-jvm:0.1.0`）；交叉验证中的 mock 只控制协议输入和记录 wire，不替代正式 Client SUT 或真实 reconnect E2E。
 
 除 `LLM_API_BASE/LLM_MODEL/LLM_API_KEY` 等标准密钥外，确定性 prompt、payload、代理规则和唯一 canary 由测试资源自动准备。测试结束必须关闭 client、Agent/Gateway 进程和代理，恢复 `FaultLink`，删除临时目录，并确认占用端口释放。落地后执行：
 
@@ -279,15 +430,16 @@ FEAT-026 测试文件已具备 `MockRemoteAgentServer` + `CallTreeFixtureEvents`
 .\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=story-feat-006-streaming-lifecycle test
 ```
 
-退出标准：当前 L2 可交付用例通过或具有明确门禁；所有 Feature MUST 已直接覆盖或标为 deferred；无 helper/fake 核心链路通过、无固定 LLM 文本 Oracle、无敏感信息和进程/端口泄漏。
+退出标准：Client 公共合同、Runtime 直连对照、Gateway 主链路、三种 Agent 风险场景和最小受影响回归通过或有明确
+INCONCLUSIVE/blocked 证据；无 helper/fake 核心链路通过、无固定 LLM 文本 Oracle、无敏感信息和进程/端口泄漏。
 
-## 6. FEAT-026 交叉验证实现规范
+## 8. FEAT-026 交叉验证实现规范
 
-§4 中 `concurrency-isolation`、`sse-protocol-contract` 和 `runtime-direct` 三个用例在 FEAT-026 测试文件中实现。因 FEAT-026 测试文件使用 `feat026` 方法名前缀和 `MockRemoteAgentServer` + `CallTreeFixtureEvents` mock 基础设施，实际方法名与 §4 中指定的 `feat006*` 名不同，但 Story/Tag 标注保持 FEAT-006 标识。以下为实现级规范。
+§7 中 `concurrency-isolation`、`sse-protocol-contract` 和 `runtime-direct` 三个用例在 FEAT-026 测试文件中实现。因 FEAT-026 测试文件使用 `feat026` 方法名前缀和 `MockRemoteAgentServer` + `CallTreeFixtureEvents` mock 基础设施，实际方法名与 §7 中指定的 `feat006*` 名不同，但 Story/Tag 标注保持 FEAT-006 标识。以下为实现级规范。
 
-### 6.1 交叉验证实现矩阵
+### 8.1 交叉验证实现矩阵
 
-| §4 设计用例 | 实现文件 | 实际方法名 | Story 标识 | 状态 |
+| §7 设计用例 | 实现文件 | 实际方法名 | Story 标识 | 状态 |
 |---|---|---|---|---|
 | `FEAT-006.streaming.recovery` | `MultiHopCallTreeBlackboxTest.java` | `feat026RecoveryMarksPartialAndMergesCurrentArtifactsIdempotently` | `story-feat-026-streaming-recovery-partial` | 已实现 |
 | `FEAT-006.streaming.concurrency-isolation` | `MultiHopCallTreeBlackboxTest.java` | `feat026ConcurrentInvocationsIsolateStateAndReleaseResourcesOnRaces` | `story-feat-006-streaming-concurrency-isolation` | 已实现 |
@@ -295,7 +447,7 @@ FEAT-026 测试文件已具备 `MockRemoteAgentServer` + `CallTreeFixtureEvents`
 | `FEAT-006.streaming.sse-protocol-contract` | `MultiHopCallTreeBlackboxTest.java` | `feat026SseProtocolBoundariesAndLazyStartHoldContract` (参数化) | `story-feat-006-streaming-sse-protocol-contract` | 已实现 |
 | `FEAT-006.streaming.runtime-direct` | `RuntimeProducerCallTreeFixture.java` | `feat026RuntimeDirectWireFixtureIsolatesFromGatewayPolicy` | `story-feat-006-streaming-runtime-direct` | 已实现 |
 
-### 6.2 concurrency-isolation 实现细节
+### 8.2 concurrency-isolation 实现细节
 
 - **方法**：`feat026ConcurrentInvocationsIsolateStateAndReleaseResourcesOnRaces()`。
 - **G**：单一 `MockRemoteAgentServer`（FIXTURE_STREAM 模式），3 帧标准 fixture（status-update → text-artifact → status-update completed）。
@@ -310,7 +462,7 @@ FEAT-026 测试文件已具备 `MockRemoteAgentServer` + `CallTreeFixtureEvents`
   - 重复 `completion()` 返回相同终态（幂等结算）。
 - **门禁说明**：`close()` 竞态测试需 `InvocationCall.close()` API；若 SDK 未提供该方法，该子场景以 TODO 标注，不阻塞主验证。mock 服务同一 fixture 流给所有请求（taskId 相同），rootTaskId 唯一性在真实 Agent 场景验证，mock 场景验证事件流隔离。
 
-### 6.3 sse-protocol-contract 实现细节
+### 8.3 sse-protocol-contract 实现细节
 
 - **方法**：参数化 `feat026SseProtocolBoundariesAndLazyStartHoldContract(SseScenario)`。
 - **参数化场景**：
@@ -321,9 +473,9 @@ FEAT-026 测试文件已具备 `MockRemoteAgentServer` + `CallTreeFixtureEvents`
 | `JSON_CONTENT_TYPE` | REJECT（默认） | 2xx `application/json` 响应不应被当作空 SSE 静默完成；SDK 应抛错或终态非 COMPLETED；不产生 callTree 快照 |
 | `NORMAL_SSE` | FIXTURE_STREAM | 正常 SSE 帧按预期顺序到达；终态 COMPLETED；mock 收到 1 个 POST |
 
-- **门禁说明**：SSE 多 data 行拼接、注释行/空行忽略、延迟启动时序（onSubscribe 先于 HTTP 发送）需 `MockRemoteAgentServer` 扩展自定义 SSE 帧能力（当前 mock 固定 `data: <payload>\n\n` 格式）。这些子场景在 §4 G 中列为 mock 需求，实现待 mock 扩展后补充。
+- **门禁说明**：SSE 多 data 行拼接、注释行/空行忽略、延迟启动时序（onSubscribe 先于 HTTP 发送）需 `MockRemoteAgentServer` 扩展自定义 SSE 帧能力（当前 mock 固定 `data: <payload>\n\n` 格式）。这些子场景在 §7 G 中列为 mock 需求，实现待 mock 扩展后补充。
 
-### 6.4 runtime-direct 实现细节
+### 8.4 runtime-direct 实现细节
 
 - **方法**：`feat026RuntimeDirectWireFixtureIsolatesFromGatewayPolicy()`。
 - **实现文件**：`RuntimeProducerCallTreeFixture.java`（非 `MultiHopCallTreeBlackboxTest.java`）。

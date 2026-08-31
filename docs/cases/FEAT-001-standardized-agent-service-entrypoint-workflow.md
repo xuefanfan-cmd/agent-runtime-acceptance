@@ -3,7 +3,8 @@ feature_id: FEAT-001
 feature_title: 标准化智能体服务入口
 sut: WorkflowAgent（expense-review-workflow 单 jar 双 profile 为主 SUT；edpa-plan-agent 直连栈与 edpa-gateway 拓扑作来源等价性证据）
 scope: 本档只覆盖 WorkflowAgent SUT 侧可外部黑盒断言的 FEAT-001 事实要求，按三个 story 切分——story 1（A2A JSON-RPC 入口：同步阻塞 + 流式 + 异步调用与查询，不含 webhook）与 story 2（REST API 兼容调用）的业务流程面已由 workflow_call 用例覆盖（FEAT-001 的 Allure 主注册类为直连四协议矩阵 ExpenseReviewWorkflowDirectAcceptanceTest；ExpenseReview 族 / PlanAgentDirect / TransferAfterBalance 已改注册 FEAT-004/003/002，作跨特性证据）；协议面 Agent Card 发现已落 cases/component/workflow_agent 层（EdpaAdapterCardDiscoveryTest，edpa-adapter card，含 story 3 守门），主 SUT 自身 card 补钉与 workflow 侧 GetTask 待新建（§3.1/§3.5，已按落地命名规则命名并标 ⬜）；story 3（webhook 点对点 A2A 异步回调）未实现且接口未明，作为传输层抽象待落地后并入业务用例参数化复用，不建独立用例；非法输入场景与 A2A SDK 错误码验证整体移出 SIT（归 component 层）；WorkflowAgent 处于调用链最下游，downstream 故障/超时场景不适用（归后续 versatile 侧设计）；gRPC / 普通-client webhook / agent-bus 私有入口按特性档 §5.2 明示 OUT，不列入
-status: designed
+status: partial
+status_note: Workflow 断流、INPUT_REQUIRED 和同 taskId 续轮已实跑；Runtime 保留终态 DataPart，但 Client 查询快照未公开该结果，Failsafe 1 skipped/blocked
 owner: TBD
 tags: [integration, workflowagent, feat-001]
 depends_on:
@@ -16,6 +17,57 @@ related_docs:
 ---
 
 # FEAT-001 — WorkflowAgent 侧标准化 Agent 服务入口 SIT 测试设计
+
+> **2026-08-20 断点重连增量**：最新 FEAT-001 增量已将活动 Task 的 `SubscribeToTask`、SSE 断开后
+> Task 续行和 Task 快照物化列为 MUST。本文旧版本中将 `SubscribeToTask` 列为 OUT 的描述已被本期增量
+> 覆盖；当前判定以 §0 和最新增量设计为准。
+
+## 0. 本期断点重连增量
+
+### 0.1 WorkflowAgent 适用性
+
+WorkflowAgent 使用与其他 Agent 相同的 Runtime TaskStore 和 A2A Task 方法，但其风险集中在多节点状态、
+`INPUT_REQUIRED` 驻留和续行快照。公共 wire/error 合同不按 Workflow 重复；本档验证断开 SSE 后 Workflow
+仍推进或稳定驻留、当前节点/等待输入/最终 artifact 能从同一 Task 快照恢复。
+
+`expense-review-workflow` 已配置正式 `agent-service-app:0.1.1.post1`，现有流程可触发
+`INPUT_REQUIRED`。`versatile-orch-demo-expense-review:0.2.0-SNAPSHOT` JAR 已构建并安装，
+`WorkflowRuntimeReconnectIT` 也已落地。`EXPENSE_REVIEW_API_KEY` 已由测试进程透传，Workflow 已真实进入
+`INPUT_REQUIRED`，断流后以原 taskId 查询并提交 `approved`，最终从 `approve` 节点续行至 `COMPLETED`。
+Runtime 原始 `GetTask` 保留一个带 metadata 的终态 `DataPart`，history 最后一条也是用户的 `approved`；但正式
+Client 在续轮 completion 和随后 `getInvocation` 的公开 call tree 中都未投影该 `DataPart`。最新 Failsafe XML
+为 1 skipped/blocked，不是 PASS；阻塞已从环境凭据转为 Client 结果投影产品缺口。未修改 demo 业务代码。
+
+公共 Runtime `GetTask` 未知 taskId 合同已由 `RuntimeReconnectBlackboxTest` 在正式 ReAct Runtime 上
+验证 HTTP 200 + JSON-RPC `-32001`；该公共负路径不按 Agent 类型复制，也不替代 Workflow 断流、
+`INPUT_REQUIRED` 和节点续行探针。
+
+### 0.2 增量覆盖矩阵
+
+| 用例 ID | 事实要求 | 状态 | 主要证据 | 自动化落点 |
+|---|---|---|---|---|
+| `F001-WR01` | 断流后 Workflow 继续推进或稳定进入 `INPUT_REQUIRED` | partial，P1 | 原 taskId、断前/断后状态、等待输入信息 | 诊断实跑已验证，但整条 E2E 仍为 skipped/blocked |
+| `F001-WR02` | `GetTask` 返回节点进展、可见 artifact 和等待输入的权威快照 | partial，P1 | Task status/history/artifacts/message | Runtime 原始终态 artifact/history 已证；Client 公开结果投影 blocked |
+| `F001-WR03` | 活动 Workflow 重订阅首帧当前快照及挂接后事件 | partial，P1 | 原始 SSE、首帧 Task、后续 status/artifact | Client 恢复后收到原 Task 的 `INPUT_REQUIRED`，但整条 E2E 未 PASS |
+| `F001-WR04` | 终态/挂接竞态回退 `GetTask` | partial，P1 | Subscribe error、最终快照、method 序列 | 同 taskId 终态查询已证；未单独制造终态竞态 |
+| `F001-WR05` | 恢复不重新开始 Workflow、不重复审批或业务节点 | partial | 无第二次 `SendStreamingMessage`、无 Cancel、公开节点/日志增量 | 已证从 `approve` 续行；强节点计数缺稳定公开 Oracle |
+
+### 0.3 G/W/T 与判定
+
+- **Given**：以超标报销输入创建流式 Workflow Task，取得 taskId，在 `WORKING` 且尚未出现
+  `INPUT_REQUIRED` 时记录已确认状态/产物。
+- **When**：关闭 SSE，等待 Workflow 自然推进，再用 `GetTask(params.id=taskId)` 查询；若仍活动则调用
+  `SubscribeToTask(params.id=taskId)`，终态或挂接竞态按错误回退 `GetTask`。
+- **Then**：Task 不因断流 FAILED/CANCELED；原 taskId 的快照进入 `INPUT_REQUIRED` 并携带等待输入信息，
+  或自然到达正确终态；首帧是当前快照；无第二次 `SendStreamingMessage` 和 `CancelTask`。
+- **PASS**：taskId、快照、SSE 和 method 序列证明同一 Workflow 续行且状态/结果完整。
+- **FAIL**：Task 被断流终止、从 start 重新开始、状态/节点快照倒退、审批重复、重发创建或隐式 Cancel。
+- **INCONCLUSIVE**：LLM 路由未进入预期分支，或当前公开输出不足以唯一证明节点执行次数；此时
+  `F001-WR05` 保持 partial，不为加强 Oracle 修改业务代码。
+- **blocked/not-run**：当前产品阻塞为 Client 查询快照未公开 Runtime 已保存的终态 Workflow `DataPart`；
+  凭据与 Workflow 执行环境门禁已解除。
+
+本增量不扩展到 REST、webhook、多 Workflow 路由、Redis 重启恢复或完整审批功能回归。
 
 > **一句话**：以 WorkflowAgent（expense-review-workflow 8 节点 DAG 为最纯净 SUT）为对象，把 FEAT-001 §2 能力表 MUST 项、§3 入口要求、§4 用户旅程和 §5.1 行为语义映射为可黑盒断言的子用例，并按三个 story 标注实现/覆盖现状（2026-07-22 登记）：story 1（A2A JSON-RPC 入口）、story 2（REST API 兼容）业务流程面已由 workflow_call 覆盖（含 FEAT-001 主注册的直连四协议矩阵 ExpenseReviewWorkflowDirectAcceptanceTest），Agent Card 发现面已由 component/workflow_agent 层的 EdpaAdapterCardDiscoveryTest 落地（含 story 3 守门）；剩余缺口收敛为两个待新建协议面用例——主 SUT 自身 card 补钉、workflow 侧显式 GetTask 异步查询（顺带尾斜杠等价）；story 3（webhook 异步回调）作为传输层抽象，待落地后并入业务用例参数化复用，不建独立用例。
 
@@ -65,7 +117,7 @@ related_docs:
 > - **归 component 层**（组织原则 2）：JSON-RPC parse error / invalid request / method-not-found / id 回显等 SDK 错误码语义、GetTask 未知 taskId 负路径、空文本输入拒绝、REST 坏 body / 未知路径、push config CRUD 的 method-not-found 拒绝探针。
 > - **不建独立用例**（组织原则 3）：SSE wire 帧格式（传输层日志可核查）、webhook 全族（待传输层落地后并入业务用例参数化）。
 > - **本 SUT 不适用**：downstream 故障 mid-stream、下游超时等注入场景——WorkflowAgent 是调用链最下游，无 downstream 可注；此类场景（仅限逻辑合理者）归后续 versatile / plan-agent 侧 SIT 设计。
-> - **特性档明示 OUT**：`CancelTask` / `ListTasks` / `SubscribeToTask`（不在 MUST 集）、多 Agent 路由（单 runtime 单 handler）、gRPC northbound、普通 client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、outbound 远程 Agent 编排（FEAT-004/005/006）、agent-bus 专用私有入口、认证授权协议。
+> - **特性档明示 OUT/本期排除**：`CancelTask` / `ListTasks`、多 Agent 路由（单 runtime 单 handler）、gRPC northbound、普通 client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、outbound 远程 Agent 编排（FEAT-004/005/006）、agent-bus 专用私有入口、认证授权协议。`SubscribeToTask` 已由本期断点重连增量转为 MUST，见 §0。
 > - 多 workflow 路由（[MultiWorkflowDirectStreamingTest](../../src/test/java/com/huawei/ascend/sit/cases/integration/workflow_call/MultiWorkflowDirectStreamingTest.java)，当前 @Disabled）属 adapter 路由能力而非 FEAT-001 入口事实，不列入。
 
 ### 1.1 状态分布快照

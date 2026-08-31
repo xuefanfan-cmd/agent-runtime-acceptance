@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>栈走 {@link BaseManagedStackTest} 形态——仅声明 mainplan 一节点（A-11-2 协议契约不需要
  * trip/hotel 链路），{@code .streaming(false)} 显式走同步 {@code message/send}。SUT 地址按
- * 当前 {@code test.env} 解析：{@code application-sit.yml} 配为 7.209.189.82:13003 指向预部署
+ * 当前 {@code test.env} 解析：{@code application-sit.yml} 配为 <sit-host>:13003 指向预部署
  * mainplan（{@code -Dtest.env=SIT}）；{@code LOCAL} 时则从 ~/.m2 起本地进程。本用例不依赖
  * SUT 业务输出——只要任一终态（COMPLETED / INPUT_REQUIRED 等 {@link TaskState#isFinal()}=true）
  * 即可观测协议契约，所以无论 mainplan + LLM 是否走到追问分支，断言都成立。

@@ -212,7 +212,7 @@ abstract class AbstractExpenseReviewAcceptanceTest extends BaseManagedStackTest 
      * 状态迁移"假设——若真机 SUT 仅推快照+终态而跳过 WORKING，本断言会失败（定位为 SUT 订阅广播行为，非测试缺陷）。
      */
     @Test
-    @Disabled("SDK ServerSentEventParser 硬上限 64KB/行 (MAX_LINE_LENGTH=65536, 不可配); 本 SUT 流式累积 artifact 使订阅首帧快照单行超限 → subscribeToTask 抛错 cancel. 服务端正常(探针/curl=200 SSE). 根因在 SDK, 见 javadoc + subscribeObservesLifecycleWhenDrivenBySync")
+//    @Disabled("SDK ServerSentEventParser 硬上限 64KB/行 (MAX_LINE_LENGTH=65536, 不可配); 本 SUT 流式累积 artifact 使订阅首帧快照单行超限 → subscribeToTask 抛错 cancel. 服务端正常(探针/curl=200 SSE). 根因在 SDK, 见 javadoc + subscribeObservesLifecycleWhenDrivenBySync")
     @DisplayName("场景3: A2A_SUBSCRIBE 订阅 INPUT_REQUIRED 任务 → APPROVE 驱动 → COMPLETED（DISABLED: SDK 64KB SSE 行上限）")
     protected final void subscribeObservesInputRequiredSnapshotAndLifecycle() {
         long timeoutMs = config.getPollTimeoutSeconds() * 1000L;

@@ -149,7 +149,7 @@ abstract class AbstractBalanceThenTransfersTest extends BaseManagedStackTest {
         assertThat(blob).as("plan-agent 汇总非空").isNotBlank();
         assertThat(TOPICAL.stream().anyMatch(blob::contains))
                 .as("汇总须含 余额/转账/参与者 之一").isTrue();
-        assertThat(blob).as("余额笔数据(8200)").contains("8200");
+        assertThat(blob).as("余额笔数据(8200)").containsAnyOf("8200", "8,200");
         assertThat(blob).as("收款人 李四").contains("李四");
         assertThat(blob).as("收款人 王五").contains("王五");
     }

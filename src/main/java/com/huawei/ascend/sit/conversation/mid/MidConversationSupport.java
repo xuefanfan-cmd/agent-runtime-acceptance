@@ -11,6 +11,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -54,6 +56,38 @@ public final class MidConversationSupport {
         return getOpt(midBase + "/admin/conversations/" + cid + "/step-ui")
                 .map(b -> JsonUtils.fromJson(b, StepUI.class))
                 .orElseGet(StepUI::deserializeAuto);   // cid 持续缺失 → 工作流完成
+    }
+
+    /**
+     * 列出中台当前全部会话 id（{@code GET /admin/conversations}，按 created_at 倒序）。FEAT-027 刷新后的
+     * 线上不再携带 {@code batchId/toolCallId}，并行子会话的 mid cid（运行时推导为
+     * {@code parentCid_<batchId>_<toolCallId>}）只能在此枚举发现——调用方按 {@code parentCid + "_"} 前缀 +
+     * {@code "_" + toolCallId} 后缀配对（见 {@code ParallelStepDriver}）。其它非 200 仍抛（与 step-ui 同策略，
+     * 但此处 400/404 不该出现——列表不针对单个 cid）。
+     */
+    public List<String> listConversationIds() {
+        return getOpt(midBase + "/admin/conversations?limit=500")
+                .map(this::parseConversationIds)
+                .orElse(List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> parseConversationIds(String body) {
+        try {
+            Map<String, Object> root = JsonUtils.fromJson(body, Map.class);
+            List<String> ids = new ArrayList<>();
+            if (root.get("conversations") instanceof List<?> conversations) {
+                for (Object c : conversations) {
+                    if (c instanceof Map<?, ?> m && m.get("conversation_id") instanceof String id
+                            && !id.isBlank()) {
+                        ids.add(id);
+                    }
+                }
+            }
+            return List.copyOf(ids);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("mid conversations list parse failed: " + body, e);
+        }
     }
 
     public NextRequest nextRequest(String cid, Map<String, String> selectionKv) {

@@ -203,7 +203,7 @@ public final class A2aEventMapping {
      * {@link LlmPayload}; a plain {@link TextPart} (no envelope) becomes {@link InboundEvent.Kind#ANSWER}
      * — it is the agent's reply surface (a streamed artifact/message carrying the final answer as plain
      * text IS the reply) — while a plain {@link DataPart} (structured intermediate data, e.g.
-     * {@code _remote_invocation} progress) becomes {@link InboundEvent.Kind#CONTENT}. {@code
+     * a remote agent's structured {@code output} DataPart on the FEAT-027 wire) becomes {@link InboundEvent.Kind#CONTENT}. {@code
      * plainTextAsAnswer} forces ANSWER regardless of part type: used by {@link #contentEventsOf}, where
      * every text a settled task carries IS its reply. Parts whose text is {@code null} are skipped.
      *
@@ -239,8 +239,8 @@ public final class A2aEventMapping {
                 // or message that carries the final answer as plain text (no typed envelope) IS the
                 // reply, so exchange.answerText() (Kind.ANSWER only) must see it — the streaming path
                 // has no terminal contentEventsOf re-extraction to rescue it (unlike A2aSyncTransport).
-                // A plain DataPart is structured intermediate data (e.g. _remote_invocation progress in
-                // a parallel fan-out) → CONTENT, NOT a reply. plainTextAsAnswer (the terminal
+                // A plain DataPart is structured intermediate data (e.g. a remote agent's forwarded
+                // output/status DataPart on the FEAT-027 wire) → CONTENT, NOT a reply. plainTextAsAnswer (the terminal
                 // contentEventsOf path) forces ANSWER regardless of part type: there, every text a
                 // settled task carries is its reply.
                 boolean asAnswer = plainTextAsAnswer || part instanceof TextPart;

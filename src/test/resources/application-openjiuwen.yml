@@ -52,6 +52,7 @@ sut:
       group: com.openjiuwen
       artifact: registry-discovery-center
       version: 0.1.0
+      port: 18092
       ready-mode: tcp
       spring:
         properties:
@@ -80,7 +81,7 @@ sut:
     mainplan:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.mainplan.llm.api-key
       port: 8095
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
@@ -90,7 +91,7 @@ sut:
     mainplan-redis:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.mainplan.llm.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       spring:
@@ -100,10 +101,21 @@ sut:
         redis:
           url-key: main-plan-agent.redis-url
           url-template: "redis://{{url}}"
+    # DFX-001-only alias: same formal demo artifact, isolated profile and random port.
+    mainplan-dfx001-probe:
+      group: com.openjiuwen.example
+      artifact: travel-demo-mainplan
+      version: 0.1.1
+      profile: dfx001-probe
+      llm-api-key-property: openjiuwen.travel.mainplan.llm.api-key
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
     trip:
       group: com.openjiuwen.example
       artifact: travel-demo-trip
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.trip.llm.api-key
       port: 8094
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
@@ -114,20 +126,20 @@ sut:
     hotel:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       port: 8093
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
     hotel-skillhub:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       profile: skillhub-remote
     hotel-sandbox:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
       remote-agents-prefix: openjiuwen.service.a2a.remote-agents
       service-bindings:
@@ -138,7 +150,7 @@ sut:
     hotel-dup:
       group: com.openjiuwen.example
       artifact: travel-demo-hotel
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.travel.hotel.llm.api-key
     # deepresearch secnario
     deep-research:
@@ -168,6 +180,7 @@ sut:
       group: com.openjiuwen.example
       artifact: agent-search
       version: 0.1.0
+      profile: stub
       llm-api-key-property: openjiuwen.demo.search-agent.api-key
     agent-search:
       group: com.openjiuwen.example

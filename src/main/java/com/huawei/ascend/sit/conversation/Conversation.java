@@ -69,13 +69,15 @@ public final class Conversation implements AutoCloseable {
 
     /**
      * Send ONE multi-part batch resume for all active children this round, await the single combined
-     * reply, and demultiplex its events per child by {@code toolCallId}. One in-flight request — the
+     * reply, and return the interleaved reply stream verbatim. One in-flight request — the
      * server only allows one awaiting-answer request per conversation (N parallel single-child resumes
      * would have N-1 rejected with {@code REMOTE_BATCH_ALREADY_ACTIVE} — so all children's input goes in
      * ONE multi-part message). Each {@link ResumePart} becomes one A2A {@code TextPart} routed by
-     * {@code metadata.toolCallId}.
+     * {@code metadata.toolCallId} (request-side contract unchanged on the FEAT-027 refreshed wire); the
+     * reply's events carry producer labels ({@code agentEvent.source}) for demultiplexing — the caller
+     * ({@code ParallelStepDriver}) attributes them by label, not by routing key.
      */
-    Map<String, List<SseEvent>> sendBatchResume(String parentCid, List<ResumePart> parts) {
+    List<SseEvent> sendBatchResume(String parentCid, List<ResumePart> parts) {
         // body-level query is a placeholder; real per-child input is in parts (metadata.toolCallId)
         ConversationRequest body = ConversationRequest.from(identity)
                 .query(parts.isEmpty() ? "" : parts.get(0).query())
@@ -95,7 +97,7 @@ public final class Conversation implements AutoCloseable {
                 parts);        // resumeParts — non-null triggers multi-part buildOutbound
         transport.send(out, c);
         c.awaitStreamEnd(timeout.toMillis());
-        return ParallelStepDriver.groupByToolCallId(c.snapshot());
+        return c.snapshot();
     }
 
     @Override public void close() {}

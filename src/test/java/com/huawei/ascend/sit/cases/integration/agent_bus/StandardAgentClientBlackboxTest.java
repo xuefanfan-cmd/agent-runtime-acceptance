@@ -76,7 +76,7 @@ class StandardAgentClientBlackboxTest {
         try (ClientSdkBlackboxFixture gateway = new ClientSdkBlackboxFixture()) {
             gateway.enqueueSse(ClientSdkBlackboxFixture.userInputRequired(
                     "task-wait", conversation, "please provide origin"));
-            gateway.enqueueJson(ClientSdkBlackboxFixture.task(
+            gateway.enqueueSse(ClientSdkBlackboxFixture.task(
                     "task-wait", conversation, "TASK_STATE_COMPLETED", "continued"));
 
             try (AgentClient client = gateway.client()) {

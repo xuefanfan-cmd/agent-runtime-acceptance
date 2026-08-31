@@ -1,9 +1,10 @@
 ---
 feature_id: FEAT-001
 feature_title: 标准化智能体服务入口
-sut: deep-research-agent（openjiuwen 变体，SIT 上以 remote url-only 声明）
+sut: multi-deep-research-demo 的 deep-research-agent（openjiuwen profile，可由 SutStack 使用本地正式 JAR 启动）
 scope: 本档只覆盖 deep-research SUT 侧可外部黑盒断言的 FEAT-001 事实要求；agent-bus forwarding / gRPC / 普通-client webhook 均按特性档 §5.2 明示 OUT，不列入
-status: designed
+status: partial
+status_note: Runtime 公共未知 taskId 合同已 PASS；DeepAgent Gateway 断流风险 E2E 已 PASS 1/1，远程节点恰好一次 Oracle 仍为 partial
 owner: TBD
 tags: [integration, deepagent, feat-001]
 depends_on:
@@ -18,6 +19,10 @@ related_docs:
 ---
 
 # FEAT-001 — deep-research 侧标准化 Agent 服务入口用例设计
+
+> **2026-08-20 断点重连增量**：最新 FEAT-001 增量已将活动 Task 的 `SubscribeToTask` 和 SSE
+> 断开后续行列为 MUST。本文旧版本中“`SubscribeToTask` 不在 MUST 集”的描述仅代表此前基线，已由
+> 本期增量覆盖；当前判定以 §0 和最新增量设计为准。
 
 > **一句话**：以 deep-research SUT 为对象，把 FEAT-001 §2 能力表里所有 MUST 项、§4 用户旅程和 §5.1.8 错误场景，映射为可在 SIT 侧黑盒断言的子用例；旧 DA-01~07 已覆盖的部分在本档表里显式标记，剩余部分是本档新增落点。
 
@@ -41,6 +46,47 @@ related_docs:
 - **partial**：核心路径可测，某些断言维度受评审待澄清项限制（比如只能测负路径、只能间接观察）
 - **blocked**：断言依据待评审澄清（比如无 error code 承载、无阈值定义）
 - **deferred**：依赖能力在整个栈上缺失（比如 webhook receiver），落地实现等能力补齐
+
+## 0. 本期断点重连增量
+
+### 0.1 DeepAgent 适用性
+
+DeepAgent 与 ReActAgent、WorkflowAgent 使用同一正式 Runtime TaskStore、`GetTask` 和
+`SubscribeToTask` 公共入口，因此协议合同不按 Agent 类型复制；但 DeepAgent 的长执行、远程
+search/verify 调用和较大 artifact 形成独立风险，必须验证断开观察连接不会中断父 Task，也不会重新触发
+远程调用。
+
+当前 `agent-deep-research:0.1.0` 本地 JAR 已存在并依赖目标 `agent-service-app:0.1.1.post1`。优先通过
+公开 A2A、透明代理记录和 SUT 增量日志取证，不修改 demo 业务代码。
+
+公共 Runtime `GetTask` 未知 taskId 合同已由 `RuntimeReconnectBlackboxTest` 在正式 ReAct Runtime 上
+验证 HTTP 200 + JSON-RPC `-32001`；该公共负路径不按 Agent 类型复制，也不替代本档 DeepAgent 断流风险探针。
+
+### 0.2 增量覆盖矩阵
+
+| 用例 ID | 事实要求 | 状态 | 主要证据 | 自动化落点 |
+|---|---|---|---|---|
+| `F001-DR01` | SSE 断开后 DeepAgent Task 继续并可查询 | runnable；E2E PASS | 原 taskId、断开前后快照、最终状态 | `DeepAgentGatewayReconnectIT` |
+| `F001-DR02` | 活动 Task 重订阅首帧当前快照，之后只收新事件 | partial | 原始 SSE、首帧 Task、挂接后 artifact/status | Gateway E2E 经 Client 自动恢复；首帧序列仍由公共合同承接 |
+| `F001-DR03` | 终态/挂接竞态回退 `GetTask` | partial | Subscribe error、GetTask 最终快照、method 序列 | Client/Gateway 公共合同 + DeepAgent 最终查询 |
+| `F001-DR04` | 恢复不重新执行父 Agent 或 search/verify | partial | 无第二次 `SendStreamingMessage`、无 `CancelTask`、远程请求增量 | E2E 已证原 Task 完成；远程节点恰好一次强 Oracle 仍缺 |
+| `F001-DR05` | 经 Gateway 的长流恢复回原 owner | runnable；E2E PASS 1/1 | owner 请求序列、taskId、拓扑隐藏 | FEAT-011 `DeepAgentGatewayReconnectIT`，120.017 秒 |
+
+### 0.3 G/W/T 与判定
+
+- **Given**：用正式 DeepAgent、search/verify 和 LLM 创建流式长任务，取得服务端 taskId，并在 Task
+  非终态时记录远程调用和已确认 artifact/status。
+- **When**：主动关闭客户端 SSE；先以 `GetTask(params.id=taskId)` 获取快照，再对仍活动的 Task 调用
+  `SubscribeToTask(params.id=taskId)`；终态或挂接竞态时按错误回退一次 `GetTask`。
+- **Then**：父 Task 不因断流 FAILED/CANCELED，taskId 不变，快照不倒退，重订阅首帧为当前快照，
+  后续事件属于挂接后事件；wire 中没有第二次 `SendStreamingMessage` 和 `CancelTask`；已经完成的
+  search/verify 请求不因恢复重复。
+- **PASS**：上述事实均有 HTTP/SSE、taskId、最终 Task 和远程请求增量证据。
+- **FAIL**：断流终止 Task、Task 消失/换 id、历史快照倒退、重发创建、隐式 Cancel 或远程调用重复。
+- **INCONCLUSIVE**：Task 在断流生效前自然终态，或公开证据无法区分 LLM 自主再次检索与恢复重复执行。
+- **blocked/not-run**：缺 LLM、正式 JAR、search/verify 或 Gateway 外部栈；不得用 fake Agent 代替。
+
+本增量只验证断点重连，不扩展到 DeepAgent 的 sandbox、memory、SkillHub、callback 或全部远程编排能力。
 
 ---
 
@@ -82,7 +128,7 @@ related_docs:
 
 > **待决**：input-required 子用例（`FEAT-001.input-required`）待 deep-research planner 代码检查后决定是否列入（见 §6.3）。
 
-> **不在本档范围**（对齐 FEAT-001 §5.2 + version-scope §2 MUST 集）：`CancelTask` / `ListTasks` / `SubscribeToTask`（不在 version-scope §2 MUST 集，method-not-found 返 `-32601` 合规）、多 Agent 路由、租户认证、gRPC、普通-client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、强制中断 LLM、outbound 远程 Agent 编排、agent-bus 私有入口、认证授权协议。
+> **不在本档范围**（对齐 FEAT-001 §5.2 和本期增量边界）：`CancelTask` / `ListTasks`、多 Agent 路由专项、租户认证、gRPC、普通-client webhook 自报 URL、webhook 中间态订阅、webhook token 流、webhook HITL 继续执行、非文本输入、强制中断 LLM、完整 outbound 远程 Agent 编排、agent-bus 私有入口、认证授权协议。`SubscribeToTask` 已由本期断点重连增量转为 MUST，见 §0。
 
 ### 1.1 状态分布快照
 
@@ -276,7 +322,7 @@ related_docs:
 
 > **⚠️ Scope 说明**（对齐 version-scope §2 能力表 + §3 事实要求列）：
 > - **MUST 集**：`SendMessage` / `SendStreamingMessage` / `GetTask` / push config CRUD（`Create/Get/List/DeleteTaskPushNotificationConfig`，见 §3.4）。
-> - `CancelTask` / `ListTasks` / `SubscribeToTask` 已从 version-scope §2 MUST 集中移除，见 §1「不在本档范围」；本档不再列子用例。
+> - `CancelTask` / `ListTasks` 沿用历史范围边界；`SubscribeToTask` 已由 2026-08-20 断点重连增量转为 MUST，详细用例见 §0，不在本历史小节重复。
 
 #### FEAT-001.send-message-blocking — 阻塞 send
 - **状态**：runnable（DA-02 已覆盖）

@@ -76,16 +76,18 @@ public final class Turn {
      *   <li><b>Serial phase</b> — advance the balance workflow via the same step-ui/next-request loop as
      *       {@link #driveStepUi(List)} (consuming {@code this.selections} for any manual balance step),
      *       scanning each round for the parallel fan-out signal. The {@code parallel-transfer} profile
-     *       runs the balance query SERIALLY first; the transfer fan-out ({@code _remote_invocation}
-     *       projections) appears only in a LATER round — so we must drive forward to reach it. The loop
-     *       stops the moment a round carries ≥2 projections (the fan-out), or when the workflow ends /
-     *       hits the safety cap with no fan-out (in which case {@link ParallelStepDriver} throws
-     *       "derived <2"). If the kickoff already carries the fan-out, the serial phase is skipped.</li>
-     *   <li><b>Parallel phase</b> — {@link ParallelStepDriver} derives child conversation ids from the
-     *       fan-out round (the last serial step) and drives children in round-synchronized batches via
+     *       runs the balance query SERIALLY first; the transfer fan-out (a terminal interrupt listing
+     *       ≥2 pending remote members, plus the round's delegation events) appears only in a LATER
+     *       round — so we must drive forward to reach it. The loop stops the moment a round carries the
+     *       ≥2-member interrupt (the fan-out), or when the workflow ends / hits the safety cap with no
+     *       fan-out (in which case {@link ParallelStepDriver} throws "got &lt;2"). If the kickoff
+     *       already carries the fan-out, the serial phase is skipped.</li>
+     *   <li><b>Parallel phase</b> — {@link ParallelStepDriver} pairs the interrupt's pending
+     *       {@code toolCallId}s with mid conversation ids discovered from the mid platform's
+     *       conversation list, then drives children in round-synchronized batches via
      *       {@link Conversation#sendBatchResume} — ONE multi-part POST per round carrying every active
-     *       child's input (each part {@code metadata.toolCallId}-tagged); the combined reply is demuxed
-     *       per child.</li>
+     *       child's input (each part {@code metadata.toolCallId}-tagged); the interleaved reply is
+     *       attributed by producer label ({@code agentEvent.source}).</li>
      * </ol>
      *
      * <p>{@code maxInteractions} bounds the serial phase (serial rounds) AND is applied per child (per-child
@@ -114,7 +116,8 @@ public final class Turn {
         // ---- Parallel phase: derive children from the fan-out round (last serial step) + fan out. ----
         ParallelTurnResult result = ParallelStepDriver.drive(
                 conv.cidValue(), serialSteps, p, maxInteractions,
-                conv.mid()::stepUi, conv.mid()::nextRequest, conv::sendBatchResume);
+                conv.mid()::stepUi, conv.mid()::nextRequest, conv::sendBatchResume,
+                conv.mid()::listConversationIds);
         if (result.capped()) {
             System.err.println("[turn-safety] parallel turn capped at " + maxInteractions
                     + " per child; children=" + result.childCount());
@@ -125,8 +128,9 @@ public final class Turn {
 
     /**
      * Serial phase of {@link #runParallel()}: drive the kickoff (and any balance rounds) forward via the
-     * step-ui/next-request loop until a round carries the parallel fan-out (≥2 {@code _remote_invocation}
-     * projections). Returns the full serial prefix (kickoff + driven rounds), with the fan-out round last.
+     * step-ui/next-request loop until a round carries the parallel fan-out — a terminal interrupt with
+     * ≥2 pending remote members ({@code _interrupt.items}, "Multiple remote agents require input").
+     * Returns the full serial prefix (kickoff + driven rounds), with the fan-out round last.
      *
      * <p>Reuses the proven {@link #driveStepUi(List)} shape (step-ui → consume selection → next-request →
      * post), but watches each round for the fan-out instead of driving to a terminal. Manual balance steps
@@ -137,16 +141,16 @@ public final class Turn {
     private List<Step> driveUntilFanOut(Step kickOff) {
         List<Step> steps = new ArrayList<>();
         steps.add(kickOff);
-        int kickoffTotal = RemoteInvocationProbe.derive(conv.cidValue(), kickOff.events()).size();
-        int kickoffFanOut = RemoteInvocationProbe.fanOutChildren(conv.cidValue(), kickOff.events()).size();
-        // Fast path: the kickoff already carries the fan-out (a ≥2-member batch) — no serial balance phase.
+        int kickoffPending = RemoteInvocationProbe.pendingToolCallIds(kickOff.events()).size();
+        int kickoffFanOut = RemoteInvocationProbe.fanOutToolCallIds(kickOff.events()).size();
+        // Fast path: the kickoff already carries the fan-out (≥2 pending members) — no serial phase.
         if (kickoffFanOut >= 2) {
             System.out.println("[parallel-serial] kickoff already carries the fan-out "
-                    + "(" + kickoffFanOut + "-member batch) — skipping balance phase");
+                    + "(" + kickoffFanOut + " pending members) — skipping balance phase");
             return steps;
         }
-        System.out.println("[parallel-serial] kickoff projections=" + kickoffTotal
-                + " fanOutBatch=" + kickoffFanOut
+        System.out.println("[parallel-serial] kickoff pendingMembers=" + kickoffPending
+                + " fanOut=" + kickoffFanOut
                 + " — driving balance phase serially until the fan-out");
         int idx = 1;
         int selIdx = 0;
@@ -156,7 +160,7 @@ public final class Turn {
             // "derived <2 after N serial rounds" so the failure names the round count.
             if (steps.size() >= maxInteractions) {
                 System.err.println("[turn-safety] parallel serial phase capped at " + maxInteractions
-                        + " rounds without seeing the fan-out (≥2-member batch)");
+                        + " rounds without seeing the fan-out (≥2 pending remote members)");
                 return steps;
             }
             StepUI s = conv.mid().stepUi(conv.cidValue());
@@ -182,12 +186,13 @@ public final class Turn {
                     .query(nr.query()).intent("LATEST").conversationId(conv.cidValue()).build();
             Step round = post(idx++, s, label, kv, body);
             steps.add(round);
-            int total = RemoteInvocationProbe.derive(conv.cidValue(), round.events()).size();
-            int fanOut = RemoteInvocationProbe.fanOutChildren(conv.cidValue(), round.events()).size();
+            int pending = RemoteInvocationProbe.pendingToolCallIds(round.events()).size();
+            int fanOut = RemoteInvocationProbe.fanOutToolCallIds(round.events()).size();
+            int delegations = RemoteInvocationProbe.delegations(round.events()).size();
             System.out.println("[parallel-serial] round " + round.index()
                     + " step=" + (s.stepId() == null || s.stepId().isBlank() ? "(auto)" : s.stepId())
                     + " needsSel=" + s.needsSelection()
-                    + " projections=" + total + " fanOutBatch=" + fanOut);
+                    + " pendingMembers=" + pending + " delegations=" + delegations + " fanOut=" + fanOut);
             if (fanOut >= 2) {
                 System.out.println("[parallel-serial] fan-out detected at round " + round.index()
                         + " (" + fanOut + " children) — switching to parallel driving");

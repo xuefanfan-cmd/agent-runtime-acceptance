@@ -3,7 +3,7 @@ title: 构建 Workflow：core DSL 编排 DAG 并托管
 description: 用 agent-core 的 Workflow 组件以代码编排 LLM 结构化输出、工具校验、分支与人工审批 DAG，注册为工作流资源后经 AgentCoreHandler 暴露为 A2A 服务
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/workflow/
+examples: ../examples/workflow/
 ---
 
 # 构建 Workflow：core DSL 编排 DAG 并托管

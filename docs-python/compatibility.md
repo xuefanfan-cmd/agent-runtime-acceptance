@@ -23,7 +23,7 @@ audience: both
 | 事实 | 取值 | 说明 |
 |---|---|---|
 | runtime 上游位置 | `agent-solution` 仓的 `common/agent-runtime-ext-python` | **Python 侧的 runtime 本体**；目录名的 `ext` 是历史命名，不是 Java runtime 的扩展，也不是 `openJiuwen/agent-runtime` 的延续 |
-| runtime 包名与版本 | `openjiuwen-agent-runtime` `0.1.0` | 嵌入宿主的 SDK，不是应用 |
+| runtime 包名与版本 | `openjiuwen-agent-runtime` `0.1.0` | 嵌入宿主的 SDK。**这是源码包自身的元数据，不是 PyPI 发布件**——该包未发布到 PyPI，只能从源码检出以 `pip install -e` 安装 |
 | agent-core 包与版本 | `openjiuwen` `0.1.16` | 本文档树的全部 agent-core 结论以该**已安装版本**为准，不以源码仓 develop 分支为准 |
 | agent-core 源仓 | `openJiuwen/agent-core`，检出 `e1b4f5c5` | 仅作阅读参考；签名以已安装版本为准 |
 
@@ -55,17 +55,19 @@ audience: both
 | 组件 | 推荐版本 | 用途 |
 |---|---|---|
 | `openjiuwen` | **0.1.16** | agent-core SDK：Agent 语义、工具、Rail、工作流 |
-| `openjiuwen-agent-runtime` | **0.1.0** | 托管 SDK：执行契约、服务入口、状态与生命周期 |
+| `openjiuwen-agent-runtime` | **源码检出，非 PyPI** | 托管 SDK：执行契约、服务入口、状态与生命周期。用 `pip install -e /path/to/agent-runtime-ext-python` 安装 |
 | `a2a-sdk` | **1.0.0** | 对外 wire 契约；换版本即换契约，必须精确锁定 |
 
 上游 README 或其他分支的示例里若出现其他版本，不要照抄——以本页为准。
 
 ## 依赖坐标速查（生成 pyproject 用）
 
+> **runtime 不在 PyPI 上。** `openjiuwen-agent-runtime` 没有发布到公共索引，`pip install openjiuwen-agent-runtime` 会失败。它只能从源码检出以可编辑方式安装，也不要写进工程的 `dependencies`。其余依赖都能从 PyPI 正常获取。
+
 | 需要的能力 | 依赖项 | 推荐版本 | 说明 |
 |---|---|---|---|
 | Agent 语义层（任何 Agent 必需） | `openjiuwen` | 0.1.16 | ReAct / Workflow / DeepAgent、Tool、Rail、会话 |
-| 服务托管骨架（任何 Agent 服务必需） | `openjiuwen-agent-runtime` | 0.1.0 | Handler SPI、A2A 与 REST 入口、状态、生命周期 |
+| 服务托管骨架（任何 Agent 服务必需） | `openjiuwen-agent-runtime` | **源码检出，非 PyPI** | Handler SPI、A2A 与 REST 入口、状态、生命周期。`pip install -e /path/to/agent-runtime-ext-python`，不要写进 `pyproject.toml` 的 `dependencies` |
 | 标准 A2A 协议面 | `a2a-sdk` | 1.0.0 | 卡片、Task、事件类型；由托管 SDK 直接依赖 |
 | HTTP 服务面 | `fastapi`、`uvicorn[standard]`、`sse-starlette` | 见依赖基线 | 应用装配、ASGI 运行器、SSE 流 |
 | 出站 HTTP（远端 Agent、卡片、回调） | `httpx` | 见依赖基线 | 远端调用 |

@@ -3,7 +3,7 @@ title: A2A 跨智能体调用机制
 description: 用 create_a2a_app 把 Handler 暴露为标准 A2A 服务——Card、Task、流式事件与 Artifact 的装配与 wire 验收合成一页
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/a2a/
+examples: ../examples/a2a/
 snippets: ../snippets/a2a-card-config.yml、../snippets/a2a-send-request.json
 ---
 

@@ -3,7 +3,7 @@ title: DeepAgent 指南
 description: DeepAgent 目标导向任务循环的创建与托管——create_deep_agent 工厂、TaskCompletionRail 完成判定、受限工作区与文件工具、与 ReAct 的行为对照
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/deepagent/
+examples: ../examples/deepagent/
 ---
 
 # DeepAgent 指南

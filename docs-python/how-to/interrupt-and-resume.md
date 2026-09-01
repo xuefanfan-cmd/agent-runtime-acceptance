@@ -3,7 +3,7 @@ title: 取消、中断与续接
 description: 区分客户端取消、用户交互中断和远端委派，并实现可恢复的任务流程。
 audience: both
 status: verified
-examples: ../../docs/examples/interactive/
+examples: ../examples/interactive/
 snippets: ../snippets/interrupt-resume-flow.py
 ---
 

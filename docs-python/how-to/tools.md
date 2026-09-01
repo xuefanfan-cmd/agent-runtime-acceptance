@@ -3,7 +3,7 @@ title: Tool 定义与跨 Agent 类型注册
 description: 用 ToolCard 与 LocalFunction 定义工具，并按 ReAct、Workflow、DeepAgent 三种执行模型正确装配；含由 runtime 发起的客户端工具回传
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/react/、../../docs/examples/workflow/、../../docs/examples/deepagent/
+examples: ../examples/react/、../examples/workflow/、../examples/deepagent/
 snippets: ../snippets/client-tool-outcome.py
 ---
 

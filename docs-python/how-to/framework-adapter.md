@@ -3,7 +3,7 @@ title: 接入本地 Agent 框架
 description: 将异构框架接入 AgentHandler，并保持领域、协议和生命周期边界。
 audience: both
 status: verified
-examples: ../../docs/examples/react/
+examples: ../examples/react/
 snippets: ../snippets/handler-fixture.py、../snippets/framework-adapter-contract.py
 ---
 

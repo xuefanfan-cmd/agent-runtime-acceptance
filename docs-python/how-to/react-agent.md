@@ -3,7 +3,7 @@ title: ReAct Agent 指南
 description: ReActAgent 推理循环（模型自主决策工具调用）的创建、工具两步注册与 runtime 托管——语义层构造、服务层登记、Handler 按标识择取执行入口
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/react/
+examples: ../examples/react/
 ---
 
 # ReAct Agent 指南

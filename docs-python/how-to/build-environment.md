@@ -32,8 +32,8 @@ status: verified
 
 ```bash
 export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
-export DELIVERY_ROOT=/path/to/agent-runtime-acceptance-python
-export AGENT_ROOT="$DELIVERY_ROOT/docs/examples/a2a"
+export DELIVERY_ROOT=/path/to/agent-runtime-acceptance
+export AGENT_ROOT="$DELIVERY_ROOT/docs-python/examples/a2a"
 export VENV_ROOT="$DELIVERY_ROOT/.venv"
 
 python3 -m venv "$VENV_ROOT"
@@ -57,19 +57,23 @@ python3 -m venv "$VENV_ROOT"
 
 ### 安装 Agent 工程依赖
 
-示例目录**不各自携带依赖清单**：依赖坐标统一从 [`compatibility.md`](../compatibility.md) 的速查表读取，可复制的完整基线是[共享最小工程模板](../examples/minimal-agent-service-pyproject.toml)。装依赖时：
+示例目录**不各自携带依赖清单**：依赖坐标统一从 [`compatibility.md`](../compatibility.md) 的速查表读取，可复制的完整基线是[共享最小工程模板](../examples/minimal-agent-service-pyproject.toml)。
+
+**runtime 不从 PyPI 装**——`openjiuwen-agent-runtime` 没有发布到公共索引，`pip install openjiuwen-agent-runtime` 会失败。上一步的 `pip install --editable "$RUNTIME_ROOT"` 已经把它装好了。这里只补应用侧依赖：
 
 ```bash
 cd "$AGENT_ROOT"
-"$VENV_ROOT/bin/python" -m pip install openjiuwen==0.1.16 openjiuwen-agent-runtime==0.1.0 \
-  a2a-sdk==1.0.0 fastapi uvicorn[standard] sse-starlette httpx PyYAML pytest pytest-asyncio
+"$VENV_ROOT/bin/python" -m pip install openjiuwen==0.1.16 a2a-sdk==1.0.0 \
+  fastapi uvicorn[standard] sse-starlette httpx PyYAML pytest pytest-asyncio
 export PYTHONPATH="$AGENT_ROOT/src:$RUNTIME_ROOT"
 ```
+
+跳过了上一步的 editable 安装时，`import agent_runtime` 会失败；此时要么补装，要么让 `PYTHONPATH` 包含 `$RUNTIME_ROOT`（上面那行已经包含）。
 
 其他工程只需替换 `AGENT_ROOT`：
 
 ```bash
-export AGENT_ROOT="$DELIVERY_ROOT/docs/examples/rest"
+export AGENT_ROOT="$DELIVERY_ROOT/docs-python/examples/rest"
 export PYTHONPATH="$AGENT_ROOT/src:$RUNTIME_ROOT"
 ```
 
@@ -111,7 +115,7 @@ PY
 ### 运行 canonical Agent
 
 ```bash
-cd "$DELIVERY_ROOT/docs/examples/a2a"
+cd "$DELIVERY_ROOT/docs-python/examples/a2a"
 PYTHONPATH="$PWD/src:$RUNTIME_ROOT" \
   "$VENV_ROOT/bin/python" -m pytest -q tests
 PYTHONPATH="$PWD/src:$RUNTIME_ROOT" \

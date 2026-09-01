@@ -3,7 +3,7 @@ title: Versatile 对接：把远端工作流包成 Agent 参与编排
 description: 用远端适配器把外部 HTTP/SSE 工作流包装成标准 Agent——请求与流的翻译、委派与业务输出、超时与错误映射、断连回收
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/versatile/
+examples: ../examples/versatile/
 snippets: ../snippets/remote-versatile-config.py
 ---
 

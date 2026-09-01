@@ -3,7 +3,7 @@ title: 自定义 REST 入口：把宿主协议桥接到 runtime 执行链
 description: 实现 RestChannel 并装配 create_rest_app，在自有 JSON / SSE 协议下驱动已托管 Agent——协议转换契约、SSE framing 与错误信封合成一页
 audience: ai-coding
 status: verified
-examples: ../../docs/examples/rest/
+examples: ../examples/rest/
 snippets: ../snippets/rest-custom-channel.py、../snippets/rest-error-contract.json
 ---
 

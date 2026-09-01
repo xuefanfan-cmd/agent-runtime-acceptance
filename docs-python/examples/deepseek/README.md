@@ -3,7 +3,8 @@
 模型配置型 Agent 的协议闭环，按三层组织：`agent/` 保存语义身份，`runtime/` 保存 Handler 和 REST 组合根，`resources/` 保存运行配置，`tests/` 保存服务验证。
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT \
   python -m pytest -q tests
 ```

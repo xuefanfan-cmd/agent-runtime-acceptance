@@ -118,7 +118,7 @@ if missing:
 
 ```bash
 cd docs/examples/workflow
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT python -m pytest -q tests
 ```
 

@@ -10,7 +10,8 @@
 启动：
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT \
   python -m a2a_agent.runtime.application
 ```

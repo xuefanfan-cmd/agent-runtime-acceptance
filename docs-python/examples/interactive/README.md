@@ -3,7 +3,8 @@
 交互式 Agent 的完整能力闭环：`agent/` 保存中断与恢复语义，`runtime/` 保存 REST 组合根和配置，`resources/` 保存运行配置，`tests/` 保存直接调用和 HTTP 验收。
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT \
   python -m pytest -q tests
 ```

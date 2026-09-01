@@ -20,10 +20,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 description = "OpenJiuwen Python Agent 服务"
 
-# runtime SDK **不在这里声明**：它没有发布到 PyPI，只能从源码检出安装——
-#     pip install -e /path/to/agent-runtime-ext-python
-# （runtime 本体在 agent-solution 仓的 common/agent-runtime-ext-python）
-# 下面只列真正能从 PyPI 装到的依赖。
+# runtime **不在这里声明**：它不是第三方依赖，而是本文档树所讲的 runtime 本身，
+# 且尚未发布到包索引。先克隆再以可编辑方式装：
+#     git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+#     pip install -e agent-solution/common/agent-runtime-ext-python
+# 下面只列需要在本工程声明的第三方依赖。
 dependencies = [
     # agent-core：Agent 语义层（ReAct / Workflow / DeepAgent、Tool、Rail）
     "openjiuwen==0.1.16",

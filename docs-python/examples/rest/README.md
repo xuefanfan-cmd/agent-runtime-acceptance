@@ -8,7 +8,8 @@ REST / SSE Agent 的协议闭环，按 `agent/`、`runtime/`、`resources/` 三�
 - `tests/`：REST/SSE wire 验证。
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT \
   python -m rest_agent.runtime.application
 ```

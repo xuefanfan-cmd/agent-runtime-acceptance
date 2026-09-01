@@ -28,10 +28,16 @@ status: verified
 
 ### 从零创建 `.venv`
 
-`RUNTIME_ROOT` 指向 **runtime 检出**：Python 侧的 runtime 本体在 agent-solution 仓的 `common/agent-runtime-ext-python`（目录名里的 `ext` 是历史命名，不是 Java runtime 的扩展）。已经把 runtime 以可编辑方式装进环境时，各工程的测试也能跑，不必设它。
+`RUNTIME_ROOT` 指向 **runtime 源码检出**。本 runtime 尚未发布到包索引，先克隆下来（匿名可克隆）：
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT="$PWD/agent-solution/common/agent-runtime-ext-python"
+```
+
+`agent-solution` 仓里还有别的模块，Python Agent 开发只用 `common/agent-runtime-ext-python` 这一个路径。
+
+```bash
 export DELIVERY_ROOT=/path/to/agent-runtime-acceptance
 export AGENT_ROOT="$DELIVERY_ROOT/docs-python/examples/a2a"
 export VENV_ROOT="$DELIVERY_ROOT/.venv"
@@ -59,7 +65,7 @@ python3 -m venv "$VENV_ROOT"
 
 示例目录**不各自携带依赖清单**：依赖坐标统一从 [`compatibility.md`](../compatibility.md) 的速查表读取，可复制的完整基线是[共享最小工程模板](../examples/minimal-agent-service-pyproject.toml)。
 
-**runtime 不从 PyPI 装**——`openjiuwen-agent-runtime` 没有发布到公共索引，`pip install openjiuwen-agent-runtime` 会失败。上一步的 `pip install --editable "$RUNTIME_ROOT"` 已经把它装好了。这里只补应用侧依赖：
+**runtime 不出现在这条命令里**——它不是第三方依赖，上一步的 `pip install --editable "$RUNTIME_ROOT"` 已经把它装好了。这里只补应用侧依赖：
 
 ```bash
 cd "$AGENT_ROOT"

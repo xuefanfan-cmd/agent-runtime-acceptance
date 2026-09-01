@@ -3,7 +3,8 @@
 远端 Agent 的完整能力闭环：`agent/` 保存远端 Agent 的语义身份，`runtime/` 保存 Versatile adapter、fake remote 和探针，`resources/` 保存远端配置，`tests/` 保存 socket/adapter 验收。
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT \
   python -m pytest -q tests
 ```

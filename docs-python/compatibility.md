@@ -22,8 +22,8 @@ audience: both
 
 | 事实 | 取值 | 说明 |
 |---|---|---|
-| runtime 上游位置 | `agent-solution` 仓的 `common/agent-runtime-ext-python` | **Python 侧的 runtime 本体**；目录名的 `ext` 是历史命名，不是 Java runtime 的扩展，也不是 `openJiuwen/agent-runtime` 的延续 |
-| runtime 包名与版本 | `openjiuwen-agent-runtime` `0.1.0` | 嵌入宿主的 SDK。**这是源码包自身的元数据，不是 PyPI 发布件**——该包未发布到 PyPI，只能从源码检出以 `pip install -e` 安装 |
+| **本 runtime 的源码位置** | `https://gitcode.com/openJiuwen/agent-solution.git`，分支 `common`，路径 `common/agent-runtime-ext-python` | 这就是本文档树所讲的 runtime 本体。目录名的 `ext` 是历史命名，不是 Java runtime 的扩展，也不是 `openJiuwen/agent-runtime` 的延续。匿名可克隆 |
+| 本 runtime 的包名与版本 | `openjiuwen-agent-runtime` `0.1.0` | 源码包自身的元数据。**尚未发布到任何包索引**，获取方式见下节 |
 | agent-core 包与版本 | `openjiuwen` `0.1.16` | 本文档树的全部 agent-core 结论以该**已安装版本**为准，不以源码仓 develop 分支为准 |
 | agent-core 源仓 | `openJiuwen/agent-core`，检出 `e1b4f5c5` | 仅作阅读参考；签名以已安装版本为准 |
 
@@ -55,19 +55,35 @@ audience: both
 | 组件 | 推荐版本 | 用途 |
 |---|---|---|
 | `openjiuwen` | **0.1.16** | agent-core SDK：Agent 语义、工具、Rail、工作流 |
-| `openjiuwen-agent-runtime` | **源码检出，非 PyPI** | 托管 SDK：执行契约、服务入口、状态与生命周期。用 `pip install -e /path/to/agent-runtime-ext-python` 安装 |
 | `a2a-sdk` | **1.0.0** | 对外 wire 契约；换版本即换契约，必须精确锁定 |
 
 上游 README 或其他分支的示例里若出现其他版本，不要照抄——以本页为准。
 
+**本 runtime 不在这张表里**：它不是你要额外挑选的第三方组件，而是本文档树所讲的那个 runtime 本身，获取方式见下节。
+
+## 安装本 runtime
+
+本 runtime 尚未发布到 PyPI 或任何包索引，**从源码检出安装**：
+
+```bash
+git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT="$PWD/agent-solution/common/agent-runtime-ext-python"
+python -m pip install -e "$RUNTIME_ROOT"
+```
+
+装完 `import agent_runtime` 即可用。要点三条：
+
+- **不要写进工程的 `dependencies`**：`pip install openjiuwen-agent-runtime` 会失败，公共索引上没有这个包。
+- **`agent-solution` 仓里还有别的模块**（`agent-bus`、`agent-client`、几个 Java 构件等），Python Agent 开发只需要 `common/agent-runtime-ext-python` 这一个路径，其余不必关心。
+- **不装也能跑**：让 `PYTHONPATH` 包含 `$RUNTIME_ROOT` 同样可以 `import agent_runtime`，示例工程的装配门禁就是这么跑的。
+
 ## 依赖坐标速查（生成 pyproject 用）
 
-> **runtime 不在 PyPI 上。** `openjiuwen-agent-runtime` 没有发布到公共索引，`pip install openjiuwen-agent-runtime` 会失败。它只能从源码检出以可编辑方式安装，也不要写进工程的 `dependencies`。其余依赖都能从 PyPI 正常获取。
+> 本表只列**第三方依赖**——能从 PyPI 装到、且需要你在工程里声明的东西。本 runtime 不在其中，它的获取方式见上节「安装本 runtime」。
 
 | 需要的能力 | 依赖项 | 推荐版本 | 说明 |
 |---|---|---|---|
 | Agent 语义层（任何 Agent 必需） | `openjiuwen` | 0.1.16 | ReAct / Workflow / DeepAgent、Tool、Rail、会话 |
-| 服务托管骨架（任何 Agent 服务必需） | `openjiuwen-agent-runtime` | **源码检出，非 PyPI** | Handler SPI、A2A 与 REST 入口、状态、生命周期。`pip install -e /path/to/agent-runtime-ext-python`，不要写进 `pyproject.toml` 的 `dependencies` |
 | 标准 A2A 协议面 | `a2a-sdk` | 1.0.0 | 卡片、Task、事件类型；由托管 SDK 直接依赖 |
 | HTTP 服务面 | `fastapi`、`uvicorn[standard]`、`sse-starlette` | 见依赖基线 | 应用装配、ASGI 运行器、SSE 流 |
 | 出站 HTTP（远端 Agent、卡片、回调） | `httpx` | 见依赖基线 | 远端调用 |

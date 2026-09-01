@@ -24,7 +24,8 @@ tests/                       # 装配门禁
 验证类型、导入闭包、分层红线、运行资源登记与协议形态，不需要模型凭据：
 
 ```bash
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+# runtime 尚未发包，先克隆：git clone --branch common https://gitcode.com/openJiuwen/agent-solution.git
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT python -m pytest -q tests
 ```
 

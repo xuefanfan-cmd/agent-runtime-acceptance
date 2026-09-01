@@ -102,6 +102,8 @@ python -m pytest -q tests
 | versatile | 基线依赖 | 远端适配在 runtime SDK 内，无额外包 |
 | a2a / rest / interactive / deepseek | 基线依赖 | 协议闭环，确定性替身不需要 agent-core 执行后端 |
 | 叠加：状态外置 | 追加 `redis` 可选组 | 仅配了 `openjiuwen.service.middleware` 段时需要 |
+
+表里的「基线依赖」指第三方依赖。**runtime 不在其中**——它是这些工程运行其上的那个 runtime，不是要额外挑选的组件，获取方式见 [compatibility.md 的「安装本 runtime」](../compatibility.md)。
 | 叠加：技能注入 | 无额外包 | 技能中心客户端在 runtime SDK 内，见 [skillhub.md](../how-to/skillhub.md) |
 
 版本坐标的唯一来源是 [compatibility.md](../compatibility.md)。

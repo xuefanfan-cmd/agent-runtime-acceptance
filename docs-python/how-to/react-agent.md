@@ -135,7 +135,7 @@ Runner.resource_mgr.add_agent(card, lambda: agent)   # 返回值被丢弃，偏�
 
 ```bash
 cd docs/examples/react
-export RUNTIME_ROOT=/path/to/agent-runtime-ext-python
+export RUNTIME_ROOT=/path/to/agent-solution/common/agent-runtime-ext-python
 PYTHONPATH=src:$RUNTIME_ROOT python -m pytest -q tests
 ```
 

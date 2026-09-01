@@ -9,7 +9,7 @@ status: verified
 
 ## 扩展与包归属对照
 
-**扩展能力不另发包，全在 runtime 包内。** Versatile、异构框架适配、技能中心客户端、自定义 REST 通道都在 `openjiuwen-agent-runtime` 的 `adapters/` 下，装一个包就都有；启用与否由**配置段**决定（例如技能中心的 `skill_hub.enabled`），不靠追加依赖。
+**扩展能力不另发包，全在 runtime 包内。** Versatile、异构框架适配、技能中心客户端、自定义 REST 通道都在 runtime 的 `adapters/` 下，装上 runtime 就都有；启用与否由**配置段**决定（例如技能中心的 `skill_hub.enabled`），不靠追加依赖。
 
 **agent-core 用原生包。** 直接依赖 `openjiuwen`，没有 core 扩展包，也不需要。
 

@@ -23,7 +23,6 @@ audience: both
 | 事实 | 取值 | 说明 |
 |---|---|---|
 | **本 runtime 的源码位置** | `https://gitcode.com/openJiuwen/agent-solution.git`，分支 `common`，路径 `common/agent-runtime-ext-python` | 这就是本文档树所讲的 runtime 本体。目录名的 `ext` 是历史命名，不是 Java runtime 的扩展，也不是 `openJiuwen/agent-runtime` 的延续。匿名可克隆 |
-| 本 runtime 的包名与版本 | `openjiuwen-agent-runtime` `0.1.0` | 源码包自身的元数据。**尚未发布到任何包索引**，获取方式见下节 |
 | agent-core 包与版本 | `openjiuwen` `0.1.16` | 本文档树的全部 agent-core 结论以该**已安装版本**为准，不以源码仓 develop 分支为准 |
 | agent-core 源仓 | `openJiuwen/agent-core`，检出 `e1b4f5c5` | 仅作阅读参考；签名以已安装版本为准 |
 
@@ -73,7 +72,7 @@ python -m pip install -e "$RUNTIME_ROOT"
 
 装完 `import agent_runtime` 即可用。要点三条：
 
-- **不要写进工程的 `dependencies`**：`pip install openjiuwen-agent-runtime` 会失败，公共索引上没有这个包。
+- **不要写进工程的 `dependencies`**：runtime 没有发布件，任何包索引上都装不到，只能按上面的方式从源码装。
 - **`agent-solution` 仓里还有别的模块**（`agent-bus`、`agent-client`、几个 Java 构件等），Python Agent 开发只需要 `common/agent-runtime-ext-python` 这一个路径，其余不必关心。
 - **不装也能跑**：让 `PYTHONPATH` 包含 `$RUNTIME_ROOT` 同样可以 `import agent_runtime`，示例工程的装配门禁就是这么跑的。
 

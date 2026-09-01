@@ -7,7 +7,7 @@ status: verified
 
 # agent-runtime Python 接口文档
 
-`openjiuwen-agent-runtime` 是嵌入宿主进程的 Agent 托管 SDK：提供执行契约、标准服务入口、状态与生命周期，不替代 Agent 的推理循环。本页按模块边界记录宿主与适配器开发者会直接 import 的公开面。
+本 runtime 是嵌入宿主进程的 Agent 托管 SDK：提供执行契约、标准服务入口、状态与生命周期，不替代 Agent 的推理循环。本页按模块边界记录宿主与适配器开发者会直接 import 的公开面。
 
 ## 模块划分
 

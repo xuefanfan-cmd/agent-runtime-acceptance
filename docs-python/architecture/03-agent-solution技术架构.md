@@ -27,7 +27,7 @@ audience: both
 
 **这个目录不是扩展，它就是 Python 的 runtime。** 目录名里的 `ext` 是历史命名，runtime 本体直接落在 solution 仓里；它与 `openJiuwen/agent-runtime`（早期 Python 仓）也没有承继关系。
 
-扩展能力不另发包：Versatile、异构框架适配、技能中心客户端、自定义 REST 通道全在 `openjiuwen-agent-runtime` 包内的 `adapters/` 下，装一个包就都有。
+扩展能力不另拆构件：Versatile、异构框架适配、技能中心客户端、自定义 REST 通道全在 runtime 的 `adapters/` 下，装上 runtime 就都有。
 
 后果有两条，装配时必须知道：
 

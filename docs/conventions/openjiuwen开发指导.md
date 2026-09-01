@@ -1410,7 +1410,7 @@ ObservabilityConfig config = ObservabilityConfig.builder()
         .shouldRedactPrompts(false)
         .build();
 
-ObservabilitySetup.initObservability(config);          // 启动 provider 并 set 全局
+ObservabilitySetup.initObservability(config);          // 启动 provider（持直接引用，不 set 全局）
 ObservabilitySetup.startTeamTrace("finance-team", sessionId);  // 开 team 根 span
 // ... TeamAgent 执行 ...
 ObservabilitySetup.finalizeTeamTrace("finance-team"); // 结束 team span 并 flush
@@ -1419,9 +1419,10 @@ ObservabilitySetup.finalizeTeamTrace("finance-team"); // 结束 team span 并 fl
 **❌ 不要这样**
 
 ```java
-// 把 tracerotel 与 observability 混用：两个模块各自 set 全局 provider，后 set 的覆盖先 set 的
-ObservabilitySetup.initObservability(observabilityConfig);
-OtelTracerSetup.initOtelTracer(tracerConfig); // 若它 set 全局，会覆盖 observability 的 provider
+// 在框架两模块之外手动 new SdkTracerProvider 并 GlobalOpenTelemetry.set() ——
+// 两模块正是靠「各持引用、不 set 全局」才能共存，手动 set 全局会污染全局状态、破坏该约定
+SdkTracerProvider provider = SdkTracerProvider.builder().build();
+GlobalOpenTelemetry.set(OpenTelemetrySdk.builder().setTracerProvider(provider).build());
 ```
 
 **💡 为什么分两个模块**

@@ -1,0 +1,46 @@
+docs/cases/FEAT-031-studio-dsl-node-type-extension.md
+  s_f9f525ae4708ef::t_4801706bf27377 373
+  s_f9f525ae4708ef::t_ff81e9ac9ff5f2 57
+  s_f9f525ae4708ef::t_ea5c4f22ce6eb5 20
+  s_f9f525ae4708ef::t_20ce2f8bb03043 150
+  s_f9f525ae4708ef::t_12849015e07ebf 157
+  s_f9f525ae4708ef::t_2e58a2a15f9b7e 214
+  s_f9f525ae4708ef::t_8ce6a6cd926838 37
+  s_f9f525ae4708ef::t_0be6ba61632940 81
+  s_f9f525ae4708ef::t_78504f02c04139 119
+  s_f9f525ae4708ef::t_3b7a29c8c39960 125,127-130
+  s_f9f525ae4708ef::t_a13733c641525c 244
+  s_f9f525ae4708ef::t_c23a3545e75b1b 374-375
+  s_f9f525ae4708ef::t_9f4c53aa3a2f0c 229
+  s_f9f525ae4708ef::t_90727b411fcd85 213
+  s_f9f525ae4708ef::t_ac962e0ac40567 230
+  s_f9f525ae4708ef::t_0dad209d4ddeb6 243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "cf0fecaa168a4c227663b1df3bb7dc50d548b08c",
+  "prompts": {},
+  "sessions": {
+    "s_f9f525ae4708ef": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a901dc81c123fae1cee3f2e",
+        "model": "glm-5.2"
+      },
+      "human_author": "JiangCaifu <zhaoxi17@huawei.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a96b7bc1a5891689102bf53",
+        "session_id": "6a901dc81c123fae1cee3f2e",
+        "edit_kind": "file_edit",
+        "tool_name": "SearchReplace",
+        "client_type": "ide",
+        "external_session_id": "6a901dc81c123fae1cee3f2e",
+        "source_scene": "agent",
+        "display_model_name": "glm-5.2",
+        "tool_use_id": "6a96b7bc1a5891689102bf53"
+      }
+    }
+  }
+}

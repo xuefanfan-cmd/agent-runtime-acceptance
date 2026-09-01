@@ -17,7 +17,7 @@ tags: [integration, studiodsl, feat-031]
 # FEAT-031-studio-dsl-node-type-extension — Studio DSL 节点类型扩展承载
 
 > **一句话总结**：把 Studio 低码平台的 21 种工作流节点 + Python 脚本执行能力 + 数据传递 + 嵌套工作流
-> + 失败表面，全部移植到 Java 运行时，让 Studio 画布产出的工作流 IR 能在 Java 运行时上跑起来。
+> + 失败表面，全部移植到 Java 运行时，让 Studio 画布产出的工作流能在 Java 运行时上跑起来。
 > 测试用例逐节点验证执行正确性。
 >
 > **本轮范围**：仅覆盖 §3 节点类型扩展承载（21 种 MUST 节点 + Python 脚本执行 + 节点间数据传递
@@ -34,7 +34,7 @@ tags: [integration, studiodsl, feat-031]
 |----|------|-----------|
 | **机制层 · agent-core-ext-studio-dsl** | 机制提供方 | 21 种节点执行器 + Python 执行机制（subprocess/sandbox/inprocess）+ 节点间数据模型（`NodePayload`/`MediaPart`）+ 变量存储（`ConversationValsStore`）+ 嵌套工作流引擎 + 失败表面（`NodeCauseCode`） |
 | **载体层 · agent-solution** | 机制触发载体 | studio-dsl 模块（运行时库子模块），装配产物驱动 `agent-core-java` 的 `Workflow`/`Vertex`/`ComponentExecutable` |
-| **测试数据层** | 载体 agent 的实现逻辑 | 含各类节点的工作流 DSL/IR 夹具，Python 脚本夹具，多模态输入夹具 |
+| **测试数据层** | 载体 agent 的实现逻辑 | 使用 Flow*Node Java 类装配的工作流夹具，Python 脚本夹具，多模态输入夹具 |
 
 ## 关联特性
 
@@ -54,7 +54,7 @@ tags: [integration, studiodsl, feat-031]
 1. `agent-core-ext-studio-dsl` 模块已构建并 install 至 m2。
 2. `-Dtest.env=openjiuwen` + `SAA_*` / `LLM_API_KEY`。
 3. Python 3.x 执行环境就绪（代码节点 Python 脚本执行）。
-4. Redis 可用（会话级变量持久化依赖 Redis，key 前缀 `global.vals.{workflow_id}.{conversation_id}`）。
+4. Redis 可用（start 会话 KV 持久化依赖 Redis，key 前缀 `global.vals.{workflow_id}.{conversation_id}`；非 setVariable 工作流变量）。
 5. `CODE_BLACK_LIST` 环境变量可配置（代码节点黑名单测试）。
 6. 知识库 / MCP server / 远程 Agent / 插件端点就绪（对应节点依赖）。
 7. `A2A_STREAM` 协议（questioner 中断态可见性 + 状态序列断言）。
@@ -78,7 +78,7 @@ tags: [integration, studiodsl, feat-031]
 | subWorkflow | `jiuwen.subWorkflow` | 父工作流引用子工作流，结果回灌父工作流 |
 | setVariable | `jiuwen.setVariable` | 设置 `counter=0`，后续节点消费变量值 |
 | setVariable (操作符) | `jiuwen.setVariable` | increment/decrement/empty/empty_str/empty_arr 操作符语义 |
-| setVariable (会话级) | `jiuwen.setVariable` | 会话级变量跨工作流执行持久化（Redis），第二次执行读取上次值 |
+| setVariable (会话级) | `jiuwen.setVariable` | **已移除**：会话级 Redis 持久化是 start 节点的会话 KV 能力，非 setVariable 工作流变量。setVariable 变量生命周期随工作流结束而销毁，不跨执行持久化。会话级 KV 持久化的验证改为在 start 节点用例中覆盖（A12） |
 | exception | `jiuwen.exception` | 异常分支场景：exception 节点到达时终止工作流，携带 userFields 异常数据 |
 | exception (互斥) | `jiuwen.exception` | 两个异常节点并行执行，仅第一个发送 `WORKFLOW_EXCEPTION`，第二个直接抛异常 |
 | exception (defaultOutputs) | `jiuwen.exception` | 错误恢复 `defaultOutputs` 模式：节点失败时返回默认输出 + 异常信息 |
@@ -99,7 +99,7 @@ tags: [integration, studiodsl, feat-031]
 | 7a | 装配含 setVariable(increment) 的工作流，counter 初值 0，increment 3 次 | counter 最终值为 3 |
 | 7b | 装配含 setVariable(decrement) 的工作流，counter 初值 5，decrement 2 次 | counter 最终值为 3 |
 | 7c | 装配含 setVariable(empty/empty_str/empty_arr) 的工作流 | 变量分别被置为 null / "" / [] |
-| 7d | 装配含会话级 setVariable 的工作流，同一会话执行两次 | 第二次执行读取到第一次写入的变量值（Redis 持久化） |
+| 7d | 装配含会话级变量（start 节点 memory）的工作流，同一会话执行两次 | 第二次执行时 start 节点从 Redis 读取到第一次写入的会话级变量（此为 start 节点的会话 KV 能力，非 setVariable 工作流变量） |
 | 8 | 装配含 exception 节点的工作流，执行到 exception 节点 | 工作流终止（WorkflowAbortException），携带 userFields 异常数据；**不静默跳过** |
 | 8a | 装配含两个并行 exception 节点的工作流 | 仅第一个发送 `WORKFLOW_EXCEPTION`，第二个直接抛异常（互斥守卫 `__abort__`） |
 | 8b | 装配含异常恢复（defaultOutputs）的工作流，某节点执行失败 | 返回默认输出 + 异常信息（isSuccess=false, errorBody 含 errorMessage/errorCode） |
@@ -116,18 +116,18 @@ tags: [integration, studiodsl, feat-031]
 - **F — subWorkflow**：DSL 声明 subWorkflow 节点 → 执行到 subWorkflow → 子工作流独立上下文执行 → 结果回灌父工作流 → 父继续后续节点。**FAIL**：子工作流未执行 / 结果未回灌 / 父工作流中断。
 - **G — setVariable**：DSL 声明 setVariable 节点 → 执行到 setVariable → 变量写入工作流执行上下文 → 后续节点读取到正确值。**FAIL**：变量未写入 / 后续节点读不到值。
 - **G2 — setVariable (操作符)**：setVariable 支持 increment/decrement/empty/empty_str/empty_arr → 各操作符语义正确（increment: +1, decrement: -1, empty: null, empty_str: "", empty_arr: []）。**FAIL**：操作符未生效 / 值错误。
-- **G3 — setVariable (会话级持久化)**：会话级变量写入 Redis → 第二次工作流执行读取到上次值。**FAIL**：未持久化 / 第二次读不到值。
+- **G3 — 会话级持久化（start 节点会话 KV）**：start 节点将 memory 变量写入 Redis → 第二次工作流执行时 start 节点从 Redis 读取到上次值。**注：此为 start 节点的会话 KV 能力，非 setVariable 工作流变量；setVariable 变量生命周期随工作流结束而销毁**。**FAIL**：未持久化 / 第二次读不到值。
 - **H — exception**：DSL 声明 exception 节点 → 执行到 exception → 工作流终止（WorkflowAbortException）→ 携带 userFields 异常数据 → 不静默跳过。**FAIL**：未终止 / 未携带异常数据 / 静默跳过。
 - **H2 — exception (互斥)**：两个异常节点并行执行 → 仅第一个发送 `WORKFLOW_EXCEPTION` → 第二个直接抛异常（互斥守卫 `__abort__`）。**FAIL**：两个都发送 / 无互斥。
 - **H3 — exception (defaultOutputs)**：节点失败 → 错误恢复返回默认输出 + 异常信息（isSuccess=false, errorBody 含 errorMessage/errorCode）。**FAIL**：无默认输出 / 缺异常信息。
 - **H4 — exception (errorBranch)**：节点失败 → 返回 result='1' 标识异常路径（message/card/end 节点不支持 errorBranch）。**FAIL**：未标识异常路径 / 不支持的节点类型未拒绝。
 
-#### 别名覆盖
+#### 别名覆盖（归属 §4，本轮不测试）
 
-| IR 标识 | 别名 | 说明 |
-|---|---|---|
-| `jiuwen.aggregate` | `jiuwen.aggregation` / `jiuwen.flowAggregate` | 同一组件多个别名，归一后执行同一节点 |
-| `jiuwen.subWorkflow` | `jiuwen.workflowComposite` | 同一组件多个别名 |
+> 别名归一是 §4 代码生成器/宿主装配期的职责，不属于 §3 运行时。
+> L2 明确：运行时不做别名归一，由 §4/宿主映射到同一个 Java 节点类。
+> SUT 已使用 Java 节点对象直接装配，再传入别名 IR 字符串无意义。
+> 以下别名映射记录供 §4 后续承接参考。
 
 ---
 
@@ -147,14 +147,14 @@ tags: [integration, studiodsl, feat-031]
 | # | 动作 | 预期 |
 |---|------|------|
 | 9 | 装配含 LLMComponent 节点的工作流，发送用户问题 | 模型节点调用 LLM 执行推理 → 结果回灌工作流；流式输出复用 `LLMExecutable.stream` |
-| 10 | 装配含 intentDetection 节点的工作流，发送 `"我要退款"` | 意图分类结果为 `退款` → 作为控制器路由输入 |
+| 10 | 装配含 intentDetection 节点的工作流，发送 `"我要退款"` | 意图分类结果为 `退款` → 结果回灌工作流（控制器编排属后续版本，本轮不验证路由） |
 | 11 | 装配含 extractor 节点的工作流，发送含结构化信息的输入 | 提取 `{姓名:"张三", 金额:"500", 日期:"2026-08-27"}` → 回灌工作流 |
 | 12 | 装配含 knowledgeRetrieval 节点的工作流，发送查询问题 | RAG 召回相关文档片段 → 回灌工作流 |
 
 #### 机制断言
 
 - **I — LLMComponent**：DSL 声明模型节点 → 执行到模型节点 → 调用 LLM 推理 → 结果回灌 → 流式输出复用 `LLMExecutable.stream`。**FAIL**：LLM 未调用 / 结果未回灌 / 流式缺失。
-- **J — intentDetection**：DSL 声明意图识别节点 → 执行到节点 → 意图分类结果输出 → 作为控制器路由输入。**FAIL**：分类错误 / 结果未输出。
+- **J — intentDetection**：DSL 声明意图识别节点 → 执行到节点 → 意图分类结果输出 → 结果回灌工作流。**FAIL**：分类错误 / 结果未输出。
 - **K — extractor**：DSL 声明 extractor 节点 → 执行到节点 → 提取结构化字段 → 回灌工作流。**FAIL**：字段缺失 / 值错误。
 - **L — knowledgeRetrieval**：DSL 声明知识检索节点 → 执行到节点 → RAG 召回 → 结果回灌工作流。**FAIL**：召回为空 / 结果未回灌。
 
@@ -210,8 +210,8 @@ tags: [integration, studiodsl, feat-031]
 | 节点 | IR 标识 | 测试场景 |
 |------|---------|----------|
 | code | `jiuwen.code` | Python 脚本 `result = {"sum": input["a"] + input["b"]}`，输入 `{a:1, b:2}` → 输出 `{sum:3}` |
-| code (隔离) | `jiuwen.code` | 两个工作流实例并行执行 Python 代码节点，各自设置全局变量 `x` → 互不污染 |
-| code (超时) | `jiuwen.code` | Python 脚本 `time.sleep(30)`，超时 5s → 超时被处理，不污染隔离 |
+| code (隔离-三维) | `jiuwen.code` | 分别验证三个隔离维度：(a) 两个工作流实例并行执行 Python 代码节点，各自写临时文件到 cwd，另一个尝试读取；(b) 同一工作流内两个 code 节点，节点A写文件，节点B尝试读；(c) 不同租户的脚本写文件，另一租户尝试读。同时验证环境变量不互染 |
+| code (超时+清理) | `jiuwen.code` | Python 脚本 `time.sleep(30)`，超时 5s → 超时被处理（`PYTHON_TIMEOUT`）；进程销毁、隔离工作目录清理；后续执行不受残留影响 |
 | code (黑名单) | `jiuwen.code` | 设置 `CODE_BLACK_LIST=["os.system"]`，脚本含 `os.system("rm -rf /")` → 被拒绝 |
 | code (stdout) | `jiuwen.code` | 脚本 `print("hello")`，`main()` 返回 dict → stdout 被捕获，不泄漏到控制台 |
 | code (返回值校验) | `jiuwen.code` | 脚本 `main()` 返回非 dict（如返回字符串）→ 被拒绝，映射为失败表面 |
@@ -226,8 +226,8 @@ tags: [integration, studiodsl, feat-031]
 | # | 动作 | 预期 |
 |---|------|------|
 | 18 | 装配含 code 节点（Python 脚本）的工作流，输入 `{a:1, b:2}` | Java 运行时执行 Python 脚本 → 输出 `{sum:3}` → 回灌工作流 |
-| 19 | 两个工作流实例并行执行含 Python 代码节点，各自设置全局变量 `x` | 两个实例互不污染，各自 `x` 值独立 |
-| 20 | 装配含 code 节点（Python 超时脚本），超时 5s | 超时被处理，不污染环境隔离 |
+| 19 | 分别验证三个隔离维度：(a) 两个工作流实例并行执行含 Python 代码节点，各自写临时文件到 cwd，另一个尝试读取；(b) 同一工作流内两个 code 节点，节点A写文件，节点B尝试读；(c) 不同租户的脚本写文件，另一租户尝试读 | 三个维度均互不污染：临时文件不可跨实例/节点/租户读取，环境变量不互染，各自 cwd 独立 |
+| 20 | 装配含 code 节点（Python 超时脚本），超时 5s | 超时被处理；超时后进程被销毁、隔离工作目录被清理；后续执行另一个 Python 脚本不受上次超时残留影响 |
 | 20a | 设置 `CODE_BLACK_LIST=["os.system"]`，脚本含黑名单关键字 | 脚本被拒绝，映射为失败表面，不执行 |
 | 20b | 脚本含 `print("hello")`，`main()` 返回 dict | stdout 被捕获，不泄漏到控制台；结果正确回灌 |
 | 20c | 脚本 `main()` 返回非 dict（如字符串） | 被拒绝，映射为失败表面（"Code must return a dict from main()"） |
@@ -240,8 +240,8 @@ tags: [integration, studiodsl, feat-031]
 #### 机制断言
 
 - **Q — code (Python 执行)**：DSL 声明代码节点 + Python 脚本 → 执行到代码节点 → Java 运行时执行 Python 脚本 → 结果回灌工作流。**FAIL**：Python 未执行 / 结果错误 / 未回灌。
-- **R — code (环境隔离)**：两个工作流实例并行执行 Python 代码节点 → 各自全局变量互不污染。**FAIL**：全局变量污染 / 隔离失败。
-- **S — code (超时处理)**：Python 脚本超时 → 超时被处理 → 不污染环境隔离。**FAIL**：超时未处理 / 环境隔离被污染。
+- **R — code (环境隔离-三维)**：三个隔离维度验证：(a) 不同工作流实例各自写临时文件，另一个尝试读；(b) 同一工作流内两个 code 节点，节点A写文件节点B尝试读；(c) 不同租户的脚本写文件，另一租户尝试读。同时验证环境变量不互染。**FAIL**：临时文件可跨实例/节点/租户读取 / 环境变量互染 / cwd 共享。
+- **S — code (超时处理+清理)**：Python 脚本超时 → 超时被处理（`PYTHON_TIMEOUT`）→ 进程被销毁 → 隔离工作目录被清理 → 后续执行不受残留影响。**FAIL**：超时未处理 / 进程未销毁 / 目录未清理 / 后续执行受污染。
 - **S2 — code (黑名单)**：脚本含 `CODE_BLACK_LIST` 关键字 → 被拒绝 → 映射为失败表面 → 不执行。**FAIL**：黑名单未生效 / 脚本被执行。
 - **S3 — code (stdout 捕获)**：脚本 `print()` 输出 → stdout 被捕获 → 不泄漏到控制台 → 结果正确回灌。**FAIL**：stdout 泄漏 / 结果未回灌。
 - **S4 — code (返回值校验)**：`main()` 返回非 dict → 被拒绝 → 映射为失败表面。**FAIL**：非 dict 返回值被接受。
@@ -370,8 +370,9 @@ tags: [integration, studiodsl, feat-031]
 ### 七、异常场景与失败表面覆盖
 
 > 逐节点验证异常/边界场景下的失败表面映射。Java `NodeCauseCode` 枚举值：
-> `UNKNOWN_NODE_TYPE`、`NODE_CONFIG_INVALID`、`NODE_INVOKE_FAILED`、`PYTHON_TIMEOUT`、`PYTHON_NON_ZERO`、
-> `PYTHON_IO`、`NESTING_DEPTH_EXCEEDED`、`SUBWORKFLOW_REF_INVALID`、`CODE_PATH_AMBIGUOUS`。
+> `NODE_CONFIG_INVALID`、`NODE_INVOKE_FAILED`、`PYTHON_TIMEOUT`、`PYTHON_NON_ZERO`、
+> `PYTHON_IO`、`NESTING_DEPTH_EXCEEDED`、`SUBWORKFLOW_REF_INVALID`。
+> （注：`UNKNOWN_NODE_TYPE` 归属 §4 代码生成器，非 §3 运行时职责；`CODE_PATH_AMBIGUOUS` 为预留枚举，当前无抛出点，本轮不单独验收。）
 
 #### 测试数据
 
@@ -389,7 +390,6 @@ tags: [integration, studiodsl, feat-031]
 | mcp | MCP 工具不存在 / 配置错误 | `NODE_CONFIG_INVALID` 或 `NODE_INVOKE_FAILED` |
 | agent | agent 引用配置缺失（agentId/url 为空） | `NODE_CONFIG_INVALID` |
 | streamTransform | 变换配置无效 | `NODE_CONFIG_INVALID` |
-| 未知节点 | IR 中声明不存在的节点类型 | `UNKNOWN_NODE_TYPE` |
 | errorBranch 约束 | message/card/end 节点配置 errorBranch | `NODE_CONFIG_INVALID`（不支持 errorBranch） |
 | exception 约束 | loop/exception 节点配置异常恢复 | `NODE_CONFIG_INVALID`（不支持异常恢复） |
 
@@ -409,7 +409,6 @@ tags: [integration, studiodsl, feat-031]
 | 30j | 装配含 mcp 节点的工作流，MCP 工具名不存在 | 失败表面 `NODE_CONFIG_INVALID` 或 `NODE_INVOKE_FAILED`，含工具名 |
 | 30k | 装配含 agent 节点的工作流，agentId/url 为空 | 失败表面 `NODE_CONFIG_INVALID`，含配置缺失字段 |
 | 30l | 装配含 streamTransform 节点的工作流，变换配置无效 | 失败表面 `NODE_CONFIG_INVALID`，含配置错误原因 |
-| 30m | 装配含未知节点类型（如 `jiuwen.unknown`）的工作流 | 失败表面 `UNKNOWN_NODE_TYPE`，含未识别的节点类型字符串 |
 | 30n | 装配含 ComplexIntentDetection 节点的工作流，branches 为空 | 失败表面 `NODE_CONFIG_INVALID`，含"branches must not be empty" |
 | 30o | 装配含 message 节点（配置 errorBranch）的工作流 | 失败表面 `NODE_CONFIG_INVALID`，含"message 节点不支持 errorBranch"（同样验证 card/end） |
 | 30p | 装配含 loop 节点（配置异常恢复 defaultOutputs）的工作流 | 失败表面 `NODE_CONFIG_INVALID`，含"loop 节点不支持异常恢复"（同样验证 exception 节点） |
@@ -428,7 +427,6 @@ tags: [integration, studiodsl, feat-031]
 - **MM — mcp 工具不存在**：MCP 工具名不存在 → `NODE_CONFIG_INVALID` 或 `NODE_INVOKE_FAILED` → 含工具名。**FAIL**：静默跳过 / 无失败表面。
 - **NN — agent 配置缺失**：agentId/url 为空 → `NODE_CONFIG_INVALID` → 含缺失字段。**FAIL**：静默跳过 / 无失败表面。
 - **OO — streamTransform 配置无效**：变换配置无效 → `NODE_CONFIG_INVALID` → 含配置错误。**FAIL**：静默跳过 / 无失败表面。
-- **PP — 未知节点类型**：IR 声明不存在的节点类型 → `UNKNOWN_NODE_TYPE` → 含类型字符串。**FAIL**：静默跳过 / 无失败表面 / 缺类型字符串。
 - **QQ — ComplexIntentDetection 配置无效**：branches 为空 → `NODE_CONFIG_INVALID` → 含"branches must not be empty"。**FAIL**：静默跳过 / 无失败表面。
 - **RR — errorBranch 约束**：message/card/end 节点配置 errorBranch → `NODE_CONFIG_INVALID` → 含"不支持 errorBranch"原因。**FAIL**：未拒绝 / 无失败表面。
 - **SS — exception 约束**：loop/exception 节点配置异常恢复 → `NODE_CONFIG_INVALID` → 含"不支持异常恢复"原因。**FAIL**：未拒绝 / 无失败表面。

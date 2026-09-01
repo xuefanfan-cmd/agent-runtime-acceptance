@@ -16,7 +16,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-agent-service"          # 改这里
-version = "0.1.0"
+version = "0.1.0"                  # 你这个工程自己的版本，与 runtime、agent-core 无关
 requires-python = ">=3.11"
 description = "OpenJiuwen Python Agent 服务"
 

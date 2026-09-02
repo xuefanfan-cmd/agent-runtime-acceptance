@@ -42,3 +42,8 @@ reports/runtime/
 .env.local
 *.pem
 *.key
+
+# Sandbox / local tooling scratch (never committed)
+.work/
+work-src/
+.claude/

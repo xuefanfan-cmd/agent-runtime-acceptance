@@ -25,8 +25,8 @@ updated: 2026-08-20
 |---|---|---|---|
 | A1 | EDPAgent Agent Card 声明并行调度能力真实性 | ✅ | `EdpaAgentCardAlignmentTest`（2026-08-24 PASS：name=edp-agent-engine、streaming=true、skills 合规） |
 | P0a | 入口 Task 唯一性与状态机单调收束 | ✅ | `EdpaEntryTaskUniquenessTest`（2026-08-24 PASS：分阶段启动，状态序列 WORKING→COMPLETED 单调；未观察到 SUBMITTED 属实现事实） |
-| **P0b** | ⭐ WORKING 期间快照承载并行进展 | 🟡 red-first | `EdpaSnapshotBatchProgressTest`（**2026-08-24 首轮真机 FAIL：79 个 WORKING 快照 4 承载位全空**，见 §5.1 spec-vs-impl 缺陷记录；并行调度实证生效但客户端观察面缺失） |
-| P0c | COMPLETED 快照的独立溯源痕迹 | 🟡 red-first | `EdpaTerminalSnapshotTraceabilityTest`（2026-08-24 FAIL：终态 artifacts 承载 all-settled 汇总 ✓，但 3 承载位（多 artifact+toolCallId / history / metadata 结构化）全 false——与 P0b 同源缺陷；final_answer 汇总有了、按 toolCallId 溯源缺失）|
+| ~~P0b~~ | ~~WORKING 期间快照承载并行进展~~ | ⬜ out-of-scope | `EdpaSnapshotBatchProgressTest`（**2026-08-24 设计与开发确认 SendMessage+GetTask 通道下子任务粒度可见性当期不实现**；用例加 `@Disabled` 注解归档保留，特性档刷新后按新契约面复审）|
+| ~~P0c~~ | ~~COMPLETED 快照的独立溯源痕迹~~ | ⬜ out-of-scope | `EdpaTerminalSnapshotTraceabilityTest`（同 P0b out-of-scope；终态 artifacts 承载 final_answer 由 A1/P0a 基础契约覆盖；`@Disabled` 归档保留）|
 | **P1** | 同类型批量并行（同步阻塞） | ✅ | `EdpaHomogParallelBlockingTest`（**2026-08-24 PASS：FEAT-028 并行主线首次真机绿灯**——达终态、final_answer 覆盖两件事、总耗时 65s < 90s 启发式上限；BatchTimingObserver 观察面待 P0b 承载位钉死后升级）|
 | **P2** | 异构混合并行（同步阻塞） | ✅ | `EdpaHeteroParallelBlockingTest`（2026-08-24 PASS：final_answer 明确「并行完成两项独立任务：搜索...核查...」，异构 search + versatile 都真实调用，65s < 90s 启发式）|
 | **P3** | 同类型批量并行（SSE） | ✅ | `EdpaHomogParallelStreamingTest`（2026-08-24 PASS：SSE 15959 帧、62.5s < 90s 启发式，两件事覆盖完整、终态帧到位）|
@@ -41,7 +41,7 @@ updated: 2026-08-20
 | **S1** | ⭐ 数据面/控制面分离 | ✅ | `EdpaDataControlPlaneSeparationTest`（2026-08-24 PASS：数据面 llm_reasoning 流 37451 字符 vs 控制面结构化 final_answer 32407 字符，两者显著不同——非流式片段机械拼接，符合『模型 all-settled 后单次汇总』契约）|
 | **R1** | ⭐ SubscribeToTask 重订阅——首帧快照 + 后续事件应看到子任务 | ✅ | `EdpaSubscribeToTaskResubscribeTest`（**2026-08-24 首跑 PASS**——SubscribeToTask HTTP 200 + Content-Type=text/event-stream；首帧=父 Task 快照（taskId 一致，state=WORKING）；重订阅流 2560 帧全字段扫描命中：**子 taskIds=2**、**子 agentId=`search-agent`**、**子 state=`submitted`/`working`（路径 `agentEvent.state`）**——三通道全绿；**重大发现**：之前 issue #93 追加评论关于 SSE state 全空的说法**过强**，仅 `source.state`/`target.state` 为空，`agentEvent.state` 平级承载了子任务生命周期 state；详见 §5.5.2）|
 
-**台账快照（2026-08-24 R1 首跑 PASS 后）**：17 条 = ✅ 13（A1/P0a/**P1~P6/N1/S1/C1/C2/R1**）· 🟡 3 red-first 站岗（**P0b/P0c/C3 同源缺陷簇，承接 issue #93**）· ⬜ 1（N2 registry 可选）。**FEAT-028 主线全绿**：并行同/异构 × 同步/SSE 双模式全覆盖；越界约束（N1）、数据面/控制面分离（S1）、批次原子性（C1）、all-settled 单次恢复（C2）、SubscribeToTask 重订阅（R1）五条主权/组合契约实证；planrule 依赖判定（P5）+ 单成员兼容（P6）反证成立。**R1 首跑重大发现**：SSE `artifactUpdate.artifact.metadata.agentEvent` 结构**承载子 taskId + 子 agentId + 子 state 三种子任务信息**（子 state 值集合 `{submitted, working, ...}`），即"客户端应能观察到子任务粒度"这一诉求在**SSE/重订阅通道已具备实现基础**；之前 issue #93 追加评论关于"SSE state 全空"的说法**过强**——遗漏了 `agentEvent.state`（与 `source.state`/`target.state` 平级）。**issue #93 缺陷簇现精细化收窄**：①WORKING 快照全空（P0b，GetTask 通道）；②终态 artifacts 无 toolCallId 溯源（P0c，GetTask 通道）；③SSE toolCallId 只在 tool_call 侧、tool_result 侧无归位事件（C3）——3 条 red-first 承接 issue #93，**未来复盘方向**：R1 重订阅首帧快照是否也承载子任务信息？若是，可反证 GetTask 通道（P0b/P0c）的差距真伪，见 §5.5.2。**C1 关于 batchId 可见性的原诉求已撤回**：FEAT-019 §88 明确 batchId 是 core/runtime **内部诊断标识**不对外，测试判据不应要求其对客户端可见（详见 §5.5）。**P7 混合终态 / 接续场景已退出 FEAT-028 范围**（2026-08-24 设计团队确认；归档见 §5.2.3）。
+**台账快照（2026-08-24 P0b/P0c out-of-scope 后）**：17 条 = ✅ 13（A1/P0a/**P1~P6/N1/S1/C1/C2/R1**）· 🟡 1 red-first 站岗（**C3——SSE tool_result 侧 toolCallId 归位缺失**）· ⬜ 3（N2 registry 可选 + P0b/P0c out-of-scope 归档）。**FEAT-028 主线全绿**：并行同/异构 × 同步/SSE 双模式全覆盖；越界约束（N1）、数据面/控制面分离（S1）、批次原子性（C1）、all-settled 单次恢复（C2）、SubscribeToTask 重订阅（R1）五条主权/组合契约实证；planrule 依赖判定（P5）+ 单成员兼容（P6）反证成立。**R1 首跑重大发现**：SSE `artifactUpdate.artifact.metadata.agentEvent` 结构**承载子 taskId + 子 agentId + 子 state 三种子任务信息**（子 state 值集合 `{submitted, working, ...}`），即"客户端应能观察到子任务粒度"这一诉求在**SSE/重订阅通道已具备实现基础**；之前 issue #93 追加评论关于"SSE state 全空"的说法**过强**——遗漏了 `agentEvent.state`（与 `source.state`/`target.state` 平级）。**issue #93 缺陷簇现精细化收窄**：①WORKING 快照全空（P0b，GetTask 通道）；②终态 artifacts 无 toolCallId 溯源（P0c，GetTask 通道）；③SSE toolCallId 只在 tool_call 侧、tool_result 侧无归位事件（C3）——3 条 red-first 承接 issue #93，**未来复盘方向**：R1 重订阅首帧快照是否也承载子任务信息？若是，可反证 GetTask 通道（P0b/P0c）的差距真伪，见 §5.5.2。**C1 关于 batchId 可见性的原诉求已撤回**：FEAT-019 §88 明确 batchId 是 core/runtime **内部诊断标识**不对外，测试判据不应要求其对客户端可见（详见 §5.5）。**P7 混合终态 / 接续场景已退出 FEAT-028 范围**（2026-08-24 设计团队确认；归档见 §5.2.3）。**P0b/P0c out-of-scope**（2026-08-24 下午设计与开发确认 SendMessage+GetTask 通道下子任务粒度可见性当期不实现）：`EdpaSnapshotBatchProgressTest` / `EdpaTerminalSnapshotTraceabilityTest` 加 `@Disabled` 注解归档保留；issue #93 由设计人员在特性档刷新后自行关闭；SSE / SubscribeToTask 通道下的子任务粒度可见性（P1~P4/R1 已实证）不受影响。
 
 **下一步优先级**：
 
@@ -104,20 +104,11 @@ updated: 2026-08-20
   - T：返回的 result 只含唯一 taskId=P；整个执行期 GetTask(P) 存在且返回同一 Task 表面；status 演进 SUBMITTED → WORKING → COMPLETED 单调不回退
   - PASS：唯一 + 单调；FAIL：出现多 taskId 或状态回退；INCONCLUSIVE：任务未达终态
 
-- **P0b** `EdpaSnapshotBatchProgressTest` ⭐（首轮真机核心探测使命，2026-08-24 判据升级）
-  - G：同 P0a
-  - W：父任务 WORKING 期间高频（1s 间隔）`GetTask` 轮询；dump 每次快照的完整 body
-  - T（严格判据，2026-08-24 升级）：对所有 WORKING 快照做 `EdpaChildVisibilityScanner` 全字段递归扫描——命中至少一处「子 taskId / 子 agentId / 子 state」即绿；**不预设 wire 字段名/结构**（字段名/结构由设计与开发定）。4 预设承载位（artifacts[] 多元素 / history[] tool_call/tool_result / metadata 结构化 / status.message）保留作为诊断输出。
-  - **首轮真机使命（已完成）**：2026-08-24 首跑 158 快照全字段扫描三集合全空——GetTask 通道下父快照确实缺失子任务信息，作为 issue #93 严格证据。判据方法学教训见 §5.5.2 与 memory `feedback_full_scan_before_red_first.md`。
-  - PASS：全字段扫描命中；FAIL：三集合全空（承接 issue #93）；INCONCLUSIVE：未捕获到 WORKING 中间态快照
-
-- **P0c** `EdpaTerminalSnapshotTraceabilityTest`（2026-08-24 判据升级）
-  - G：同 P0a，等达终态
-  - W：`GetTask` 取终态快照
-  - T（升级后组合判据）：
-    - **硬 1**：artifacts 承载 all-settled 汇总的 final_answer 文本（覆盖用户 query 的两件事）
-    - **硬 2（严格判据）**：`EdpaChildVisibilityScanner` 全字段扫描终态快照，命中至少一处 toolCallId / 子 taskId / 子 agentId / 子 state 即算独立溯源可见——**不预设承载位**。3 预设承载位（artifacts+toolCallId / history / metadata 关键字）保留作为诊断输出
-  - PASS：硬 1 + 硬 2 同时成立；FAIL：只有汇总无溯源（或反之）；INCONCLUSIVE：未达终态
+- ~~**P0b** `EdpaSnapshotBatchProgressTest`~~ / ~~**P0c** `EdpaTerminalSnapshotTraceabilityTest`~~ —— **out-of-scope（2026-08-24 下午设计+开发确认）**
+  - **背景**：设计与开发反馈 SendMessage+GetTask 通道下子任务粒度可见性（父任务 WORKING 快照承载子任务并行进展 / 终态按 `toolCallId` 独立溯源）**当期不实现**；FEAT-028 特性档将由设计人员刷新。
+  - **处置**：两条测试类加 `@Disabled("...当期特性档不承诺...")` 注解归档保留，代码不删；台账 §1.1 状态 ⬜ out-of-scope；issue #93 由设计人员在特性档刷新后自行关闭。
+  - **保留**：`EdpaChildVisibilityScanner` 全字段扫描判据方法学在 R1/C1/C3/N1 等 SSE 通道用例继续使用；SendMessage / GetTask 基础契约（入口 Task 唯一、状态机单调、final_answer 落 artifacts）由 A1/P0a 覆盖。
+  - **历史证据（归档）**：首轮真机 P0b 158 快照 + P0c 终态快照 全字段扫描四集合全空——曾作为 issue #93 严格证据；判据方法学教训见 §5.5.2 与 memory `feedback_full_scan_before_red_first.md`。特性档刷新后按新契约面复审是否需要重新启用。
 
 ### 3.3 并行主线（P1~P4）
 
@@ -352,6 +343,43 @@ updated: 2026-08-20
 - 全字段扫过没？—— `EdpaChildVisibilityScanner` 统一 helper
 - 交叉通道验过没？—— R1（SubscribeToTask）+ P0b/P0c（GetTask）+ C1/C3/N1（SSE）三通道验证
 - 特性档核对过没？—— batchId 撤回从 FEAT-019 §88 学到；agentEvent.state 从 R1 首跑翻案学到
+
+### 5.7 新 jar 真机回归（2026-08-28，依赖统一升级后 14 用例）
+
+**触发**：开发按 `develop/03-architecture/L2-Low-Level-Design/edpa/Feat-000-dependency-version-unification-design.md` 刷新依赖版本，新 jar 交付到 `D:\agent-solution-common\dist\`（edp-agent-engine / agent-search / agent-verify / agent-deep-research 均 8/28 构建）。全 14 EDPA 用例真机复跑。
+
+**结果台账（14 = 11 ✅ · 2 🔴 · 1 💥）**：
+
+| ID | 用例 | 结果 | 说明 |
+|---|---|---|---|
+| A1 | AgentCardAlignment | ✅ | Card 声明兼容 |
+| P0a | EntryTaskUniqueness | ✅ | 入口 Task 唯一 |
+| P1 | HomogParallelBlocking | ✅ 65.4s | 同类型并行同步 |
+| P2 | HeteroParallelBlocking | ✅ 65.2s | 异构并行同步 |
+| P3 | HomogParallelStreaming | ✅ 84.9s | 同类型并行 SSE |
+| P4 | HeteroParallelStreaming | ✅ 78.7s | 异构并行 SSE |
+| P5 | DependentTasksSerial | 💥 broken 0s | `search process exited before becoming ready`——SutStack 走 managed 模式而非 remote，`SUT_AGENTS_SEARCH_URL` env override 未生效。属**环境/框架 bug**，非特性缺陷。待深挖 |
+| P6 | SingleEntityCompat | ✅ 36.8s | 单成员兼容 |
+| C1 | BatchAtomicity | ✅ | toolCallId ≥ 2 互不重复 + 多主题覆盖 |
+| **C2** | AllSettledSingleRecovery | 🔴 FAIL 46.5s | **判据"终态 statusUpdate 帧恰好 1 次"实测 = 0**——新 jar 疑似改了 SSE 终态帧策略（不再单发或字段名变）。**判据可能需适配新 wire**，待深挖 |
+| **C3** | ToolCallIdStableBinding | 🔴 FAIL | toolCallId 平均出现 1.20 次（<2）——**tool_result 侧仍缺归位事件**（issue #93 未完全修复） |
+| N1 | EnvelopeNoModeFieldGuard | ✅ | 越界字段 0 命中；辅助诊断新观察：`agentEvent.state` 值集合增加 `completed`（之前只有 submitted/working） |
+| S1 | DataControlPlaneSeparation | ✅ | 数据面 12430 chars vs 控制面 4824 chars 显著不同 |
+| R1 | SubscribeToTaskResubscribe | ✅ | 首帧快照 + 后续事件子任务可见性 |
+| ~~P0b~~ | ~~SnapshotBatchProgress~~ | @Disabled | out-of-scope（SendMessage+GetTask 子任务粒度可见性当期不实现） |
+| ~~P0c~~ | ~~TerminalSnapshotTraceability~~ | @Disabled | 同上 |
+
+**新 jar 关键观察**（vs 老 jar）：
+
+1. **`agentEvent.state` 增加 `completed`**（之前只 `submitted` / `working`）—— issue #93 子任务终态可见性诉求**部分修复**
+2. **新 wire 承载点** `.result.artifactUpdate.artifact.parts[0].data.payload.tool_call_id` 承载 toolCallId —— 之前仅 `agentEvent.toolCallId`
+3. **C3 的 tool_result 归位事件仍缺**：`toolCallId` 平均出现 1.20 次（旧 jar 1.00 次），略有改善但未达"tool_call + tool_result 一致映射"的双证要求 —— issue #93 未完全修
+4. **C2 的 SSE 终态帧策略变化**：老 jar 终态 statusUpdate 帧恰好 1 次，新 jar 实测 0 次 —— **判据可能需适配**新 wire（待深挖）
+5. **主线 P1-P4 全绿**：并行同/异构 × 同步/SSE 4 组组合稳定，新 jar 不破坏 EDPA 并行核心能力
+
+**待深挖项**（用户 2026-08-28 决策：先记录，跑完 agentscope 后再深挖）：
+- **C2 判据适配**：从 allure 附件 dump SSE 帧，看新 jar 终态帧到底以什么形式承载（是否 SSE 侧完全不发终态、还是承载位换到 artifactUpdate.metadata、还是字段名从 `TASK_STATE_COMPLETED` 变了）
+- **P5 环境问题**：查 SutStack 源码看 `SUT_AGENTS_*_URL` env override 键名映射（`sut.agents.<name>.url` → 环境变量的连字符 `_` 转换规则），确认修复方案后重跑 P5
 
 ## 6. 风险与备注
 

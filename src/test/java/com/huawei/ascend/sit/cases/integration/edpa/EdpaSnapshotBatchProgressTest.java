@@ -9,6 +9,7 @@ import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Feature("FEAT-028: EDPA 规划工作流与智能体并行执行")
 @Story("P0b.snapshot-batch-progress: WORKING 期间快照承载多子任务并行进展（首轮真机钉死承载位）")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Disabled("2026-08-24 设计+开发确认：SendMessage+GetTask 通道下子任务粒度可见性当期不实现——"
+        + "本用例归档保留，特性档刷新后按新契约面复审是否重新启用。历史证据：158 快照全字段扫描四集合全空。"
+        + "SendMessage/GetTask 基础契约由 A1/P0a 覆盖；子任务粒度可见性走 SSE/SubscribeToTask 通道（P1~P4/R1）。")
 class EdpaSnapshotBatchProgressTest {
 
     private static final Logger LOG = Logger.getLogger(EdpaSnapshotBatchProgressTest.class.getName());

@@ -163,9 +163,13 @@ class MessageMetadataOutboundPropagationTest {
             fail("issue-52 根因 2: sendMessage 失败", sendError.get());
         }
 
-        // 不等终态(远端一直 stall SSE,LLM 兜底汇总要走完整轮 —— issue-52 只关心出站 wire body,
-        // sleep 足够时间让 SUT 完成 card fetch + 发起 A2A POST 即可)
-        Thread.sleep(5000);
+        // 不等终态(远端一直 stall SSE,LLM 兜底汇总要走完整轮 —— issue-52 只关心出站 wire body)。
+        // 2026-08-31 修复:原 sleep(5000) 过短——LLM 首轮推理(决定发起 tool call)常需 10~20s,
+        // 5 秒后断言 a2aPostCount>=1 必然误红(两次复跑均误判为 SUT 缺陷)。改为轮询等待 ≤60s。
+        long deadline = System.currentTimeMillis() + 60_000L;
+        while (System.currentTimeMillis() < deadline && mock.a2aPostCount() == 0) {
+            Thread.sleep(1000);
+        }
 
         // 层 1 前置: SUT 应至少拉过一次 card 且发起过一次 A2A POST
         assertThat(mock.cardGetCount())

@@ -148,8 +148,15 @@ public final class MockRemoteAgentServer implements AutoCloseable {
         private String version = "0.1.0";
         private String skillsJson = "[]";
         private A2aMode a2aMode = A2aMode.REJECT;
+        private int port = 0;
         private long a2aStallMillis = 30_000L;
         private int abortChunkCount = 3;
+
+        /** 固定监听端口(默认 0=随机)。用于"先让 SUT 指向该端口、后启动 mock"的容错类用例。 */
+        public Builder port(int port) {
+            this.port = port;
+            return this;
+        }
 
         public Builder name(String name) {
             this.name = name;
@@ -203,7 +210,7 @@ public final class MockRemoteAgentServer implements AutoCloseable {
         }
 
         public MockRemoteAgentServer start() throws IOException {
-            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", this.port), 0);
             int port = server.getAddress().getPort();
             String baseUrl = "http://127.0.0.1:" + port;
             String a2aUrl = baseUrl + "/a2a";

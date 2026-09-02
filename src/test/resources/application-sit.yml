@@ -1,5 +1,10 @@
 # SIT environment configuration
 # Secrets MUST be sourced from environment variables, never hardcoded here.
+#
+# Internal host addresses are NOT committed (placeholder: <sit-host>). Provide real
+# endpoints at runtime via TestConfig env/property overrides, e.g.:
+#   SUT_AGENTS_MAINPLAN_URL=http://<real-host>:13003  (env var)
+#   -Dsut-agents-mainplan-url=http://<real-host>:13003  (system property)
 sut:
   # remote = connect to pre-deployed agents (no local java -jar, no Testcontainers).
   # managed = launch agents from ~/.m2 (default when mainplan.url is absent).
@@ -16,11 +21,11 @@ sut:
   agents:
     mainplan:
       # B-03 Phase2 / redis mainplan (pre-deployed). B-04 Phase2 uses the same URL.
-      url: http://7.209.189.82:13003
+      url: http://<sit-host>:13003
       # C-09 bad-LLM mainplan (invalid key + unreachable base). Required for LlmUnavailable*Test.
-      url-llm-down: http://7.209.189.82:13005
+      url-llm-down: http://<sit-host>:13005
       # B-04 Phase1 in-memory (optional second instance). Comment out when 13004 is not running.
-      # url-inmemory: http://7.209.189.82:13004
+      # url-inmemory: http://<sit-host>:13004
       group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a
       version: 0.2.0-SNAPSHOT

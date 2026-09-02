@@ -84,6 +84,25 @@ sut:
       group: com.openjiuwen.example
       artifact: agent-verify
       version: 0.1.0
+    # —— AgentScope 场景（FEAT-002 AgentScope 侧异构框架兼容适配）——
+    # 两 jar 交付物位于 D:\agent-solution-common\dist\：
+    #   agentscope-hotel-0.1.0.jar（AgentScope 本地 ReActAgent adapter，监听 18120）
+    #   travel-trip-0.1.0.jar    （openJiuwen ReAct，客户端唯一入口，监听 8092，委托到 hotel）
+    # 未安装到本地 Maven 仓库；本方案以 remote url-only 声明接入（与 deep-research SIT 同型）——
+    # 手工按 CLIENT-INTEGRATION-GUIDE §3 或 dist/run.ps1 先起 hotel、再起 trip，然后跑测试。
+    # 别名（travel-trip-agentscope / agentscope-hotel）与上方 openjiuwen 场景的 trip/hotel 不冲突，
+    # 允许两套 profile 共存于同一 yml。测试类前置 assumeTrue 门探测 agent-card 可达性；
+    # 未起 jar 时用例 skip（不 FAIL）。SUT_TRIP_AGENTSCOPE_URL / SUT_HOTEL_AGENTSCOPE_URL 环境变量
+    # 可覆盖默认端口，便于本地非默认端口部署。
+    travel-trip-agentscope:
+      url: "http://localhost:8092"
+    agentscope-hotel:
+      url: "http://localhost:18120"
+    # AgentScope HarnessAgent adapter 变体（agentscope-hotel-harness-0.1.0.jar）
+    # 默认端口 18121（jar 需通过 SERVER_PORT/--server.port 参数覆盖默认 18120 以与 ReAct 变体共存）
+    # 启动 Harness 场景时把父侧 TRAVEL_HOTEL_A2A_URL 环境变量指向 18121，无需重建父侧
+    agentscope-hotel-harness:
+      url: "http://localhost:18121"
     # —— EDPAgent（FEAT-028 EDPA 场景下子任务并行验收的委托方 SUT）——
     # 装载 jar 内置 governance/planrule.yaml；本方案不启用业务场景
     # （scenario-home 指向不存在路径 → 走内置通用并行规划路径）。

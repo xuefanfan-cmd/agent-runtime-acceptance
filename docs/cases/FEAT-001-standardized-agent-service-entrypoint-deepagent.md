@@ -707,6 +707,20 @@ search/verify 调用和较大 artifact 形成独立风险，必须验证断开�
 - **auto-resume 语义**(caller 收到 sub-agent callback 后 → wire 回 ReAct 循环 → emit terminal state) 属 FEAT-004 中断-续接域,由 [FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md](FEAT-004-remote-agent-orchestration-entrypoint-deepagent.md) 承接。§3.5.f assertion 4 只作 **红色兜底** 标记该 gap 存在,不在本档扩展修复责任。
 - **BUG-009 已翻案**:早期 log-grep 推断"outbound pushConfig 未 wire"错误。2026-08-09 双向 [TransparentA2AProxy](../../src/test/java/com/huawei/ascend/sit/mock/TransparentA2AProxy.java) 抓包证明 outbound + callback + receiver 全通,真正 gap 在 auto-resume。BUG-009 doc(untracked)应关闭或降级为"已验证无问题"。
 
+### 6.9 `SendMessage` 无 `returnImmediately` 时返回 FAILED（待澄清，2026-09-02 自 FEAT-028 细档迁入）
+
+**来源**：本条最初记在 `docs/cases/FEAT-028-...-edpa.md` §5.2.2，但它断言的是 FEAT-001 §5.1.6「阻塞 S2C 语义」，与 FEAT-028 的 EDPA 并行主题无关，2026-09-02 迁到本档归口。
+
+**实测事实**（2026-08-24，EDPA P0b 探测过程中偶然发现，SUT = **edp-agent**）：`SendMessage` 在既无 `params.pushNotificationConfig`、也无 `configuration.returnImmediately=true` 时，198ms 返回 `TASK_STATE_FAILED`，`artifacts=0`。同一次运行下 `SendStreamingMessage` 路径 15753 帧完整走通 COMPLETED——即**两条入口在同一 SUT 上行为不一致**，只有非流式阻塞入口异常。
+
+**与契约的张力**：按 FEAT-001 §5.1.6 原文口径，阻塞 S2C **默认应阻塞聚合到终态**（COMPLETED），而不是立即 FAILED。
+
+**性质待判**（两种可能，尚未区分）：①runtime 侧存在隐性契约「无 push config 也必须携 `returnImmediately`」，那么缺的是文档而非代码；②`SendMessage` 阻塞语义的实现缺陷。**判别方法**：在 deep-research SUT 上重放同一形态请求——若 deep-research 正常阻塞到 COMPLETED，则问题限于 edp-agent 的 runtime 装配；若同样 FAILED，则是 runtime 公共面缺陷。**该复现尚未做。**
+
+**现状规避**：FEAT-028 一侧所有 `SendMessage` 用例均携 `returnImmediately=true`；本档 FEAT-001 用例族**未受影响**（走的是已固化的 fixture 路径）。
+
+**跟进**：原打算搭 issue #93 一并对齐，但 #93 已于 2026-09-02 关闭（结论「改特性文档描述，不改代码」），本条随之成为独立悬空项。处置待定，需先做上面的 deep-research 复现再决定是否提单。⚠️ 未经确认不提 issue。
+
 ## 7. 真机实测进展记录（滚动，自 testplan 方案文档迁入）
 
 > 方案级设计文档（docs/testplan 同名档）只锚定场景条目，不承载进展；实测进展、缺陷对时与验证结论统一记录在本节（2026-08-17 口径迁入）。

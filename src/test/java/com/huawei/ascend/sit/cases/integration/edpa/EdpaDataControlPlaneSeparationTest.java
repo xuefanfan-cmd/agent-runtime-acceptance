@@ -32,9 +32,16 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 原始输出（数据面透传）；②最终业务结果（final_answer）**不是流式事件的机械拼接**，而是模型
  * all-settled 后单次推理的汇总；③流式事件的存在不改变父任务的单次恢复语义。
  *
- * <p><b>观察面</b>：跑 SSE 版并行，收集 artifactUpdate 事件（数据面原始 llm_reasoning 片段），
- * 然后 GetTask 拿终态 artifacts（控制面汇总）。硬断言：①两个通道都有内容；②控制面 final_answer
- * 与数据面流式片段**结构上不等价**（不是拼接）——通过结构性判据：控制面有明确汇总/归纳性表达。
+ * <p><b>观察面</b>：跑 SSE 版并行，收集 artifactUpdate 事件（数据面），然后 GetTask 拿终态
+ * artifacts（控制面 final_answer）。判据：
+ * <ul>
+ *   <li><b>硬 1</b>：两个通道都有内容（artifactUpdate 帧 ≥ 1、final_answer 非空）；</li>
+ *   <li><b>硬 2</b>（2026-09-03 落码）：控制面 {@code C} <b>既不等于、也不是</b>子段数据面
+ *       {@code D_sub} 的<b>连续子串</b>——照搬即无汇总推理。{@code D_sub} 必须按
+ *       {@code source.agentId ≠ 父} 过滤，见 {@link EdpaRecoverySegments#childPlaneText}。</li>
+ *   <li><s>控制面须含【结果汇总】等结构化汇总词</s>——2026-09-03 <b>降级为诊断日志</b>：
+ *       planrule 的输出格式是建议非硬约束（同一判据 C2 已在 2026-08-24 自行推翻）。</li>
+ * </ul>
  *
  * <p><b>Tag</b>：manual —— 复用 P3/P4 同拓扑。
  */
@@ -79,7 +86,7 @@ class EdpaDataControlPlaneSeparationTest {
     }
 
     @Test
-    @DisplayName("FEAT-028.S1: 数据面 artifactUpdate 承载过程 + 控制面 final_answer 为模型汇总")
+    @DisplayName("FEAT-028.S1: 数据面 artifactUpdate 承载过程 + 控制面 final_answer 不是子段数据面的拼接/子串")
     void dataAndControlPlanesAreSeparateAndFinalAnswerIsSummary() throws Exception {
         String contextId = "ctx-feat028-s1-" + UUID.randomUUID().toString().substring(0, 8);
         String body = String.format(
@@ -151,25 +158,59 @@ class EdpaDataControlPlaneSeparationTest {
                 controlText.substring(0, Math.min(200, controlText.length())),
                 dataText.substring(0, Math.min(200, dataText.length()))));
 
-        // 硬断言：控制面 final_answer 应包含结构化汇总语言（【需求概述】/【结果汇总】等 planrule 要求的输出格式），
-        // 或明确的归纳表达；而数据面通常是 llm_reasoning 的 token 级流片段，不含这类结构。
+        // ── 2026-09-03：原「控制面须含【结果汇总】等结构化汇总词」硬断言**降级为诊断日志** ──
+        // 理由：这些标签是 planrule 的**建议**输出格式而非硬约束，模型有自由度不遵守。
+        // 同一件事 C2 在 2026-08-24 真机后已经自己推翻过一次（见 EdpaAllSettledSingleRecoveryTest
+        // 判据演进第 1 段）——同一份方案里一条推翻、另一条照用，是本轮返工要清掉的不一致。
+        // 它现在只是「格式提示」，不承载 §5.0.1 的分离契约。
         boolean hasSummaryStructure = containsAny(controlText,
                 "【需求概述】", "【规划过程】", "【任务执行情况】", "【结果汇总】", "【异常说明】",
                 "汇总", "综上", "综合", "总结", "小结");
-        assertThat(hasSummaryStructure)
-                .as("[s1] 控制面 final_answer 应体现「模型 all-settled 后单次汇总推理」的结构性归纳，"
-                        + "而非流式片段的机械拼接。前 500 字符=%s", truncate(controlText, 500))
-                .isTrue();
+        LOG.info("[s1] [诊断，不判定] 控制面是否出现 planrule 建议的汇总性表达=" + hasSummaryStructure
+                + "（false 不代表违约：格式是建议非约束）");
 
-        // 数据面/控制面确实分离：数据面 llm_reasoning 应远长于最终 answer（多轮 token 级），
-        // 或至少大小不等；若两者完全等价，说明可能是流式片段被作为 final_answer 直接返回（违约）
-        if (Math.abs(dataText.length() - controlText.length()) < 20) {
-            LOG.warning(String.format("[s1] ⚠ 数据面(%d 字符) 与 控制面(%d 字符) 长度过于接近，"
-                    + "可能存在数据面被机械拼接为 final_answer 的风险——需核查",
-                    dataText.length(), controlText.length()));
-        }
-        LOG.info(String.format("[s1] PASS 数据面/控制面分离：dataPlane=%d 字符（llm_reasoning 流），"
-                + "controlPlane=%d 字符（结构化汇总）", dataText.length(), controlText.length()));
+        // ────────────────────────────────────────────────────────────────
+        // 硬 2（2026-09-03 落码）：控制面 C ⊄ 子段数据面 D_sub
+        //
+        // §5.0.1 主权要求 final_answer 是「模型 all-settled 后**单次推理的汇总**」，
+        // 而不是流式片段的**机械拼接**。可复算的投影：C 既不等于 D_sub，也不是 D_sub 的连续子串。
+        // 若 C 是 D_sub 的连续子串，说明控制面内容整段来自子任务原始输出，没有经过父 Agent 的汇总推理。
+        //
+        // ⚠️ D_sub **必须只取 source.agentId ≠ 父 的帧**（testplan §5 S1 注记的误红陷阱）：
+        // 不过滤的话，父 Agent 自己的汇总流也在数据面里，C 天然是它的子串 → 判据恒红。
+        // ────────────────────────────────────────────────────────────────
+        String parentAgentId = EdpaRecoverySegments.parentAgentId(frames);
+        assumeTrue(parentAgentId != null,
+                "[s1] 硬 2 不可判定：delegation 的 source.agentId 不唯一或无 delegation 事件，"
+                        + "无法确定父 Agent 身份，D_sub 的过滤基准建不起来，INCONCLUSIVE");
+        String subText = EdpaRecoverySegments.childPlaneText(frames, parentAgentId);
+        LOG.info(String.format("[s1] parentAgentId=%s D_sub=%d 字符（已按 source.agentId≠父 过滤；"
+                        + "未过滤的全量数据面=%d 字符）", parentAgentId, subText.length(), dataText.length()));
+        assumeTrue(!subText.isBlank(),
+                "[s1] 硬 2 不可判定：过滤后子段数据面为空——本轮未观察到子 Agent 透传输出"
+                        + "（可能模型未派发委托、或流被 cap 截断），「C ⊄ D_sub」无观察面，INCONCLUSIVE");
+
+        String cNorm = normalize(controlText);
+        String dNorm = normalize(subText);
+        assertThat(cNorm)
+                .as("[s1] ⭐ 硬 2（§5.0.1）：控制面 final_answer 不得等于子段数据面拼接——"
+                        + "相等即说明它就是流式片段的机械拼接，没有 all-settled 单次汇总推理。%n"
+                        + "C=%d 字符，D_sub=%d 字符（归一化后）", cNorm.length(), dNorm.length())
+                .isNotEqualTo(dNorm);
+        assertThat(dNorm.contains(cNorm))
+                .as("[s1] ⭐ 硬 2（§5.0.1）：控制面 final_answer 不得是子段数据面的**连续子串**——"
+                        + "整段照搬子任务原始输出，即未经过父 Agent 的汇总推理。%n"
+                        + "C 前 500=%s%n D_sub 前 500=%s",
+                        truncate(cNorm, 500), truncate(dNorm, 500))
+                .isFalse();
+
+        LOG.info(String.format("[s1] PASS 数据面/控制面分离：C=%d 字符，既不等于也不是 D_sub(%d 字符) 的连续子串",
+                cNorm.length(), dNorm.length()));
+    }
+
+    /** 归一化：去掉所有空白，避免换行/缩进差异让「机械拼接」逃过子串判据。 */
+    private static String normalize(String s) {
+        return s == null ? "" : s.replaceAll("\\s+", "");
     }
 
     private static boolean containsAny(String text, String... needles) {

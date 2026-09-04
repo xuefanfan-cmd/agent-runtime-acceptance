@@ -12,18 +12,29 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * FEAT-028 并行主线用例（P1~P4）的<b>子任务时间窗观察器</b> —— 从 A2A 事件流（`statusUpdate` /
- * `artifactUpdate`）或后续实测钉死的父任务快照承载位中，按 `toolCallId` 或 `taskId` 聚合每个子任务
- * 的**首次可观察时间戳**（作为 start）和**最后一次可观察时间戳**（作为 end），输出「并行时间窗
- * 重叠」证据（`max(start_i) < min(end_i)` 硬判定）。
+ * <b>子任务时间窗观察器</b> —— 按 key（推荐 {@code agentEvent.source.taskId}）聚合每条子委托轨迹的
+ * <b>首个可观察时间戳</b>（start）与<b>末个可观察时间戳</b>（end），据此判定时间窗是否重叠
+ * （{@code max(start_i) < min(end_i)}）。重叠 ⇒ 并行；不重叠 ⇒ 串行。
  *
- * <p><b>用法</b>：把每条观察到的事件（含 taskId/toolCallId + 事件时间戳）feed 进 {@link #record}，
- * 全部事件消化完调用 {@link #timeWindowsOverlap()} 得到并行判定结果，或 {@link #summary()} 拿到诊断字符串。
+ * <p><b>⚠ 当前状态（2026-09-02）：全仓无调用方，属预留组件。</b>
+ * 此前唯一的引用在 P1（{@code EdpaHomogParallelBlockingTest}）——但那里是 {@code new} 出来立刻打一行
+ * 空 {@code summary()}，从未 {@code record()} 过任何事件，是死代码，已删除。删除原因见 P1 类 javadoc：
+ * P1 走 BLOCKING（{@code SendMessage}），特性档 §5.0.1 明写该模式不产生中间流式事件，
+ * 这条通道上<b>没有子任务时间戳</b>，本观察器在那里天然喂不进数据。
  *
- * <p><b>降级模式（8-24 实测）</b>：EDPAgent 当前实现的 GetTask 父快照不承载子任务事件（P0b/P0c 已证），
- * 因此本观察器暂时从**并行子任务在被委托方 runtime 侧的 taskId** 聚合窗口时——即通过 SSE
- * `SendStreamingMessage` 观察父任务事件流里的 `statusUpdate.taskId`（父）+ SDK
- * `source.agentId`/`source.taskId`（子）字段。承载位钉死后可切换到更精准的 wire 面。
+ * <p><b>保留理由</b>：本类实现的正是待建用例 <b>P5b</b>（依赖任务反证，SSE 面）所需的算法——
+ * P5b 的判据恰是本类判定的<b>否定</b>：依赖型场景下两条 {@code delegation} 的时间窗<b>不应</b>重叠。
+ * 若 P5b 最终不建，本类应一并删除，不要让它继续以"看起来有观察面"的姿态留在仓里。
+ *
+ * <p><b>不要把它写进任何用例的"观察面"栏，除非该用例真的调用了 {@link #record}。</b>
+ * 文档宣称的判据面与代码实际判据不一致，是本仓 2026-09-02 一轮评审集中清理的问题形态。
+ *
+ * <p><b>用法</b>：把每条观察到的事件（key + 事件时间戳）feed 进 {@link #record}，
+ * 全部消化完调用 {@link #timeWindowsOverlap()} 拿判定结果，或 {@link #summary()} 拿诊断字符串。
+ * 窗口数 &lt; 2 时 {@link #timeWindowsOverlap()} 返回 false。
+ *
+ * <p><b>分流键选择</b>：用 {@code source.taskId} 而非 {@code toolCallId}——后者是 MAY 级扩展字段
+ * （FEAT-027 §5.9「不属于最小公共字段」），实现侧按 spec 停止透出时整条观察面会失效。
  *
  * <p><b>lifecycle</b>：非资源型，栈上使用即可。
  */

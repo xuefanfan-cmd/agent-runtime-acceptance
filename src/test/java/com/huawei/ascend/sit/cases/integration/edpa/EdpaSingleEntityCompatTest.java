@@ -27,12 +27,28 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * FEAT-028 矩阵 <b>P6</b> —— 单实体单委托兼容。
  *
- * <p><b>Spec 依据</b>（testplan §5 P6）：`SendMessage(PROMPT_SINGLE_ENTITY)`；期望只生成
- * 1 个 ToolCall；走 FEAT-019 单成员兼容路径；不强制批次；final_answer 覆盖单个查询主题。
- * 对应 planrule.yaml 「兜底」条款：「仅识别到 1 个子任务时，正常生成单个工具调用，走常规路径，不强制并行。」
+ * <p><b>Spec 依据</b>（testplan §5 P6）：`SendMessage(PROMPT_SINGLE_ENTITY)`；对应 planrule.yaml
+ * 「兜底」条款：「仅识别到 1 个子任务时，正常生成单个工具调用，走常规路径，不强制并行。」
+ * <p><b>本用例的存在价值（2026-09-02 定案）</b>：<b>证明「引入并行子任务后，单任务特性不受影响」</b>——
+ * 这是一条<b>回归守护用例</b>。判据只需落在「单任务还能端到端正常跑完」：达终态 COMPLETED，
+ * 且 final_answer 覆盖该单一主题。<b>委托数与所走路径都不在它的职责范围内。</b>
  *
- * <p><b>观察面</b>：EDPAgent 父任务快照当前不承载 tool_call 序列（P0b/P0c 已证），本轮暂用
- * 「total_elapsed 时长上限 + final_answer 覆盖单一主题」间接判据；预期单次搜索约 20~35s。
+ * <p><b>判据边界（2026-09-02 重定位 + 定案）</b>：
+ * <ul>
+ *   <li>「只生成 1 个 ToolCall」是 agent-core 内部过程量。BLOCKING 通道（特性档 §5.0.1：不产生中间
+ *       流式事件）与 GetTask 终态快照（P0b/P0c 已证不含中间过程）上<b>都没有它的投影</b>。
+ *       <b>已定案不另建 SSE 计数用例</b>：该语义判的是模型规划行为（planrule 是提示词规则），
+ *       与 P5b 同类而价值更低。这是<b>已知且已定案的不覆盖项，不是漏测</b>，不得作为缺口重新提出。</li>
+ *   <li>「走单成员兼容路径而非批次路径」<b>根本不是可判契约</b>：L2 §7.1 能力矩阵原文「只有一个任务时
+ *       保持单 ToolCall、单中断路径，<b>不强制批次</b>」，FEAT-028 特性档同为「<b>不强制</b>走批量路径」
+ *       ——「不强制」≠「禁止」，单实体走了批次路径并不违约。</li>
+ * </ul>
+ *
+ * <p><b>为什么删掉了原来的时长上限</b>：旧版有硬 2 {@code totalElapsed <= 90s}，理由写「超限
+ * 可能被误批量化」。这条是<b>误红源</b>：模型慢、网络抖、search-agent 自身慢都会让它超限，
+ * 而这些跟「有没有被误批量化」毫无关系；反过来真的被误批量化时它也未必超限。
+ * 用一个跟契约无因果关系的量做 {@code assertThat}，红了没人信，久而久之整条用例被当成 flaky 忽略。
+ * 现改为纯诊断日志。
  *
  * <p><b>Tag</b>：manual —— 依赖真实 LLM、search-agent。
  */
@@ -41,7 +57,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @Tag("feat-028")
 @Tag("manual")
 @Feature("FEAT-028: EDPA 规划工作流与智能体并行执行")
-@Story("P6.single-entity-compat: 单实体单委托，走单成员兼容路径不强制批次")
+@Story("P6.single-entity-compat: 回归守护——引入并行子任务后，单任务特性不受影响")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EdpaSingleEntityCompatTest {
 
@@ -55,10 +71,10 @@ class EdpaSingleEntityCompatTest {
             Long.getLong("sit.feat028.p6-terminal-timeout-ms", 90_000L);
     private static final long POLL_INTERVAL_MS = 2_000L;
     /**
-     * 单次子任务耗时上限。实测（2026-08-24）：单 search 子任务 + LLM 汇总总耗时 ~71s（包含冷启动 + 模型推理波动），
-     * 上限设 90s 给足容差；仍显著低于 P1/P2 双子任务并行下 65s 的启发式命中窗——两者判据可区分。
+     * <b>仅用于诊断日志，不参与判定</b>。实测（2026-08-24）单 search 子任务 + LLM 汇总总耗时 ~71s。
+     * 2026-09-02 前这是硬 2 的上限断言，已废止——见类 javadoc「为什么删掉了原来的时长上限」。
      */
-    private static final long SINGLE_TASK_HEURISTIC_UPPER_MS = 90_000L;
+    private static final long SINGLE_TASK_DIAGNOSTIC_HINT_MS = 90_000L;
 
     private final HttpClient http = HttpClient.newHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
@@ -92,7 +108,7 @@ class EdpaSingleEntityCompatTest {
     }
 
     @Test
-    @DisplayName("FEAT-028.P6: 单实体单委托兼容——单 ToolCall 路径正常，不强制批次")
+    @DisplayName("FEAT-028.P6: 单实体单委托兼容——终态 COMPLETED + final_answer 覆盖单一主题")
     void singleEntitySingleToolCall() throws Exception {
         String contextId = "ctx-feat028-p6-" + UUID.randomUUID().toString().substring(0, 8);
         String body = String.format(
@@ -152,12 +168,12 @@ class EdpaSingleEntityCompatTest {
                 .as("[p6] final_answer 未覆盖单一查询主题（虚拟线程）\n汇总前 500 字符=%s", truncate(finalAnswer, 500))
                 .isTrue();
 
-        // 硬 2：总耗时符合单次子任务预期上限（<70s）
-        assertThat(totalElapsed <= SINGLE_TASK_HEURISTIC_UPPER_MS)
-                .as("[p6] 单实体单委托总耗时 %dms > 上限 %dms——可能被误批量化（不该出现的 2+ ToolCall）",
-                        totalElapsed, SINGLE_TASK_HEURISTIC_UPPER_MS)
-                .isTrue();
-        LOG.info("[p6] PASS 单成员兼容路径正常：totalElapsed=" + totalElapsed + "ms");
+        // ── 诊断（不判定）：记录总耗时 ──
+        // 2026-09-02：原「硬 2：total <= 90s ⇒ 未被误批量化」已废止，属误红源（见类 javadoc）。
+        LOG.info(String.format("[p6] 诊断（不参与判定）：totalElapsed=%dms，经验参考值 %dms。"
+                        + "本用例不从该数值推断是否被误批量化——「委托数恰为 1」在本通道无投影。",
+                totalElapsed, SINGLE_TASK_DIAGNOSTIC_HINT_MS));
+        LOG.info("[p6] PASS：单实体场景终态 COMPLETED 且 final_answer 覆盖单一主题，兜底路径未被批量特性破坏");
     }
 
     private static boolean containsAny(String text, String... needles) {

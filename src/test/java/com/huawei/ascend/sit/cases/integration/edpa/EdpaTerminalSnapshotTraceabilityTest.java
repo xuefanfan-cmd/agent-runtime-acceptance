@@ -43,6 +43,21 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       history 空、metadata 仅 `_agentcore_terminal:true`——独立溯源面缺失（同 P0b 缺陷）。</li>
  * </ol>
  *
+ * <p><b>⚠️ 判据已作废（2026-09-02，见 cases 细档 §5.5.3）——本用例 {@code @Disabled} 归档中，
+ * 上述硬 2 的三个承载位不再是有效判据，重新启用前必须先重写</b>：
+ * <ul>
+ *   <li>承载位②「history 承载 tool_call/tool_result 序列」——<b>wire 上不存在 {@code tool_result}
+ *       事件类型</b>。FEAT-027 §3.1 的 {@code agentEvent.type} 是闭集
+ *       {@code delegation | output | status}。（本文件里 {@code tool_call}/{@code tool_result}
+ *       若指 core 内部推理轮次，那属 agent-core 内部实现，FEAT-027 §2 明列为 OUT，同样不是客户端观察面。）</li>
+ *   <li>承载位①③里的 {@code toolCallId} / {@code batchId} 都是 MAY 级内部诊断字段——
+ *       FEAT-027 §5.9 注「不属于 FEAT-027 的最小公共字段」，FEAT-019 L2 §5.4
+ *       「不构成用户侧调用图协议」。以它们缺失判 FAIL 不成立。</li>
+ *   <li>「独立溯源」的合法投影是 FEAT-019 L2 §5.4 的 {@code (agentId, taskId)} 调用图 +
+ *       {@code delegation} 边，已由 C3（{@link EdpaDelegationReturnBindingTest}）在 SSE 通道承接。</li>
+ * </ul>
+ * 另：本 Javadoc 上文所引「FEAT-019 §5.5 独立溯源」为行号式锚点，重启用时须一并回源核对章节号。
+ *
  * <p><b>Tag</b>：manual —— 依赖真实 LLM、search、verify。
  */
 @Tag("integration")

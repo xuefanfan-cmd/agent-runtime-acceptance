@@ -64,7 +64,16 @@ final class EdpaChildVisibilityScanner {
             return !childTaskIds.isEmpty() || !childAgentIds.isEmpty() || !subStateValues.isEmpty();
         }
 
-        /** 是否观察到 toolCallId（用于 C1/C3 类"批次原子性 / 归位一致映射"断言）。 */
+        /**
+         * 是否观察到 {@code toolCallId}。
+         *
+         * <p><b>2026-09-02 起仅作观察记录，不得单独构成判据</b>（见 cases 细档 §5.5.3）：
+         * 原文写的是「用于 C1/C3 类『批次原子性 / 归位一致映射』断言」，但 {@code toolCallId} 是
+         * MAY 级扩展字段——FEAT-027 §5.9 注「不属于 FEAT-027 的最小公共字段」，
+         * FEAT-019 L2 §5.4「不构成用户侧调用图协议」。C1/C3 的判据已改按
+         * {@link EdpaAgentEventScanner} 的 delegation 边与 {@code (agentId, taskId)} 坐标系。
+         * 本方法保留给"能不能看到"类的存在性观察与分层诊断。
+         */
         boolean anyToolCallId() {
             return !toolCallIds.isEmpty();
         }

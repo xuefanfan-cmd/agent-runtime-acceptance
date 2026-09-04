@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
-import com.huawei.ascend.sit.mock.BatchTimingObserver;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.AfterAll;
@@ -29,17 +28,26 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * FEAT-028 矩阵 <b>P1</b> —— 同类型批量并行（同步阻塞）。<b>并行主线核心用例</b>。
  *
  * <p><b>Spec 依据</b>（testplan §5 P1）：`SendMessage` 内联 `PROMPT_HOMOG_PARALLEL`（同轮 2 个
- * search-agent 委托，独立主题）；分层断言——硬 1「达终态 + final_answer 覆盖两件事」；硬 2 有条件式
- * 「若模型同轮生成 ≥2 ToolCall（planrule 期望），两子任务时间窗必须重叠」；模型未同轮生成（LLM 抖动）
- * 时降 INCONCLUSIVE 记录 ToolCall 序列供 prompt 优化。
+ * search-agent 委托，独立主题）；本通道的判据是<b>功能正确性</b>——达终态 COMPLETED，
+ * 且 final_answer 同时覆盖两个独立主题（说明两条委托的结果都真的回灌进了汇总）。
  *
- * <p><b>观察面（8-24 实测降级）</b>：EDPAgent 父任务快照（P0b/P0c 已证）不承载子任务事件，无法从
- * 客户端公开面直接观察每个子任务的 start/end。本轮暂降级为「行为面弱证明」——用 total_elapsed 时长
- * 对比「若串行两子任务耗时之和」的启发式判定：若 <b>total &lt; 单子任务预期串行下限 × 1.5</b>，
- * 认为并行调度生效；同时依赖服务端日志（`RemoteInvocationBatchCoordinator` 的 batchId + 多 remote
- * invocation）作为并行调度的<b>外部证据</b>——本用例不断言日志，日志仅在事后诊断复核用。
+ * <p><b>判据边界（2026-09-02 重定位，务必先读）</b>：本用例<b>不</b>断言「并行」。
+ * BLOCKING 走 `SendMessage`，特性档 §5.0.1 明写该模式<b>不产生中间流式事件</b>，
+ * GetTask 终态快照也不含中间过程（P0b/P0c 已证，两者正因此 out-of-scope）。
+ * 「两子任务时间窗是否重叠」是<b>过程量</b>，在这条通道上<b>没有任何投影</b>——
+ * 因此本用例无法、也不试图从公开面确证并行。<b>并行的正面举证责任在 P3/P4</b>
+ * （SSE 通道，按 {@code agentEvent.source.taskId} 分流，见 {@code EdpaHomogParallelStreamingTest}）。
  *
- * <p>P0b 承载位钉死后（等开发修复），本用例断言层升级为「按 toolCallId 拿子任务时间窗、重叠判定」。
+ * <p><b>为什么删掉了原来的时长启发式</b>：旧版把 {@code totalElapsed < 90s} 当「并行调度生效」的
+ * 硬 2，超限则 {@code assumeTrue(false)} 降 INCONCLUSIVE。这条判据有两重毛病：① 时长与「是否并行」
+ * 没有因果关系（网络、模型速度、search-agent 自身耗时都在里面，串行也可能 &lt;90s，并行也可能 &gt;90s）；
+ * ② 它<b>永远红不了</b>——违约时只会 skip，若并行真的退化成串行，本用例给的是黄灯不是红灯。
+ * 一条不可能变红的断言不是判据。现改为<b>纯诊断日志</b>，不参与判定。
+ *
+ * <p><b>历史（勿重蹈）</b>：更早的版本写「P0b 承载位钉死后按 {@code toolCallId} 拿子任务时间窗」。
+ * 该路径两处都错：{@code toolCallId} 不是 wire 面最小公共字段（FEAT-027 §5.9；FEAT-019 L2 §5.4
+ * 「不构成用户侧调用图协议」）；且问题根本不在字段选择，而在这条通道压根没有过程量。
+ * 详见 cases 细档 §5.5.3、§5.11 与 testplan 评审阻断 3。
  *
  * <p><b>Tag</b>：manual —— 依赖真实 LLM、search-agent。
  */
@@ -62,11 +70,11 @@ class EdpaHomogParallelBlockingTest {
             Long.getLong("sit.feat028.p1-terminal-timeout-ms", 130_000L);
     private static final long POLL_INTERVAL_MS = 2_000L;
     /**
-     * 串行下限（毫秒）：如果模型真的串行执行 2 个子任务，本 prompt 至少 60s（每个搜索约 20~30s，
-     * 加上模型规划与汇总）。总耗时 < 60s * 1.5 = 90s 视为「并行调度极大概率生效」。此为启发式弱层，
-     * 若观察窗内命中，配合硬 1（结果覆盖两件事）即可绿；未命中不判失败，标 INCONCLUSIVE 供分析。
+     * <b>仅用于诊断日志，不参与判定</b>。历史上这是「total &lt; 90s ⇒ 并行生效」的启发式硬 2，
+     * 已于 2026-09-02 废止（见类 javadoc「为什么删掉了原来的时长启发式」）。
+     * 保留这个数值只是为了在日志里给一句「本轮耗时相对经验值偏高/偏低」的提示，方便人工事后看趋势。
      */
-    private static final long PARALLEL_HEURISTIC_UPPER_MS = 90_000L;
+    private static final long PARALLEL_DIAGNOSTIC_HINT_MS = 90_000L;
 
     private final HttpClient http = HttpClient.newHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
@@ -104,7 +112,7 @@ class EdpaHomogParallelBlockingTest {
     }
 
     @Test
-    @DisplayName("FEAT-028.P1: 同类型批量并行同步阻塞——达终态 + 结果覆盖两件事 + 总时长符合并行启发式")
+    @DisplayName("FEAT-028.P1: 同类型批量并行同步阻塞——达终态 COMPLETED + final_answer 覆盖两个独立主题")
     void homogParallelBlockingCoversBothTopics() throws Exception {
         String contextId = "ctx-feat028-p1-" + UUID.randomUUID().toString().substring(0, 8);
         String body = String.format(
@@ -175,26 +183,14 @@ class EdpaHomogParallelBlockingTest {
                         truncate(finalAnswer, 500))
                 .isTrue();
 
-        // ── 硬 2（启发式弱层）：总时长 < 90s 视为并行调度生效 ──
-        if (totalElapsed >= PARALLEL_HEURISTIC_UPPER_MS) {
-            LOG.warning(String.format(
-                    "[p1] ⚠ 总耗时 %dms ≥ 并行启发式上限 %dms——可能：①模型未同轮生成并行 ToolCall（LLM 抖动）；"
-                            + "②并行调度实际生效但被 search-agent 阻塞或串行化。标 INCONCLUSIVE 供分析。",
-                    totalElapsed, PARALLEL_HEURISTIC_UPPER_MS));
-            assumeTrue(false,
-                    "[p1] 总耗时 " + totalElapsed + "ms 超启发式上限 " + PARALLEL_HEURISTIC_UPPER_MS
-                            + "ms，无法从公开面确证并行；本轮 INCONCLUSIVE。"
-                            + "服务端日志（RemoteInvocationBatchCoordinator）可查看真实并行证据。");
-            return;
-        }
-        LOG.info(String.format("[p1] PASS 并行启发式命中：总耗时 %dms < 上限 %dms，"
-                        + "结合服务端 batchId 日志证实并行调度生效",
-                totalElapsed, PARALLEL_HEURISTIC_UPPER_MS));
-
-        // BatchTimingObserver 挂着但当前观察面缺失（P0b 承载位钉死后升级），本轮仅记录空诊断。
-        BatchTimingObserver observer = new BatchTimingObserver();
-        LOG.info("[p1] BatchTimingObserver placeholder（等 P0b 承载位钉死后按 toolCallId 抓时间窗）: "
-                + observer.summary());
+        // ── 诊断（不判定）：记录总耗时，供人工看趋势 ──
+        // 2026-09-02：原「硬 2：total < 90s ⇒ 并行生效」已废止。时长与是否并行无因果关系，
+        // 且旧实现超限时走 assumeTrue(false)，永远红不了——不是判据。并行的正面举证在 P3/P4（SSE）。
+        LOG.info(String.format("[p1] 诊断（不参与判定）：totalElapsed=%dms，经验参考值 %dms。"
+                        + "本用例不从该数值推断并行与否；并行的正面证据见 P3/P4 的 SSE 时间窗判据，"
+                        + "服务端 RemoteInvocationBatchCoordinator 的 batchId 聚合可作外部旁证。",
+                totalElapsed, PARALLEL_DIAGNOSTIC_HINT_MS));
+        LOG.info("[p1] PASS：终态 COMPLETED 且 final_answer 覆盖两个独立主题（两条委托的结果均已回灌汇总）");
     }
 
     // —— helpers ——

@@ -130,7 +130,9 @@ SutStack
 - 另准备不存在 `agentId`（用于反枚举断言）；
 - 记录每个 endpoint / routeKey / instanceId / Task 字段的 canary。
 
-> 配置覆盖：`agent-bus.registry.mvp.probe-interval-ms` / `probe-stale-before-ms` / `probe-connect-timeout-ms` / `probe-read-timeout-ms` 设为有界短测试值（默认 600000ms 不适合状态用例）。
+> 配置覆盖：`agent-bus.registry.mvp.probe-interval-ms` / `probe-stale-before-ms` / `probe-connect-timeout-ms` / `probe-read-timeout-ms` 设为有界短测试值（默认值不适合状态用例）。
+>
+> 待澄清：本注原记载默认 600000ms，与 L2 §5 配置表（probe-interval / stale-before 默认 5000、connect / read timeout 默认 2000）不一致，两份来源打架，需与 L2 所有者确认实际默认值。澄清前测试一律显式覆盖 probe-* 配置，不依赖任何一侧的默认值。
 
 ---
 
@@ -325,7 +327,7 @@ SutStack
 - **失败归类**：隔离 / 错误码不符 = Failure。
 - **方法名**：`feat016CrossTenantResolveIsRejectedAndResultsDoNotLeak()`。
 - **PASS**：跨租户被拒 + 不串扰。**FAIL**：跨租户返回物理端点 / 错误码不符 / canary 泄漏。
-- **风险备注**：实测中若返回 403 而非 400、或 error code 命名偏离 `tenant_isolation_violation`，记为 Bug（错误码 / 状态码语义不符设计 §7）。
+- **风险备注**：实测中若返回 403 而非 400、或 error code 命名偏离 `tenant_isolation_violation`，记为 Bug（错误码 / 状态码语义不符设计 §7）；命中后须提缺陷单并把 issue 编号回填本行。
 
 ---
 
@@ -398,7 +400,7 @@ SutStack
 - **失败归类**：错误码 / 状态码不符 = Failure。
 - **方法名**：`feat016MalformedAndLegacyHandlesAreRejectedAsMalformedHandle()`。
 - **PASS**：全部 400 `malformed_handle`。**FAIL**：返回 404 / 500 / 错误码命名偏离（如 `MALFORMED_HANDLE` 大写或 `route_not_found`）。
-- **风险备注**：实测中畸形 handle 返回 404 而非 400 `malformed_handle`，记为 Bug（状态码 / 错误码语义不符设计 §7）。
+- **风险备注**：实测中畸形 handle 返回 404 而非 400 `malformed_handle`，记为 Bug（状态码 / 错误码语义不符设计 §7）；命中后须提缺陷单并把 issue 编号回填本行。
 
 ---
 
@@ -416,7 +418,7 @@ SutStack
 - **失败归类**：错误码 / 状态码不符 = Failure。
 - **方法名**：`feat016DeregisteredHandleReturnsEntryNotFound()`。
 - **PASS**：404 `entry_not_found`。**FAIL**：错误码命名偏离（如 `ENTRY_NOT_FOUND` 大写）或返回 400 / 500。
-- **风险备注**：实测中 error code 大小写偏离（`ENTRY_NOT_FOUND` vs `entry_not_found`），记为 Bug（错误码命名不符设计 §7 约定）。
+- **风险备注**：实测中 error code 大小写偏离（`ENTRY_NOT_FOUND` vs `entry_not_found`），记为 Bug（错误码命名不符设计 §7 约定）；命中后须提缺陷单并把 issue 编号回填本行。
 
 ---
 
@@ -621,7 +623,7 @@ src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
 | 正式缺参传输表示不可达 | 缺参 fail-fast 分支无法触发 | 缺该表示时分支 gated，不把路由器 404 误判为 `invalid_request` |
 | Gateway-RDC 接线未加入 acceptance | Gateway 选路消费无法验 | TC-15 dependency-gated，接线下沉后激活 |
 | 实测错误码命名 / 状态码偏离 | 期望 400 实际 404、期望小写实际大写 | 记为 Bug，按设计 §7 Oracle 判定；测试断言文档化行为，Bug 修复后翻转 |
-| Probe interval 默认过大 | DEGRADED 新鲜度窗口不适合短测试 | 覆盖 probe-* 配置为有界短值 |
+| Probe interval 默认值两份来源不一致（本档原载 600000ms vs L2 §5 载 5000/2000ms） | DEGRADED 新鲜度窗口不适合短测试；默认值取错一侧即假绿 / 假红 | 一律显式覆盖 probe-* 为有界短值，不依赖默认值；默认值差异待 L2 澄清（见 §4.3 注） |
 | 仓库既有 FEAT-016 测试类 | 混入本方案证据 | 按新类独立执行，不复用 fixture / 预期 |
 
 ---

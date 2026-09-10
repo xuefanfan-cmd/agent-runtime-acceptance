@@ -5,7 +5,7 @@ scope: full-link-tracing
 deployable_units: [agent-runtime-java, agent-solution]
 sut: multi-react-travel-demo with full-link tracing and audit enabled
 features: [DFX-001, FEAT-017, FEAT-022]
-updated: 2026-08-29
+updated: 2026-09-04
 ---
 
 # multi-react-travel-demo 验收：tracer 全链路与审计
@@ -19,7 +19,7 @@ updated: 2026-08-29
 范围：
 
 - 合法、缺失或非法 `traceparent` 的入口处理及两跳 Runtime 传播。
-- A2A、Bus、Custom REST 三类入口的 trace 单源和渠道审计。
+- A2A、Bus、Custom REST 三类入口的 trace 单源；REST 入口边界（不产生可查询审计，特性档 §2 OUT 裁定）。
 - 跨任务执行树、并行委托、Task 续跑和 Runtime 重启恢复。
 - 多轮快照、缺洞、并发序号、租户保护和会话重置保留。
 - 授权、工具、审批、跨边界交接和生命周期迁移的审计留证。
@@ -30,12 +30,13 @@ updated: 2026-08-29
 - 原始 Chain-of-Thought、固定自然语言、内部 Redis key、Filter/装饰器顺序和后台线程。
 - 新建第二套 Run 生命周期管理接口；`/manage/trajectory/runs` 只作为只读执行树观察面。
 - FEAT-017 的响应回流语义、FEAT-022 的业务入口完整合同，以及 Collector/Exporter 本身的正确性。
+- 不断言 WARN 日志文本内容；唯一例外：背压丢弃事件经框架托管日志面（`ManagedSutInstance.logFile()`）断言 WARN 存在性、不断言具体字符串（见 C4）。§8「不用日志模拟通过条件」指 Given 侧不得用日志造假触发，与该观察面不冲突。
 
 ## 3. 事实来源
 
 | 文档 | 用途 |
 |---|---|
-| `develop/02-features/DFX-001-full-link-tracing.md` | 定义 trace 单源、执行树、审计、隔离和非范围。 |
+| `develop/02-features/DFX-001-trajectory-observability.md` | 定义 trace 单源、执行树、审计、隔离和非范围。 |
 | `develop/03-architecture/L2-Low-Level-Design` 下 DFX-001 相关设计 | 定义 header、公开查询面、标识关系、存储与故障隔离语义。 |
 | FEAT-001、FEAT-008、FEAT-017、FEAT-022 相关设计 | 定义 A2A Task、交互续接、Bus 信封和 REST 入口的公开触发边界。 |
 | 测试仓 `FullLinkTracingReactAgentBlackboxTest` | 仅用于确认 Fixture、公开触发方式和场景到方法的映射。 |
@@ -73,7 +74,7 @@ observer -> /manage/trajectory/runs + /manage/trajectory/audit
 | A10 | 首跳 contextId 与 taskId 续跑 | G：首轮消息不带 taskId/contextId | W：首轮后仅携带返回 taskId 续跑 | T：首轮生成并持久化 contextId；续跑不新建 context，trace 与 Task 不串键 | A2A/query probe |
 | A11 | Runtime 重启后 trace 恢复 | G：首轮已进入等待并持久化 | W：重启 mainplan 后以 taskId 续跑且不带 traceparent | T：恢复原 trace_id，轮次序号递增，不降级生成新 trace | managed restart + Redis |
 | A12 | 合法 trace 的非降级审计 | G：三 Agent、Redis 与审计查询就绪 | W：携带合法 header 调用并查询审计 | T：审计使用传入 trace_id 且降级标志为 false | audit query |
-| A13 | REST 入口渠道审计 | G：REST、Redis 与审计查询就绪 | W：携带合法 header 调用 REST 并查询 | T：审计使用 header trace，入口渠道为 REST 且非降级 | REST driver + audit query |
+| A13 | REST 入口边界（不产生可查询审计） | G：REST、Redis 与审计查询就绪 | W：携带合法 `traceparent` 调用 REST 并查询 runs/audit | T：REST 请求成功；出站委托沿用入口 trace_id；`/manage/trajectory/runs` 与 `/manage/trajectory/audit` 不返回 REST 执行记录（特性档 §2 OUT，2026-08-29 裁定：REST 审计无外部查询面）。注：落地测试代码 `restIngressIsStoredWithChannelAndUpstreamTrace` 当前仍断言 REST 审计可查询（裁定前旧口径，2026-09-04 代码核实），与本行期望冲突，按 testplan 附录 B.3 登记处置，代码修正前该用例实跑结果不作验收依据 | REST driver + audit query |
 | B1 | 多轮 trace 一致与快照追加 | G：首轮进入等待 | W：同 Task/context 续接并回放 | T：各轮 trace_id 相同、run_id 不同、seq 递增，旧快照不覆盖 | multi-round journey + audit query |
 | B2 | 多轮审批恢复回放 | G：旅程包含工具和审批中断恢复 | W：完成多轮后查询回放 | T：快照有序，审批发起/恢复及工具委托摘要归属正确轮次 | approval journey |
 | B3 | 审计缺洞显式标记 | G：受控制造序号预占后记录缺失 | W：查询会话回放 | T：响应明确标记缺洞，不静默跳号或伪造快照 | Redis fault preparation + audit query |
@@ -90,9 +91,17 @@ observer -> /manage/trajectory/runs + /manage/trajectory/audit
 | C1 | 默认关闭零行为 | G：不启用轨迹能力 | W：携带唯一 trace 执行业务并查询 | T：业务正常，且不产生该 trace 的执行树或审计记录 | isolated default stack |
 | C2 | 开启但 Redis 未配置 | G：轨迹启用且无 Redis client | W：启动、执行业务并查询 | T：SUT 和业务可用，不产生轨迹数据 | isolated no-Redis stack |
 | C3 | Redis 写失败隔离与恢复 | G：故障代理只拒绝轨迹写 | W：故障期间执行业务，恢复后再次执行 | T：故障请求业务结果不变；恢复后新轨迹可查询，无需重启 | RESP fault proxy |
-| C4 | 写队列背压隔离 | G：小队列且轨迹写可被暂停 | W：并发执行直至队列满 | T：Agent 响应不被轨迹写阻塞；产生脱敏丢弃诊断且业务无失败 | pressure proxy + concurrent driver |
+| C4 | 写队列背压隔离 | G：小队列且轨迹写可被暂停 | W：并发执行直至队列满，解除压力后再执行 | T：Agent 响应不被轨迹写阻塞：8 并发全部返回 taskId，业务无失败；框架托管日志面（`ManagedSutInstance.logFile()`）出现背压丢弃 WARN（存在性断言，不断言具体字符串；L2 批二 §7.2「背压丢弃 + WARN，绝不阻塞执行线程」）；压力解除后新轨迹记录可查 | pressure proxy + concurrent driver |
 | C5 | 非 JSON-RPC 采集失败隔离 | G：轨迹启用 | W：向 A2A 入口发送非 JSON-RPC 载荷 | T：轨迹采集不引入额外 5xx，入口保持原协议错误语义 | raw HTTP probe |
 | C6 | 轨迹 TTL 到期一致性 | G：独立栈配置短 TTL | W：先查询到记录，等待 TTL 后重复查询 | T：记录与索引一致到期，不返回残缺跨租户数据，业务不受影响 | short-TTL stack |
+
+注：B12 缺号沿用，不重排（编号只增不改）。
+
+失败归类（每条挂了说明什么）：
+
+- **A 组（标识单源与传播）**：挂了说明链路标识契约被破坏——出站 header 缺失 / 格式非法 / trace_id 不等于入口值、执行树节点缺失或父子边错误、降级标记与预期不符，均判 Failure；SUT 部署未就绪、探针未启动、委托链路未建立为环境 Error，判 INCONCLUSIVE，不记缺陷。
+- **B 组（执行树与审计）**：挂了说明执行树 / 审计契约被破坏——快照缺失、seq 跳号无显式标记、错租户可读、决策记录缺字段、旧快照被覆盖，均判 Failure；Redis 非注入性不可达、查询端点未部署、journey 夹具未就绪为环境 Error（INCONCLUSIVE）。
+- **C 组（故障隔离）**：挂了说明故障隔离契约被破坏——故障期间业务结果改变、产生额外 5xx、恢复后新轨迹不可查、关闭档产生轨迹数据，均判 Failure；故障注入未生效（代理未到达轨迹写路径）或隔离栈未拉起为环境 Error（INCONCLUSIVE），注入未生效时不得判 Failure。
 
 ## 6. Test Agent 与 Fixture
 
@@ -105,6 +114,7 @@ observer -> /manage/trajectory/runs + /manage/trajectory/audit
 | forwarding header probes | Fixture | 透明转发并记录真实出站 `traceparent`，不生成协议结果。 |
 | runs/audit/reset observers | Fixture | 仅使用公开只读查询与重置入口，不读取内部存储。 |
 | RESP fault/pressure proxy | Fixture | 控制轨迹写失败、延迟和竞争，不影响业务 Redis。 |
+| managed restart | Fixture | A11 的 Runtime 受控重启；重启后 Redis 记录仍在。 |
 
 ## 7. 关键链路断言
 

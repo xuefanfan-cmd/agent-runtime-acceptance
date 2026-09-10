@@ -1,0 +1,34 @@
+# Studio DSL Demo SUT Agent configuration
+# Copy this file to the SUT agent's src/main/resources/ when deploying.
+server:
+  port: 8097
+
+spring:
+  application:
+    name: studio-dsl-demo
+  main:
+    web-application-type: servlet
+
+# Agent service configuration
+openjiuwen:
+  service:
+    a2a:
+      agent-id: studio-dsl-demo
+      agent-name: studio-dsl-demo
+
+# LLM configuration — injected by the acceptance test framework via -D flags
+studio-dsl:
+  api-key: ${LLM_API_KEY:}
+  api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+  model-name: ${LLM_MODEL:gpt-4o-mini}
+  ssl-verify: ${LLM_SSL_VERIFY:true}
+
+# Python code node configuration (for code node tests)
+studio:
+  dsl:
+    python:
+      interpreter: python3
+      workdir-root: ${java.io.tmpdir}/studio-dsl-python
+      default-timeout-ms: 30000
+      inherit-env: false
+      env-whitelist: PATH,PYTHONPATH,LANG,LC_ALL

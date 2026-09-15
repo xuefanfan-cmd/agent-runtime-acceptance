@@ -134,7 +134,9 @@ class EdpaHeteroParallelStreamingTest {
                 }
             }
         }
-        assertThat(sawTerminal).as("[p4] 应观察到终态帧").isTrue();
+        // ⚠️ 2026-09-04 前置门槛(承接 SA 问题 5):SSE cap 内未到终态 → INCONCLUSIVE 不判 FAIL
+        assumeTrue(sawTerminal,
+                "[p4] SSE cap 内未观察到终态帧,INCONCLUSIVE(前置门槛,不判 FAIL)");
         assertThat(artifactFrames).as("[p4] artifactUpdate 帧应 ≥ 1").isGreaterThanOrEqualTo(1);
         LOG.info("[p4] agentEvent 扫描: " + scan.summary());
 

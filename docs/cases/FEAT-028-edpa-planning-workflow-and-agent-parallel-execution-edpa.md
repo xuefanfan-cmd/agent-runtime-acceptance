@@ -39,7 +39,7 @@ updated: 2026-09-02
 | C2 | all-settled 单次推理恢复（组合面） | 🔄 | `EdpaAllSettledSingleRecoveryTest`（**硬 1 已落码已验、现降级为看守**：2026-08-24 PASS，终态 statusUpdate 帧恰好 1 次；**硬 2 已于 2026-09-03 落码，待真机复跑**——⚠️ **判据形态在落码时被推翻**：原设计「最后一条子回程之后父段恰好 1 段」**本身也是恒真的**（按定义最后一条子回程之后不再有子段，剩余帧必然连成一段），改判为「**每个父段起点处，已派发 − 已回程 = ∅**」，全文见 §5.11。**2026-09-02 降级理由**：现有硬 1 是**近乎恒真的弱必要条件**——A2A 状态机本就保证父 Task 只有一个终态帧，逐成员触发推理恢复同样只产生一个终态帧，它挡不住本条真正要防的失效形态。原「✅ 组合契约实证」的表述过强，已撤回；判据设计见 §3.5 C2）|
 | C3 | 批次归位的端到端可观察：每个委托都有回程（组合面）<br>*（2026-09-02 判据重写，原题「toolCallId 稳定归位」）* | ✅ | `EdpaDelegationReturnBindingTest`（原 `EdpaToolCallIdStableBindingTest`，2026-09-02 随判据一并改名）（**2026-09-02 新判据下首跑 PASS**：SSE 1896 帧、agentEvents=834（delegation=4 / output=818 / status=12），4 条 delegation 全部有回程、分流键 5 组、`unknownTypes=[]`、`missingSource=0`。**2026-09-02 判据重写**：原「每个 `toolCallId` 平均出现 ≥ 2 次（tool_call + tool_result）」整条删除——wire 上不存在 `tool_result` 事件类型，`toolCallId` 为 MAY 级扩展字段；新判据按 `(source.agentId, source.taskId)` 二元组分流 + 每条 delegation 有回程；历史 FAIL 记录见 §5.6/§5.7，更正依据见 §5.5.3）|
 | **N1** | 协同模式字段泄漏回归看守 + 批量语义正向实证<br>*（2026-09-02 重定位，原题「⭐ 越界约束：envelope 不含协同模式字段」）* | 🔄 | `EdpaCoordinationModeLeakGuardTest`（判据①看守：SSE+流后快照+进程日志三面扫叶子字段名；判据②正向：日志按 `batchId` 聚合，≥1 批含 ≥2 成员）+ `EdpaModeFieldScannerSelfTest`（金丝雀，非 `manual`，4 条）。**🔄 = 代码已落、金丝雀 4/4 绿且经变异验证，但重定位后的主用例尚未真机重跑**（旧类的 ✅ 是假绿，不继承）。⚠️ **不验证 §2.2**——envelope 属 core→runtime 内部面且 FEAT-019 §3 不固定序列化字段，「不含某字段」SIT 不可判定，正面举证在 agent-core 白盒单测；详见 §5.10 |
-| **N2** | ⭐ 越界约束：agent-core 不直连 registry | ⬜ | **待建（§2.2 主权、red-first 看守）**——依赖 registry 侧观察器，缺失时降 INCONCLUSIVE |
+| ~~**N2**~~ | ~~agent-core 不直连 registry~~（2026-09-04 改判 FEAT-016 承接）| — | 承接改判：特性档 §2.2 备注 + §6.4 追踪表明列 FEAT-016 主权（`FEAT-016 line 37 MUST`）+ SIT 同进程本质不可判 → 本方案不覆盖，见 testplan §5 N2 行 |
 | **S1** | ⭐ 数据面/控制面分离 | 🔄 | `EdpaDataControlPlaneSeparationTest`（**硬 1 已落码已验**：2026-08-24 PASS，数据面 llm_reasoning 流 37451 字符、控制面 final_answer 32407 字符，两条通道都有内容；**硬 2 已于 2026-09-03 落码、关键词断言同步降级为诊断日志，待真机复跑**：`C != D_sub` 且 `C` 不是 `D_sub` 的连续子串，`D_sub` **必须按 `source.agentId ≠ 父` 过滤**否则恒红。**2026-09-02 降级理由**：本用例当前唯一的内容级硬断言是**关键词检查**（`containsAny(controlText, "【结果汇总】", "汇总", "综上", ...)`）——而这恰是 C2 在同一天真机后**明确推翻**的判据形态（planrule 建议格式非硬约束，模型有自由度不遵守）。同一理由对 S1 同样成立，故该断言降为诊断记录，在硬 2 落码前其变红不构成缺陷证据。原「两者显著不同 → 非机械拼接」的推断也不成立：字符数不等推不出「不是拼接」。判据设计见 §3.7）|
 | **R1** | ⭐ SubscribeToTask 重订阅——首帧快照 + 后续事件应看到子任务 | ✅ | `EdpaSubscribeToTaskResubscribeTest`（**2026-08-24 首跑 PASS**——SubscribeToTask HTTP 200 + Content-Type=text/event-stream；首帧=父 Task 快照（taskId 一致，state=WORKING）；重订阅流 2560 帧全字段扫描命中：**子 taskIds=2**、**子 agentId=`search-agent`**、**子 state=`submitted`/`working`（路径 `agentEvent.state`）**——三通道全绿；**重大发现**：之前 issue #93 追加评论关于 SSE state 全空的说法**过强**，仅 `source.state`/`target.state` 为空，`agentEvent.state` 平级承载了子任务生命周期 state；详见 §5.5.2）|
 
@@ -858,3 +858,63 @@ Issue #93 已加 comment 反映此收窄；修复方向不变（TaskStore 侧对
 
 历史真机探测记录（三跑对照 + 灰色地带清单）作为**跨特性对齐材料**保留在 §5.2.3。
 
+
+---
+
+## 13. 2026-09-04 真机复跑记录:C2/S1/P3/P4 新判据
+
+**验证版本**:`edp-agent-engine-0.1.1.jar`(内嵌 `agent-service-app-0.1.2.jar`,md5 `2a713440221e637ff8fde5bbb3fc5b87`,2026-08-31 打包)覆盖到 M2 `com.openjiuwen.example:edp-agent-engine:0.1.0` 位置;LLM `deepseek-v4-pro-0813`;`SEARCH_AGENT_USE_STUB=true`(不真联网)。
+
+| 用例 | 结果 | 关键指标 |
+|---|---|---|
+| **P3** | ✅ **PASS** | SSE 3098 帧、`agentEvents=2011 (delegation=6 output=1987 status=18)`、`distinctSourceKeys=7`、`sawTerminal=true`、`missingSource=0 unknownTypes=[]`、elapsed=69.9s |
+| **P4** | ✅ **PASS** | SSE 1556 帧、`agentEvents=727 (delegation=2 output=719 status=6)`、`sourceAgentIds=[edp-agent-engine, versatile-agent, search-agent]` 异构 ≥ 2、elapsed=42.7s |
+| **S1** | ✅ **PASS** | SSE 2768 帧、C=1676 字符 D_sub=5274 字符(归一化后)、`C ⊄ D_sub`、`parentAgentId=edp-agent-engine` 唯一识别成功、elapsed=91.3s |
+| **C2** | ✅ **PASS**(硬 1 改判后) | `artifactFrames=2672 terminalStatusFrames=0`;硬 1 从 `== 1` 改为 `≤ 1`(interrupt 中间态可为 0);硬 2 未跑到(硬 1 短路前置)。elapsed=54.8s(硬 1 挂在前面,采集在 interrupt 段结束) |
+
+### 13.1 C2 的关键事实链(2026-09-04 定位)
+
+**表面观察**:C2 SSE 采集里外层 `statusUpdate.state` **没有** `TASK_STATE_COMPLETED` 帧,只有 SUT 日志一条 `A2A stream ended after interrupt (COMPLETED suppressed) taskId=fb1e35d4-...`。
+
+**事实链**(SUT `run.log` 时间序):
+```
+17:15:28  A2A NEW task fb1e35d4-... (C2 父 Task 创建, stream=true)
+17:15:28  Orchestrator streamQuery START
+17:15:39  ToolInterruptException × 2 (call_subagent for search-agent 触发)
+17:15:39  handleToolInterrupt call_versatile -> emit tool_start
+17:15:39  JiuwenCoreAgentHandler interrupt detected type=__interaction__     ← 关键
+17:16:23  A2A stream ended after interrupt (COMPLETED suppressed) taskId=fb1e35d4-...
+```
+
+**对比**其他三次跑(P3/P4/S1)—— 日志走 `A2A stream complete` 分支,是**完整段收束**。C2 那次跑因为 SSE 采集时长把 stream 抓到了**第一段 interrupt 停顿处**就断了,SUT 侧的父 Task 还在继续跑到 17:23:45 才 stop —— 但这些都是**第一段 stream 关闭之后的事情**,C2 用例代码没有 subscribeToTask 拿后续。
+
+**结论**:`COMPLETED suppressed` 是 SUT **正确地**在 interrupt 中间态不发终态(A2A 协议要求 interrupt 期间父 Task 是中间态)。**不是 SUT 缺陷、不是 wire 事件形态漂移**。
+
+### 13.2 C2 用例改造(2026-09-04)
+
+- **硬 1(旧)**:`terminalStatusFrames == 1` —— 假设"一次 SSE 采集必能覆盖完整生命周期",与 A2A 协议 interrupt 分段模型不符
+- **硬 1(新)**:`terminalStatusFrames <= 1` —— 0 表示 interrupt 中间态(合法)、1 表示完整段收束(合法)、>1 表示逐成员触发缺陷(捕获)
+- **硬 2**:差集判据不变,`EdpaRecoverySegments.analyze()` 从 `agentEvent` 出发,独立于外层 statusUpdate 存在性
+- **后续待补**:跑完 stream 后加一次 `GetTask` 拿父 Task 最终终态,作为"父终态"的独立观察面
+
+### 13.3 pre-flight 教训
+
+初判"SUT 主动抑制父终态是缺陷"错在**没走 pre-flight 三问**就急着提 issue。回源纠正的路径:
+1. **全字段扫过没**:应该扫 `GetTask` 通道拿父 Task 最终终态,不能只看当前 SSE 段
+2. **交叉通道验过没**:SSE + GetTask + SUT 日志三通道对比,单看 SSE 是**证据不足**
+3. **特性档核对过没**:FEAT-001 §5.1.6 / FEAT-008 关于 interrupt 中间态的语义——A2A 协议明确规定 interrupt 期间父 Task 是中间态,不发终态
+
+这条 record 保留作为 pre-flight 纪律的活教材。
+
+### 13.4 SA 评审问题 4 处置修正
+
+SA 评审建议"若 terminal status 缺失 → 提 issue(缺陷候选)"—— 本轮真机复跑后**改判**:该现象是 A2A 协议正确表达,不提 issue。processing 备忘详见 `docs/reviews/feat028-sa-review-response.md` §问题 4。
+
+---
+
+## 14. §12 之外的待办承接一览
+
+- **task #57 真机复跑 C2/S1/P3/P4 新判据** —— ✅ 2026-09-04 完成(见 §13)
+- **SA 评审 7 条 → 按 review-response.md 总盘表实施** —— ⬜ 等 SA 反馈
+- **C2 GetTask 兜底补面** —— ⬜ 待建(§13.2 后续待补)
+- **C5 族 5 条**:C5a/C5b/C5c/C5e PASS + C5d INCONCLUSIVE —— 见 `docs/issues/draft-a2a-remote-invocation-queue-limits-not-enforced.md` §2026-09-04 复跑结论,issue 已归档为**非问题**

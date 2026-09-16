@@ -703,6 +703,26 @@ sut:
         envexplorer:
           url-key: openjiuwen.service.versatile.url-template
           url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+    # FEAT-036 SUT agents (locally installed from D:\code\test\agent-solution).
+    # echo-agent is the agent-bus-consumer-callee-demo jar (deterministic echo, no LLM);
+    # edp-agent is the edp-agent-engine jar (LLM-driven delegation host, exec classifier
+    # copied over thin jar in m2 to work with the framework's classifier-unaware MavenArtifact);
+    # edp-agent-multipart is the customer-multipart-app demo jar (custom-rest SPI + multipart).
+    echo-agent:
+      group: com.openjiuwen.example
+      artifact: agent-bus-consumer-callee-demo
+      version: 0.1.1
+      spring:
+        properties:
+          openjiuwen.service.bus.consumer.enabled: "false"
+    edp-agent:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.1
+    edp-agent-multipart:
+      group: com.customer
+      artifact: customer-multipart-app
+      version: "1.0.0"
   # Per-agent LLM api-key injection: an agent that declares `llm-api-key-property: <spring-key>`
   # gets the global LLM_API_KEY value (below) injected at launch as `--<spring-key>=<LLM_API_KEY>`,
   # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works

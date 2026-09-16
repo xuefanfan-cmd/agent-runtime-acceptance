@@ -1,0 +1,3 @@
+actrule:
+  max_steps: 8
+  skill_mode: all

@@ -1,0 +1,5 @@
+actrule:
+  max_steps: 1
+  enable_task_loop: false
+  skill_mode: all
+  allowed_tools: []

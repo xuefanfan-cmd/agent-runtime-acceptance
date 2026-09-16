@@ -1,0 +1,4 @@
+deep-agent:
+  instances:
+    "":
+      scenario: missing-empty-name-scenario

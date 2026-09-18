@@ -15,12 +15,12 @@ depends_on:
 related_docs:
   - docs 私仓 develop/02-features/FEAT-036-a2a-part-file-and-data-transfer.md（status: active, updated: 2026-08-20）
   - docs 私仓 develop/03-architecture/L2-Low-Level-Design/agent-runtime/Feat-Func-036-a2a-part-file-and-data-transfer.md（status: draft, updated: 2026-08-25）
-updated: 2026-09-10
+updated: 2026-09-18
 ---
 
 # FEAT-036 — A2A Part 多模态（文件/结构化）数据传输测试设计
 
-> **一句话**：acceptance 以黑盒方式经 `POST /a2a`（JSON-RPC）、custom-rest multipart 兼容入口与出站 A2A client 三条面，验证 agent-runtime 对 FEAT-036 的 `Part(raw)`/`Part(url)`/`Part(data)` 完整解析、协议层校验、出站构造、multipart 同链路复用与纯文本兼容。
+> **一句话**：acceptance 以黑盒方式经 `POST /a2a`（JSON-RPC）、custom-rest multipart 兼容入口与出站 A2A client 三条面，验证 agent-runtime 对 FEAT-036 的 `Part(raw)`/`Part(url)`/`Part(data)` 完整解析、协议层校验、出站构造、multipart 同链路复用与纯文本兼容；**SPI 样例工程（`customer-multipart-app`，EDPA 拆分独立开发事务交付物）本身也在验收范围内，由 MP 组用例直接以其为 SUT 验证（§3.4 / §8.4 退出标准 7）**。
 
 > **仓库边界**：测试代码与 FEAT-036 自有 fixture 只写入 `agent-runtime-acceptance`；不修改 agent-runtime / agent-solution 产品源码；不修改客户网关与文件存储。
 
@@ -34,7 +34,7 @@ updated: 2026-09-10
 | Feat-Func-036 L2 | `status: draft` / `updated: 2026-08-25`（**draft 版，评审重点确认项见 §9**） | 同上 `b1f50a6c` | §1.2 能力矩阵、§1.3 差距、§2.1~§2.4 入口契约（含 §2.2 错误表面表、§2.4 步骤 4/5）、§3.1~§3.4 运行模型、§4.1~§4.7、§5.1~§5.4 映射、§6.1~§6.4 配置、§7.1~§7.3 验收表 |
 | FEAT-001（转引） | **未直接核对**，以 L2 §2.2 转引为准："HTTP status 复用 FEAT-001 §2.3 的 400 + `-32602` 映射" | — | 仅经 L2 §2.2 转引，不独立引用其条款（T-M1c 等级保真） |
 
-断言中的具体值逐字出处（T-M1d）：`10485760`（raw 10MB）、`100`（Part 总数）、`104857600`（body 100MB）、`1048576`（text/data 1MB）、`255`（filename 字符）、`16KB`（metadata 序列化）、`http/https`（url scheme）、错误 message 关键短语（`exactly one of text/raw/url/data` / `not valid base64` / `exceeds max-raw-bytes` / `exceeds max-parts` / `exceeds max-text-data-bytes` / `must use http or https scheme` / `must be a non-blank string` / `must contain at least one part`）均出自 **L2 §2.2 异常响应表与 §7.3 错误表面验收表**；`-32602` / `EDP-FILE-003` 出自 **特性档 §2/§3**；12MB/100MB 容器必配出自 **L2 §6.1/§6.2**。
+断言中的具体值逐字出处（T-M1d）：`10485760`（raw 10MB）、`100`（Part 总数）、`104857600`（body 100MB）、`1048576`（**data** Part 1MB，text 子行见下注）、`255`（filename 字符）、`16KB`（metadata 序列化）、`http/https`（url scheme）、错误 message 关键短语（`exactly one of text/raw/url/data` / `not valid base64` / `exceeds max-raw-bytes` / `exceeds max-parts` / `exceeds max-text-data-bytes` / `must use http or https scheme` / `must be a non-blank string` / `must contain at least one part`）均出自 **L2 §2.2 异常响应表与 §7.3 错误表面验收表**；`-32602` / `EDP-FILE-003` 出自 **特性档 §2/§3**；12MB/100MB 容器必配出自 **L2 §6.1/§6.2**。**两处例外（2026-09-17 评审修订）**：① #21 的 parts=[] 行期望短语 `must be a non-empty array` 锚定**既有实现基线**（FEAT-001 语义，非 L2 §2.2 新表）——空 parts 处理逻辑本特性不更改，期望以既有行为为准（见 §6.3 #21）；② #16 的 text 超 1MB 子行在 §9 存疑 1 裁定前**不写死期望**（1MB 阈值来源与冲突见存疑 1/2）。
 
 ## 1. 依据与范围
 
@@ -52,6 +52,7 @@ updated: 2026-09-10
 - 协议层校验全表面：结构互斥、base64、raw 10MB、Part 总数 100、text/data 1MB、url scheme、url 非空白、filename/metadata 卫生、请求体 100MB + Content-Length 预检 413、空 parts 拒绝（既有行为）。
 - 出站：`RemoteCall.parts` → wire Part 逆映射、`parts[0]=TextPart(message)` 兼容、格式保持（url 入→url 出 / raw 入→raw 出）、不自动转存/下载、中断恢复重放重试与耗尽回填。
 - multipart 兼容接入：文件字段→`Part(raw)`、表单字段→`Part(data)`/`Part(text)`、SPI 桥接层与 `/a2a` 同一校验链路、容器层限额先行拒绝。
+- **SPI 样例工程本身的验证**（2026-09-17 评审补充）：`edp-agent-multipart` 样例（验收仓 SUT `customer-multipart-app:1.0.0`）是 EDPA 拆分的**独立开发事务交付物**（不在 agent-runtime 产品仓内，按事务跟踪）。样例不单独立项验收，其可运行性、multipart→Part 映射、同链路校验与容器限额配置生效，由本档 MP 组用例（#27~#30、#3）**直接以样例 jar 为 SUT** 黑盒验证（§3.4 选型行 1 / §8.4 退出标准 7）。
 - 安全基线：raw 字节不进 LLM 上下文（marker 探针）、url 不被 runtime 下载（凭据隔离探针）。
 - 业务层类型校验的**错误透出语义**（`EDP-FILE-003` 不被 runtime 吞掉/翻译），白名单规则本身不在范围。
 - 纯文本回归：不携带多模态 Part 的调用入口、Task、SSE、错误语义不变。
@@ -154,7 +155,7 @@ A2A 网关桩（记录入站 wire；可注入 5xx/断连；内嵌"Workflow 下�
 
 | 测试设计角色 | 选定 agent（仓内路径） | 关键事实（勘察依据） | 承载场景 |
 |---|---|---|---|
-| multipart SUT | `example/edp-agent-multipart-demo` | FEAT-036 R-EDPAgent-1 **官方样例**：复用引擎内置 `EdpaCustomRestAdapter`（message→Part(text)、文件→Part(raw)、其余字段→Part(data)）；已配 `max-file-size: 12MB / max-request-size: 100MB`（L2 §6.1 必配项活样例）；自带 `MultipartUploadIntegrationTest`（mock 终端 agent，已验 multipart→parts 映射与 `A2aPartRules` 桥接校验） | #27 #28 #29 #30 #3 |
+| multipart SUT | `example/edp-agent-multipart-demo`（验收仓 SUT `edp-agent-multipart` = `com.customer:customer-multipart-app:1.0.0`） | FEAT-036 R-EDPAgent-1 **官方样例**：复用引擎内置 `EdpaCustomRestAdapter`（message→Part(text)、文件→Part(raw)、其余字段→Part(data)）；已配 `max-file-size: 12MB / max-request-size: 100MB`（L2 §6.1 必配项活样例）；自带 `MultipartUploadIntegrationTest`（mock 终端 agent，已验 multipart→parts 映射与 `A2aPartRules` 桥接校验）。**事务跟踪（2026-09-17 评审补充）**：本样例是 EDPA 拆分的**独立开发事务交付物**（不在 agent-runtime 产品仓内，按事务单跟踪，编号回填处见 §9 存疑 8）；样例本身需测试——其黑盒验证由本档 MP 组用例（#27~#30、#3）**直接以样例 jar 为 SUT** 承载（可运行性 / multipart→Part 映射 / 同链路校验 / 容器限额配置生效），不另行单独立项验收；样例自带单测属产品仓证据不计入 SIT 矩阵（T-M14，见落码前置动作 ③） | #27 #28 #29 #30 #3 |
 | EDPAgent 主 SUT | `agents/edp-agent-java`（engine）→ 验收仓 SUT `edp-agent`（`edp-agent-engine:0.1.1` exec jar，**已注册**） | A2A 入站 + 委托 rail 宿主；被委托方经 `EDP_AGENT_SEARCH_A2A_URL` / `EDP_AGENT_VERSATILE_A2A_URL` 注入；**2026-09-09 整改**：拓扑 B 出站判据面（原误接 echo-agent——无 LLM 恒零出站）切至本 SUT，模型凭据（OPENJIUWEN yml `EDP_AGENT_MODEL_*`）、通用化场景（`EDP_AGENT_SCENARIO_HOME`→feat036-scenario）、remote-agents streaming=false（GatewayStub 阻塞应答）、thinking.type=enabled（Ark glm-5.3）由测试栈注入 | **#1 #2 #23 #24 #25 #31 #32**（拓扑 B 出站/SEC/E2E 主被测） |
 | 回显 Agent（PartsEchoAgent 底座） | `example/agent-bus-consumer-demo/agent-bus-consumer-callee-demo` → 验收仓 SUT `echo-agent`（**已注册**） | 确定性无 LLM `CalleeAgentHandler`（回显 query、6 chunk 流式、INPUT_REQUIRED 触发器）；⚠️ **现状只回显 `lastUserQuery()` 文本，未回显 parts**——需按 `ServeRequest.messages[].parts` 扩展 Part 摘要回显（filename/mediaType/byteSize/url/data 类型）后方可承载 IN 组判据；**无 LLM、无委托工具，不得作为出站判据面宿主**（2026-09-09 整改结论） | #4 #21（Smoke）#5~#11 #12~#22 #26（拓扑 A） |
 | 下游"网关+低码 Workflow"（真实链路版） | `example/versatile-orchestration-demo/adapter` → 验收仓 SUT `versatile-orch-demo-adapter`（**已注册**，port 18094）+ services 段已预置 `env-explorer`（versatile 流程 mock） | A2A→versatile HTTP/SSE 协议翻译；其 `VersatileRequestExtractor` 把 `parts[0].text` 当 JSON 解析——正是 L2 §2.4 步骤 1"`parts[0]=TextPart` 固定首位"兼容约束的**实测面**（#23） | #1 #2 #23 #24 #32（真实链路冒烟） |
@@ -184,7 +185,7 @@ A2A 网关桩（记录入站 wire；可注入 5xx/断连；内嵌"Workflow 下�
 - contextId：`ctx-feat036-<slug>-<uuid8>`；slug 与矩阵 ID 对应。
 - Tag：类级 `@Tag("feat-036")` + `@Tag("integration")` + `@Tag("blackbox")`；方法级 `@Story("FEAT-036.<id>: <场景名>")`。
 - 资源（T-M20）：网关桩/文件服务桩端口动态分配；合成的 10MB 级字节仅在边界用例内生成、用后即弃，不落临时目录；contextId/文件名带 `feat036` 前缀避免撞 key。
-- 版本指纹（T-M19）：用例启动时记录 SUT jar 文件名 + Agent Card `version` 字段（探针式），报告输出指纹；防止跑旧产物全绿。
+- 版本指纹（T-M19）：用例启动时记录 SUT Maven 坐标（group:artifact:version，echo-agent / edp-agent / edp-agent-multipart 三 SUT，2026-09-18 已落码于 `A2APartTransferTest.buildStack` 启动日志）；Agent Card `version` 探针为增强项未落码；报告输出指纹；防止跑旧产物全绿。edp-agent-multipart 坐标即 SPI 样例事务交付物指纹（§8.4 退出标准 7 的重跑触发依据）。
 - SUT/文档锚点（T-M18）：契约文档锚 docs 私仓 `b1f50a6c`；SUT 构建锚点在首次落码 PR 中回填具体 commit/tag（本档为设计稿，暂记 TBD，见 §9 存疑 7）。
 
 ## 4. 覆盖矩阵（32 条场景）
@@ -210,12 +211,12 @@ A2A 网关桩（记录入站 wire；可注入 5xx/断连；内嵌"Workflow 下�
 | 13 | `val.base64-invalid` | raw 非法 base64 | L2 §2.2 表；特性 §3 | `-32602` + `not valid base64` | P0 | 🔴 |
 | 14 | `val.raw-over-10mb` | raw 解码 10MB 边界（10485760 过 / +1B 拒） | L2 §2.2/§4.1；特性 §2 | 10485760→200；+1B→`-32602`+`exceeds max-raw-bytes` | P0 | 🔴 |
 | 15 | `val.parts-over-100` | Part 总数边界（100 过 / 101 拒） | L2 §2.2/§4.1；特性 §2 | 100→200；101→`-32602`+`exceeds max-parts` | P0 | 🔴 |
-| 16 | `val.text-data-over-1mb` | 单 data（及 text，存疑子行）>1MB | L2 §2.2/§4.1（**特性档未载**，见 §9 存疑 2/3） | data→`-32602`+`exceeds max-text-data-bytes` | Full | 🔴 |
+| 16 | `val.text-data-over-1mb` | 单 data（及 text，观察子行）>1MB | L2 §2.2/§4.1（**特性档未载，1MB 阈值来源见 §9 存疑 1/2**） | data→`-32602`+`exceeds max-text-data-bytes`；text 子行观察模式不写死期望（§9 存疑 1） | Full | 🔴 |
 | 17 | `val.url-scheme-invalid` | url scheme 非 http/https | L2 §2.2/§4.1 | `-32602` + `must use http or https scheme` | Full | 🔴 |
 | 18 | `val.url-blank` | url 空白串 | L2 §2.2/§4.1 | `-32602` + `must be a non-blank string` | Full | 🔴 |
 | 19 | `val.filename-metadata-hygiene` | filename 255 字符边界 / metadata 16KB 边界 | L2 §2.2/§4.1 | 255/16KB 过；越界→`-32602`+`exceeds size limit` | Full | 🔴 |
 | 20 | `val.body-over-100mb-413` | 请求体 100MB / Content-Length 缺失预检 | L2 §2.2 步骤 1/§4.2（**特性档未载**，见 §9 存疑 2） | HTTP 413、无 JSON-RPC 信封、先于解析 | Full | 🔴 |
-| 21 | `val.empty-parts` | parts 空数组 / 全空白文本拒绝（既有行为） | L2 §2.2 末行 | `-32602` + `must contain at least one part` | Smoke | 🟢 |
+| 21 | `val.empty-parts` | parts 空数组 / 全空白文本拒绝（既有行为回归，本特性不改空 parts 处理逻辑） | 既有实现基线（FEAT-001 语义；L2 §2.2 末行仅转引） | 均 `-32602`；message 锚定**既有行为**：parts=[] → `must be a non-empty array`、空白文本 → `must contain at least one part` | Smoke | 🟢 |
 | 22 | `val.business-type-reject` | 业务类型拒绝 EDP-FILE-003 透出不被吞 | 特性 §2/§3；L2 §7.3 | 客户端错误面出现 `EDP-FILE-003`，非 `-32602` | P0 | 🔴 |
 | 23 | `out.parts-constructed` | 出站 parts 构造（TextPart 首位 + File/Data Part） | L2 §2.4/§5.4；特性 R-RT-3 | 网关桩 wire：parts[0]=TextPart、元数据/类型不丢 | P0 | 🔴 |
 | 24 | `out.format-preserve` | 出站格式保持（url→url、raw→raw、不互转不下载） | L2 §2.4 步骤 4；特性 §5.2 | 网关桩 wire 形态 + 文件桩零 runtime 请求 | P0 | 🔴 |
@@ -284,12 +285,12 @@ A2A 网关桩（记录入站 wire；可注入 5xx/断连；内嵌"Workflow 下�
 - **#13 `val.base64-invalid`**：raw=`"not-base64!!!"` → `-32602` + `not valid base64`。
 - **#14 `val.raw-over-10mb`**：两行——解码后恰 10485760 字节→200 通过（回显 byteSize 断言）；10485761 字节→`-32602` + `exceeds max-raw-bytes`。
 - **#15 `val.parts-over-100`**：两行——100 个微型 raw Part→200；101 个→`-32602` + `exceeds max-parts`。
-- **#16 `val.text-data-over-1mb`**：data 序列化后 1048577 字节→`-32602` + `exceeds max-text-data-bytes`；1048576→200。**text 子行（纯文本 >1MB）裁定前不写死期望**（§9 存疑 3→实为存疑 1），先以观察模式执行并记录。
+- **#16 `val.text-data-over-1mb`**：**data 子行为硬判据**——data 序列化后 1048577 字节→`-32602` + `exceeds max-text-data-bytes`；1048576→200（data Part 为本特性新增类型，无存量兼容问题，按 L2 §4.1 `maxTextDataBytes=1048576` 断言）。**text 子行（纯文本 >1MB）裁定前不写死期望**（§9 存疑 1：1MB 阈值系 L2 新增、特性档 §5.1.6 承诺纯文本保持原有语义，冲突未裁定），以观察模式执行并记录实际 code/message，不作为通过性判据；裁定后按裁定结论落断言。
 - **#17 `val.url-scheme-invalid`**：`ftp://host/f`、`file:///etc/passwd` → `-32602` + `must use http or https scheme`。
 - **#18 `val.url-blank`**：`""` 与 `"   "` → `-32602` + `must be a non-blank string`。
 - **#19 `val.filename-metadata-hygiene`**：filename 255 字符→200；256 字符→`-32602` + `exceeds size limit`；metadata 序列化 16KB→200；>16KB→`-32602` + `exceeds size limit`。
 - **#20 `val.body-over-100mb-413`**：三行——CL 缺失（chunked）→HTTP 413；CL>104857600→413；恰 104857600→正常处理。413 行断言：**响应体无 JSON-RPC 信封**、发生在解析前（配合无效 JSON 体仍 413 证明先于解析）。⚠️ chunked→413 的严格语义受 L2 §7.4 压测结论约束，可能放宽（§9 存疑 4）。
-- **#21 `val.empty-parts`**：parts=[] 与 parts=[空白文本]→`-32602` + `must contain at least one part`（既有行为，Smoke）。
+- **#21 `val.empty-parts`**（既有行为回归，2026-09-17 评审修订）：parts=[] → `-32602` + message 含 **`must be a non-empty array`**；parts=[空白文本] → `-32602` + message 含 `must contain at least one part`——两行期望短语均**锚定落码前既有实现基线**（FEAT-001 语义，SUT 实测两短语不同），而非 L2 §2.2 新表统一短语。**定位约束**：本特性不新增、不修改空 parts 的处理逻辑，本用例仅作既有行为回归看守；若 L2 §2.2 末行短语与既有实现存在差异，以既有行为为准并反馈上游修订（特性档/L2 变更后同步更新本行期望），不由 SIT 断言牵引实现改行为。
 - **#22 `val.business-type-reject`**：白名单宿主为测试自有 `WhitelistEchoAgent`（测试 JVM 内嵌 `agent-service-app:0.1.2` 实例——与 echo-agent 进程内捆绑 runtime 同款，pom test-scope 依赖；白名单仅 `application/pdf`，业务拒绝经 `AgentExecutionException` + `AgentFailureDescriptor("EDP-FILE-003")` 抛出，2026-09-10 落地）；发 `application/vnd.microsoft.portable-executable`（.exe）raw → 客户端可见错误面出现 **`EDP-FILE-003`**（业务码原样透出），**不是** `-32602`、不被 runtime 翻译或吞掉（特性 §3）。**断言面（与 runtime 真实错误透出管道对齐，`A2AAgentExecutor.failAndDrain` → `A2aErrorMetadata.encode`）**：HTTP 200（A2A JSONRPC 统一错误面，2026-09-09 对齐）+ 无 JSON-RPC error envelope + `result.task.status.state=FAILED` + `status.message.parts[0].text` 含 `EDP-FILE-003` + `status.message.metadata["openjiuwen.error"].code=="EDP-FILE-003"`（结构化元数据原样透出，附 `numericCode`/`retryable`）；同请求若先触发协议层违约则到不了业务层——由 #12~#15 的"无 Task 副作用"联合证明分层。
 - **诊断价值（VAL 组）**：任一校验行挂了，说明协议层拦截器缺失/限额常量漂移/校验发生在业务之后——外部错误承诺被破坏。
 
@@ -325,6 +326,7 @@ A2A 网关桩（记录入站 wire；可注入 5xx/断连；内嵌"Workflow 下�
 | R-RT-2 Handler 入参模型（特性 §2） | #5~#11（回显面）、#27 #28（multipart 面） |
 | R-RT-3 出站构造（特性 §2） | #23 #24 #1 #2 #3 |
 | R-RT-4 multipart 兼容接入（特性 §2） | #27 #28 #29 #30 #3 |
+| R-EDPAgent-1 SPI 样例事务交付（EDPA 拆分开发项，样例本身需测试，§3.4 事务跟踪） | #27 #28 #29 #30 #3（MP 组直接以样例 jar `customer-multipart-app:1.0.0` 为 SUT 验证） |
 | 协议层校验 + `-32602`（特性 §2/§3；L2 §2.2 表） | #12~#21 #29 |
 | 业务层类型校验 `EDP-FILE-003`（特性 §2/§3） | #22 |
 | 安全基线（特性 §2/§5.1.5） | #31 #32 #5 #24 |
@@ -389,18 +391,20 @@ class A2APartTransferTest {
 4. 出站 wire 在网关桩侧逐字段可判（T-M21：全部断言落在 §2 观察面清单内）。
 5. 纯文本回归基线 diff 为空。
 6. EDPA 委托附件契约定稿后，补真实 EDPAgent 端到端用例（当前以拓扑 B 桥接 Agent 代替，见 §9 存疑 5），补入后本档条数从 32 递增并更新 §4 计数声明。**2026-09-09 已执行**：L2 §4.5 定稿确认，拓扑 B 出站判据面（#23~#25/#31/#32/#1/#2）已切换真实 EDPAgent 承载（§3.2 整改，条数不变——为宿主替换而非新增场景）。
+7. **SPI 样例事务验收（2026-09-17 评审新增）**：EDPA 拆分的 multipart SPI 样例事务（交付物 `customer-multipart-app`）关闭前，须以本档 MP 组用例（#27~#30、#3）对该样例 jar 全绿作为验收证据；样例版本/坐标变更时重跑 MP 组并在 §10 变更记录登记（事务单编号回填见 §9 存疑 8）。
 
 ## 9. 存疑项与裁定待办（T-M8 / T-M1b / T-M16）
 
 | # | 存疑项 | 影响 | 处置 |
 |---|---|---|---|
-| 1 | **text Part >1MB 与纯文本兼容潜在冲突**：L2 §4.1 对单 `text` Part 同施 1MB 限额，但特性档纯文本兼容行要求存量语义不变——存量 >1MB 纯文本调用可能由"兼容"变"被拒" | #16 的 text 子行判据 | **裁定前不写死期望**，观察模式执行；裁定动作=提冲突单（T-M16），不替上游定契约 |
-| 2 | **HTTP 413 与 1MB 限额为 L2 新增**（PM 对齐 2026-08-24），特性档 §2/§3 未载 | #16/#20 的引用等级 | 本档按 L2（合法契约源）引用并在矩阵标注"特性档未载"；建议特性档回填后消除双源 |
+| 1 | **text Part >1MB 与纯文本兼容潜在冲突**：L2 §4.1 对单 `text` Part 同施 1MB 限额（`maxTextDataBytes=1048576`），但特性档 §5.1.6 承诺"纯文本调用保持原有语义"——存量 >1MB 纯文本调用可能由"兼容"变"被拒"，两契约源字面冲突。**1MB 阈值来源（2026-09-17 评审答复）**：仅出自 L2 §2.2 异常响应表 / §4.1 `A2aPartLimits`，系 **L2 新增契约项（PM 对齐 2026-08-24），特性档 §2/§3/§5.1.6 均未载**（与存疑 2 同源），特性档侧无该阈值的任何出处 | #16 的 text 子行判据 | **裁定前不写死期望**，观察模式执行（data 子行不受影响，按 L2 硬断言——data 为本特性新增类型无存量兼容问题）；裁定动作=提冲突单（T-M16），裁定出口二选一：特性档回填 1MB 限额并同步修订 §5.1.6 措辞（如"≤1MB 纯文本保持原有语义"），或 L2 撤回 text 限额；不替上游定契约。**注**：2026-09-14 复测版用例代码曾把 text 超 1MB 写死为拒绝断言（与本行"观察模式"相悖，系 data/text 子行颠倒），2026-09-17 评审后已回退对齐（见变更记录） |
+| 2 | **HTTP 413 与 1MB 限额为 L2 新增**（PM 对齐 2026-08-24），特性档 §2/§3 未载——即该两项限额的**唯一**契约出处是 L2 | #16/#20 的引用等级 | 本档按 L2（合法契约源）引用并在矩阵标注"特性档未载"；建议特性档回填后消除双源（回填时应同步核 §5.1.6 措辞，联动存疑 1） |
 | 3 | L2 §3.3 引用"FEAT-036 §5.1.7"实为特性档 §5.1.6（引用笔误） | 无判据影响 | 本档一律引特性档 §5.1.6；已反馈设计侧修 L2 |
 | 4 | **chunked（CL 缺失）→413 的严格语义**可能经 L2 §7.4 SE 压测后放宽为有界读取 | #20 的 chunked 子行 | 按现行 L2 写判据；L2 修订后同步改判据并记入 §10 变更记录 |
 | 5 | **EDPA 委托附件契约（attachments/parts）为 L2 自定稿**，评审确认中（L2 §1.3 明示） | 拓扑 B 是否用真实 EDPAgent | **已闭合（2026-09-09）**：L2 §4.5 明示「该参数契约为本 L2 提出并定稿」，rail 侧映射（`extractDelegationParts`）已落码且有单测（DelegateRailAttachmentsTest）——拓扑 B 已切换真实 EDPAgent 承载（§3.2 整改）。**遗留缺口定性为 P0 代码缺陷**（非契约存疑）：`call_versatile` 工具 schema 未声明 `attachments` 参数（`CallVersatileTool.build()`，edp-agent-engine 0.1.1）——LLM 无从携带文件引用，入站 parts 也未以引用形式透给 LLM（模型推理自述"未见合同文件"），实测委托恒 `parts=0`、出站 wire 仅 TextPart(query)；#27/#28/#3 与拓扑 B #23/#24/#31/#32/#1/#2 的 raw/url/data wire 断言按 red-first 看守其修复（详见 FEAT-036-test-report §四.1） |
 | 6 | `-32602 InvalidParams`（特性）vs `Invalid params`（L2）措辞差异 | 错误 message 断言 | 本档只锚定 code 数值与 L2 §7.3 关键短语，不锚定 "Invalid params" 字样，规避双源冲突 |
 | 7 | SUT 构建锚点（T-M19）待落码 PR 回填 commit/tag | 可复现性 | §3.5 已定指纹口径（jar 名 + Card.version）；落码 PR 中回填；另见 §3.4 落码前置动作 |
+| 8 | **SPI 样例事务单编号待回填**（2026-09-17 评审新增）：`edp-agent-multipart` 样例（`customer-multipart-app:1.0.0`）为 EDPA 拆分独立开发事务交付物，样例按事务跟踪且本身需测试，本档 MP 组（#27~#30、#3）即其验收证据（§3.4 事务跟踪 / §8.4 退出标准 7） | MP 组验收结论与事务关闭的挂钩 | 事务单编号待 EDPA 侧提供后回填本行与 §8.4；编号回填前 MP 组用例已直接以样例 jar 为 SUT 执行（不阻塞验收执行） |
 
 ## 10. 变更记录（T-S6）
 
@@ -413,3 +417,5 @@ class A2APartTransferTest {
 | 2026-09-09 | **分类 C 拓扑整改（出站判据面换宿主）**：① 7 个出站判据用例（#23/#24/#25/#31/#32/#1/#2）宿主由 echo-agent（无 LLM、无委托工具，恒零出站）切至 **edp-agent**（engine exec jar，拓扑 B 主被测，§3.4 行 2；依据 §8.4 退出标准 6 + L2 §4.5 attachments 契约定稿）；② buildStack 增挂 edp-agent（remote-agents **三键整体注入**——Spring 列表绑定以含 `remote-agents[0].*` 键的属性源为整体来源，只注入 streaming 单键会使 yml 的 name/url 丢失（"name must not be null" 启动失败实测）；通用化场景、thinking.type=enabled），OPENJIUWEN yml 注入 `EDP_AGENT_MODEL_*`（与 mp SUT 同款）；③ 探针意图文本改为落在场景 `scope.allowed`（文件审查/合同审查/订单查询/贷后资料审查）内，防规划层拒答不委托；④ fixtures 新增 `postSlow`（/a2a 阻塞单轮 240s）；⑤ GatewayStub/FileServerStub 补 `reset()`（用例间 wire 快照/计数/故障注入复位——拓扑 B 真实流量下跨用例累积污染 get(0)/计数断言，实测 #25 计入历史 12 请求）；⑥ #31 按设计 §6.6 补反假绿断言（base64 载荷须出现在出站 wire，排除"文件没送到恒绿"）。**真机验证（run 2，16:04–16:16）**：edp-agent 启动成功、7 用例全部触达委托链（12 次委托）；#25 实测 1 首投+2 退避重试（200ms/400ms）恰 3 请求、第 3 次恢复（reset 后应 PASS）；#23/#24/#31/#32 wire 缺 raw/url、#1/#2 任务 INPUT_REQUIRED（LLM ask_user"未检测到随附文件"）——均如实归因 P0 附件参数缺陷（CallVersatileTool），拓扑失真消除。终态复跑被 Ark 账户 5 小时配额耗尽阻塞（429，重置 19:11），quota 恢复后全量重跑确认。 |
 | 2026-09-10 | **矩阵 #22 闭环（测试自有业务白名单落地）**：① 新增测试 fixture `WhitelistEchoAgent`（`src/test/java/.../edpa/`）：测试 JVM 内嵌 `agent-service-app:0.1.2` 实例（pom 既有 test-scope 依赖，与 echo-agent 进程内捆绑 runtime 同款；`SpringApplicationBuilder` 随机端口，配置镜像 echo demo yml），注册测试自有白名单 `AgentHandler`（白名单仅 `application/pdf`，违规 raw/url part 抛 `AgentExecutionException` + `AgentFailureDescriptor("EDP-FILE-003")`）——业务白名单按特性档 §2/§3 归业务 Agent，测试 fixture 即业务 Agent，未改动 agent-solution/agent-runtime-java 产品源码；② #22 断言面按 runtime 真实错误透出管道（`A2AAgentExecutor.executeAdmitted` catch → `failAndDrain` → `AgentEmitter.fail` → Task FAILED；字节码核实）重写：HTTP 200 + 无 JSON-RPC error envelope + `result.task.status.state=FAILED` + `status.message.parts[0].text` 含 `EDP-FILE-003` + `metadata["openjiuwen.error"].code=="EDP-FILE-003"`（`A2aErrorMetadata.encode` 结构化透出，含 `numericCode=40003`/`retryable=false`），移除 red-first 标记（原 4xx 期望系对齐前旧契约）；③ fixtures 新增 `resultTask()` 解析助手。**真机验证（09:29/09:33 两轮）**：#22 PASS，实测 wire：`{"result":{"task":{"status":{"state":"TASK_STATE_FAILED","message":{"parts":[{"text":"EDP-FILE-003: 文件类型不在业务白名单 [application/pdf] 内: mediaType=application/vnd.microsoft.portable-executable, filename=evil.exe"}],"metadata":{"openjiuwen.error":{"schemaVersion":"1","code":"EDP-FILE-003","numericCode":40003,"retryable":false}}}}}}}`。 |
 | 2026-09-14 | **最新代码全量复测 41/43 + 测试侧整改复测 43/43（第四轮，报告 `test-reports/FEAT-036-A2APartTransferTest-report-20260914.md`）**：SUT 按 agent-runtime-java `715dc12`（run_context 附件透传）+ agent-solution `3af437fb`（attachmentRef manifest / multipart 逐字段分流）重打包——上轮 BUG-001（run_context 断裂→raw 出站丢失，6 用例）与 BUG-002（multipart 字段未分流，1 用例）确认修复，#23/#24/#31/#27/#28/#2 转绿。剩余 2 失败均定性**测试用例问题**并整改：① #30 探针文案"容器边界内探针"越界 scope.allowed（规划层合法 ask_user 拒答 + LLM 单轮 90–120s 使 240s 预算耗尽）→ 改"文件审查"意图文案 + `postUrl`/`upload` 增超时重载（该用例 360s）；② #3 出站 TextPart 为 LLM 规划生成的委托指令（L2 §2.4/§4.5），逐字断言不可复现 → 弱化为语义级（业务域关键词"贷后资料"），对齐 §6 #3"语义一致"判据。复测 2/2 通过（#30 86.6s——12MB+1KB 容器拒绝子断言同步补齐覆盖；#3 48.8s），**矩阵 32/32 全绿，FEAT-036 验收通过**。 |
+| 2026-09-17 | **评审修订（3 条意见落实）**：① **#16 的 1MB 阈值来源澄清**：`1048576` 仅出自 L2 §2.2/§4.1 `A2aPartLimits`（L2 新增，PM 对齐 2026-08-24），特性档 §2/§3 未载；与特性档 §5.1.6"纯文本保持原有语义"的冲突（存疑 1）裁定前，text 超 1MB 子行不写死期望——发现 2026-09-14 版用例代码将 data/text 子行颠倒（text 超限写死拒绝断言、data 未断言），已回退对齐：data 边界（1048576 过 / 1048577 拒）落硬断言，text 超限改观察模式记录不判 PASS/FAIL（§6.3 #16）；② **#21 空 parts 期望锚定既有行为**：修正矩阵与 §6.3 的"均 `must contain at least one part`"表述——既有实现实测 parts=[] 行 message 为 `must be a non-empty array`（与空白文本行短语不同），两行期望均以落码前既有实现为基线（FEAT-001 语义）；明确本特性不新增/不修改空 parts 处理逻辑，用例定位为纯既有行为回归看守，L2 短语与既有行为差异反馈上游修订、不由 SIT 断言牵引；③ **SPI 样例纳入验收跟踪**：`edp-agent-multipart` 样例（`customer-multipart-app:1.0.0`）为 EDPA 拆分独立开发事务交付物（不在 runtime 中，按事务跟踪），样例本身需测试——本档 MP 组（#27~#30、#3）直接以样例 jar 为 SUT 承载其黑盒验证，新增 §1.2 范围行、§3.4 事务跟踪说明、§7.1 R-EDPAgent-1 覆盖行、§8.4 退出标准 7 与 §9 存疑 8（事务单编号待回填）。 |
+| 2026-09-18 | **用例文件整改评估与落实**（承接 2026-09-17 评审修订）：逐条核对 `A2APartTransferTest` / `A2APartFixtures`——① #16 上一轮已对齐（data 硬断言 / text 观察模式），`mvn test-compile` 通过，**待真机复跑刷新证据**（现 32/32 报告基于旧 text 写死断言）；② #21 代码本就与既有行为一致（两行短语不同），仅补注释锚定，无行为整改；③ MP 组 #27~#30/#3 断言面无需变更（本就以样例 jar 为 SUT），补两处轻量缺口：(a) 类 javadoc 声明 mp SUT 即 SPI 样例事务交付物、MP 组全绿即其验收证据（§3.4/§8.4-7）；(b) **§3.5 版本指纹（T-M19）落码**：`buildStack` 启动即输出三 SUT Maven 坐标（group:artifact:version）指纹日志，作为退出标准 7"样例版本变更重跑 MP 组"的证据机制（Agent Card version 探针为增强项未落码，§3.5 口径已同步）。另核对确认：无 `@Disabled`/known-gap 残留（与 2026-09-14 矩阵 32/32 全绿状态一致），MP/VAL 组断言与修订后文档判据一致。 |

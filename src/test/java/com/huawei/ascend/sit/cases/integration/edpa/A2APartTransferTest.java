@@ -63,7 +63,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       ——出站判据面宿主由 echo-agent（无 LLM、无委托能力，出站恒为零）换为
  *       EDPAgent 主 SUT（engine exec jar：A2A 入站 + 委托 rail 宿主，L2 §4.5 attachments
  *       契约已定稿，测试设计 §8.4 退出标准 6）；</li>
- *   <li>拓扑 B-multipart（edp-agent-multipart）：#3 multipart 端到端、#27~#30 兼容接入。</li>
+ *   <li>拓扑 B-multipart（edp-agent-multipart）：#3 multipart 端到端、#27~#30 兼容接入
+ *       ——该 SUT 即 EDPA 拆分的 multipart SPI 样例事务交付物（customer-multipart-app，
+ *       不在 agent-runtime 产品仓内、按事务跟踪，测试设计 §3.4 事务跟踪 / §9 存疑 8）：
+ *       MP 组用例全绿即样例事务的验收证据（测试设计 §8.4 退出标准 7），样例版本/坐标
+ *       变更时须重跑 MP 组并在 §10 变更记录登记（启动时输出 SUT 版本指纹，§3.5 T-M19）。</li>
  * </ul>
  *
  * <p><b>拓扑接线（合并栈）</b>：echo-agent（拓扑 A 主 SUT）、edp-agent（拓扑 B 出站宿主）
@@ -98,6 +102,15 @@ class A2APartTransferTest extends BaseManagedStackTest {
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
+        // SUT 版本指纹（测试设计 §3.5 T-M19，2026-09-18 落地）：启动即输出各 SUT Maven
+        // 坐标，防止跑旧产物全绿；edp-agent-multipart 为 EDPA 拆分 SPI 样例事务交付物
+        // （§3.4 事务跟踪 / §8.4 退出标准 7）——样例版本/坐标变更时须重跑 MP 组并登记。
+        for (String agent : new String[]{ECHO, EDPA, SUT}) {
+            System.out.printf("[FEAT-036 SUT 指纹] %s -> %s:%s:%s%n", agent,
+                    config.getString("sut.agents." + agent + ".group", "?"),
+                    config.getString("sut.agents." + agent + ".artifact", "?"),
+                    config.getString("sut.agents." + agent + ".version", "?"));
+        }
         try {
             gateway = new GatewayStub();
             fileServer = new FileServerStub(FILE_TOKEN);
@@ -117,6 +130,14 @@ class A2APartTransferTest extends BaseManagedStackTest {
                 // （指向 GatewayStub 动态地址）；模型凭据经环境 yml（OPENJIUWEN）system-properties
                 // 注入，与 edp-agent-multipart 同款（FEAT-028 先例：EDP_AGENT_MODEL_*）。
                 .agent(EDPA, a -> a
+                        // Redis service-binding：exec jar application.yml 中
+                        // redis.host=${EDPA_REDIS_HOST:localhost} / redis.port=${EDPA_REDIS_PORT:6379}，
+                        // 默认连 localhost:6379，无 Redis 运行时 deep_agent_task 在 LLM 规划前即
+                        // RedisStore.connect 失败 → task_failed（无 call_versatile 出站）。
+                        // 绑定框架托管 Redis 容器的 host/port 到 EDPA_REDIS_HOST/PORT Spring 属性
+                        // （--EDPA_REDIS_HOST=<host> --EDPA_REDIS_PORT=<mappedPort>，覆盖默认值）。
+                        .serviceBinding("redis", "EDPA_REDIS_HOST", "{{host}}")
+                        .serviceBinding("redis", "EDPA_REDIS_PORT", "{{port}}")
                         // 通用化最小场景（同 mp SUT，fixture 见 feat036-scenario/README.md）：
                         // 内置 planrule scope 为空时 LLM 拒答不委托，出站用例意图须落在
                         // scope.allowed（合同审查/贷后资料审查/文件审查/订单查询…）内。
@@ -135,6 +156,9 @@ class A2APartTransferTest extends BaseManagedStackTest {
                         // InvalidParameter），exec jar yml 写死 disabled，须覆盖（12-08 实测）。
                         .property("deep-agent.model.thinking.type", "enabled"))
                 .agent(SUT, a -> a
+                        // Redis service-binding（同 edp-agent，demo jar 同款 redis.* 占位符）。
+                        .serviceBinding("redis", "EDPA_REDIS_HOST", "{{host}}")
+                        .serviceBinding("redis", "EDPA_REDIS_PORT", "{{port}}")
                         // demo jar（customer-multipart-app）未注册任何 remote-agents（engine exec jar
                         // 的 application.yml 才有 versatile-agent → ${EDP_AGENT_VERSATILE_A2A_URL}），
                         // 不注入则委托报 "Unknown remote agent: versatile-agent"（12-08 实测）。
@@ -289,7 +313,9 @@ class A2APartTransferTest extends BaseManagedStackTest {
             String expectedPhrase) throws Exception {
         // G：拓扑 A 就绪。W：提交空 parts / 全空白文本请求。
         HttpResponse<String> response = sendSync(parts);
-        // T：-32602 且 message 含关键短语（L2 §2.2 末行：既有拒绝空白文本行为保留）；
+        // T：-32602 且 message 含关键短语——期望短语锚定落码前既有实现基线（FEAT-001
+        //     语义，SUT 实测），非 L2 §2.2 新表统一短语；本特性不新增/不修改空 parts
+        //     处理逻辑，本用例仅作既有行为回归看守（2026-09-17 评审修订，测试设计 §6.3 #21）；
         //     不得创建业务可见 Task（无 result.id）。
         // A2A JSONRPC transport 既有行为：HTTP 200 + JSON-RPC error envelope（-32602 在 body 内）。
         assertThat(response.statusCode()).as(caseName + "：既有行为应为 HTTP 200 + JSON-RPC 错误体").isEqualTo(200);
@@ -301,7 +327,9 @@ class A2APartTransferTest extends BaseManagedStackTest {
 
     static Stream<org.junit.jupiter.params.provider.Arguments> emptyPartsCases() {
         return Stream.of(
-                // 空 parts 与全空白文本的既有拒绝短语不同（SUT 实测，均为 -32602）。
+                // 空 parts 与全空白文本的既有拒绝短语不同（SUT 实测，均为 -32602）——
+                // 两行期望均以既有实现为准，不以 L2 §2.2 末行统一短语改写（本特性不
+                // 更改空 parts 处理逻辑，2026-09-17 评审修订）。
                 org.junit.jupiter.params.provider.Arguments.of("parts 空数组", List.of(),
                         "must be a non-empty array"),
                 org.junit.jupiter.params.provider.Arguments.of("全空白文本", List.of(textPart("   ")),
@@ -577,23 +605,43 @@ class A2APartTransferTest extends BaseManagedStackTest {
     @Tag("blackbox")
     @Tag("red-first")
     @Stories(@Story("FEAT-036.val.text-data-limit: text/data 单值 1MB 上限"))
-    @DisplayName("Feat-036 text 1MB 边界：恰等于放行、超限拒绝（矩阵 #16）")
+    @DisplayName("Feat-036 data 1MB 边界硬判据，text 超 1MB 观察模式（矩阵 #16）")
     void feat036TextDataBoundary() throws Exception {
-        // 边界二值断言：text 恰 1MB（asciiFill 序列化后恰 1MB 字节）放行；
-        // text 1MB+1 拒绝且 message 含「exceeds max-text-data-bytes」（L2 §2.2）。
-        HttpResponse<String> exactResponse = sendSync(List.of(textPart(asciiFill(MAX_TEXT_DATA_BYTES))));
-        assertThat(exactResponse.statusCode())
-                .as("text 恰 1MB 应放行").isEqualTo(200);
-        assertThat(errorCode(exactResponse.body())).as("边界内不应有 error").isNull();
+        // 2026-09-17 评审修订（测试设计 §6.3 #16 / §9 存疑 1）：data 与 text 子行分层——
+        // ① data 为本特性新增 Part 类型，无存量兼容问题，按 L2 §4.1 maxTextDataBytes
+        //    落硬判据；② text Part 早于本特性存在（FEAT-001 纯文本），L2 的 1MB 限额
+        //    （L2 新增、特性档未载）与特性档 §5.1.6「纯文本保持原有语义」冲突未裁定，
+        //    text 超限子行按观察模式执行（只记录不判 PASS/FAIL），裁定后落断言。
 
-        HttpResponse<String> overResponse = sendSync(List.of(textPart(asciiFill(MAX_TEXT_DATA_BYTES + 1))));
+        // —— data 子行（硬判据）——
+        // 边界内侧：data 值为 MAX-2 字符纯 ASCII 字符串——JSON 序列化（含首尾引号）
+        // 恰为 MAX 字节；无论 runtime 按「序列化字节数」还是「值长度」计量均 ≤ 1MB。
+        HttpResponse<String> dataExact = sendSync(List.of(dataPart(asciiFill(MAX_TEXT_DATA_BYTES - 2))));
+        assertThat(dataExact.statusCode())
+                .as("data 序列化 ≤1MB 应放行").isEqualTo(200);
+        assertThat(errorCode(dataExact.body())).as("data 边界内不应有 error").isNull();
+
+        // 边界外侧：MAX+1 字符——值长度 1048577 与序列化字节数（1048579）均 >1MB，
+        // 两种计量口径下均应拒绝（不依赖对计量口径的单点假设）。
+        HttpResponse<String> dataOver = sendSync(List.of(dataPart(asciiFill(MAX_TEXT_DATA_BYTES + 1))));
         // HTTP status 对齐 2026-09-09：200 + JSON-RPC error envelope（同既有行为）。
-        assertThat(overResponse.statusCode()).as("text 超限拒绝面").isEqualTo(200);
-        assertThat(errorCode(overResponse.body())).as("code").isEqualTo(CODE_INVALID_PARAMS);
-        assertThat(errorMessage(overResponse.body()))
-                .as("message 关键短语").contains(A2APartFixtures.MSG_TEXT_DATA_LIMIT);
-        // 存疑 1（测试设计 §9）：text>1MB 与「纯文本兼容」的冲突点为观察模式——
-        // data 超 1MB 的对称行为不落 green 断言，待裁决后补（T-M16 不越权定契约）。
+        assertThat(dataOver.statusCode()).as("data 超限拒绝面").isEqualTo(200);
+        assertThat(errorCode(dataOver.body())).as("data 超限 code").isEqualTo(CODE_INVALID_PARAMS);
+        assertThat(errorMessage(dataOver.body()))
+                .as("data 超限 message 关键短语").contains(A2APartFixtures.MSG_TEXT_DATA_LIMIT);
+
+        // —— text 子行（观察模式，§9 存疑 1 裁定前不写死期望）——
+        // 恰 1MB 放行无争议（两种契约源下均 ≤ 限额），保持硬断言；
+        // 超 1MB 的行为在「L2 限额」与「特性档 §5.1.6 纯文本兼容」间冲突，
+        // 只记录实测 code/message 供裁定（T-M16），不作为通过性判据。
+        HttpResponse<String> textExact = sendSync(List.of(textPart(asciiFill(MAX_TEXT_DATA_BYTES))));
+        assertThat(textExact.statusCode())
+                .as("text 恰 1MB 应放行").isEqualTo(200);
+        assertThat(errorCode(textExact.body())).as("text 边界内不应有 error").isNull();
+
+        HttpResponse<String> textOver = sendSync(List.of(textPart(asciiFill(MAX_TEXT_DATA_BYTES + 1))));
+        System.out.printf("[FEAT-036 #16 观察模式] text 超 1MB 实测：HTTP %d, code=%s, message=%s%n",
+                textOver.statusCode(), errorCode(textOver.body()), errorMessage(textOver.body()));
     }
 
     @ParameterizedTest(name = "[{index}] {0}")

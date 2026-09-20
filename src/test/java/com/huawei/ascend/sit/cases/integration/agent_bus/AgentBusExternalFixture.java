@@ -172,6 +172,28 @@ public final class AgentBusExternalFixture {
         return url;
     }
 
+    /** Declared relay instance count of the externally deployed Event Bus (default 1 = single instance). */
+    static int relayInstanceCount() {
+        String raw = value("agent.bus.relay.instances", "AGENT_BUS_RELAY_INSTANCES", "1");
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
+    }
+
+    /** Optional externally operated endpoint that terminates one relay instance mid-flight. */
+    static String relayFaultTriggerUrl() {
+        return value("agent.bus.relay.fault-url", "AGENT_BUS_RELAY_FAULT_URL", null);
+    }
+
+    void triggerRelayInstanceFailure(String url) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.noBody()).build());
+        assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
+    }
+
     static String create(String agentId, String text, boolean streaming) throws Exception {
         ObjectNode root = JSON.createObjectNode();
         root.put("jsonrpc", "2.0");

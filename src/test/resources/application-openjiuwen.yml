@@ -88,6 +88,10 @@ sut:
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
+    hosted-react:
+      group: com.openjiuwen.example
+      artifact: multi-react-travel-hosted-demo
+      version: 0.1.1
     mainplan-redis:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
@@ -156,8 +160,20 @@ sut:
     deep-research:
       group: com.openjiuwen.example
       artifact: agent-deep-research
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.demo.deep-research.api-key
+    hosted-deep:
+      group: com.openjiuwen.example
+      artifact: multi-deep-research-hosted-demo
+      version: 0.1.1
+    # FEAT-042 production EDPA engine. Its executable Spring Boot artifact is
+    # published with the `exec` classifier; the feature test supplies a
+    # classifier-aware black-box launcher without changing framework semantics.
+    edpa-multi:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.1
+      profile: multi
     deep-research-auto:
       group: com.openjiuwen.example
       artifact: agent-deep-research
@@ -728,11 +744,13 @@ sut:
   # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works
   # even where code-scanning blanked the agent's `${LLM_API_KEY}` placeholder. The secret value lives
   # ONLY here; each agent entry below carries just the property-key pointer, not the value.
+  # Global non-secret JVM defaults. Credentials remain blank in versioned configuration;
+  # tests that require a live model must inject them at process launch.
   java:
     system-properties:
       LLM_API_BASE: "https://ws-z7f9qzn05hmkiq2l.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
       LLM_MODEL: "qwen3.8-max"
-      LLM_API_KEY: "sk-ws-H.EYDDYHI.HYqI.MEUCIEKAH1AhoakSi8o1BKKvnj1xnRr9DKAbV6Qs5lWu1fxXAiEAv8YfUh2zA6d0LMvQtR7fDpa4IvBP95etVohKVupZ9R8"
+      LLM_API_KEY: ""
       LLM_SSL_VERIFY: "false"
 #      # —— HTTP proxy + no-proxy (standard JVM proxy properties) ——
 #      http.proxyHost:

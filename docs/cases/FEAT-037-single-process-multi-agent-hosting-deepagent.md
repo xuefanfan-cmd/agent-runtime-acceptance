@@ -5,14 +5,14 @@ scope: 915-direct
 deployable_units: [multi-deep-research-hosted-demo, agent-deep-research]
 sut: multi-deep-research-hosted-demo 单进程托管两个真实 DeepAgent 实例
 features: [FEAT-037]
-updated: 2026-09-15
+updated: 2026-09-20
 ---
 
 # multi-deep-research-hosted-demo 验收：单进程多智能体实例托管
 
 ## 1. 测试目标
 
-以 `multi-deep-research-hosted-demo` 的一个 JVM 进程和其中两个真实 DeepAgent 为黑盒 SUT，验证 FEAT-037 的注册、发现、路由、默认实例、错误、协议兼容、Runtime Task/会话隔离、Core 共享会话清理边界、生命周期、共享额度、活动任务查询和单实例兼容。两个实例的注册 ID 固定为 `agent-a`、`agent-b`，业务回答由确定性 OpenAI 兼容端点回显实例身份与唯一 canary；测试只断言公开 HTTP/A2A/SSE、Card、Task、活动任务快照和进程日志。
+以 `multi-deep-research-hosted-demo` 的一个 JVM 进程和其中两个真实 DeepAgent 为黑盒 SUT，验证 FEAT-037 的注册、发现、路由、默认实例、错误、协议兼容、Runtime Task/会话隔离、Core 共享会话清理边界、生命周期、共享额度、活动任务查询、实例级远端 Agent 目录和单实例兼容。两个实例的注册 ID 固定为 `agent-a`、`agent-b`，业务回答由确定性 OpenAI 兼容端点回显实例身份与唯一 canary；远端工具及 Intent 场景由确定性模型端点驱动，测试只断言公开 HTTP/A2A/SSE、Card、Task、活动任务快照、远端请求审计和进程日志。
 
 本设计的每个矩阵行对应一个唯一 JUnit 方法、Allure Story、JUnit story tag 和 DisplayName，可直接据此生成或复核自动化代码。
 
@@ -25,6 +25,7 @@ updated: 2026-09-15
 - SendMessage、SendStreamingMessage、GetTask、SubscribeToTask 的实例作用域、错误和防伪造。
 - 内存与 Redis 下同步、流式、异步 Task 的实例隔离、重启恢复和清理边界。
 - 原响应格式兼容、生命周期恰好一次、进程额度共享、进程/实例活动任务查询、影子 Task 归属、目标局部 TaskNotFound 和原单 Handler 兼容。
+- 全局远端目录继承、局部追加/同名整条覆盖、发现失败隔离与重试恢复、全局发现传播、Intent 候选/委派、TLS Client 隔离、局部配置校验和自定义 Caller 兼容。
 
 非范围：
 
@@ -32,6 +33,7 @@ updated: 2026-09-15
 - tenant 路由、运行期动态增删/启停、管理面鉴权、agent-bus/RDC/gateway、客户端 SDK 寻址。
 - 实例独立并发额度和活动任务条目新增 `agentId`/`agent_id` 字段；实例身份由查询参数和筛选结果证明。
 - 工作空间、凭据、模型资源继承、Core 完整同名会话/reset 隔离、内部 checkpoint/key、线程、缓存或私有注册表。
+- 运行期目录热更新、删除全局继承项、实例级 Intent 匹配策略、Card 发现 TLS 和循环委派不在范围内。
 
 ## 3. 事实来源
 
@@ -85,13 +87,21 @@ T28：同一驱动 -> agent-deep-research（原单 Handler JAR）
 | T26 | 共享会话清理边界 | Given A/B 以同一 contextId 写入各自历史 | When REST reset 指定 A，再使用同一 contextId 调用 B | Then reset 成功，后续请求仍由 B 执行且不转投 A；B 的旧 marker 是否保留只记录为 Core 会话级 release 证据，不作为通过条件 | REST reset、确定性 LLM |
 | T27 | 共享进程额度 | Given 进程最大并发任务为 1 且 LLM 延时 750ms | When A/B 并发发起流式请求 | Then 状态仅为 200/503 且两个结果包含一个 200 和一个 503，PID 仍有效 | 慢响应 LLM、并发 HTTP |
 | T28 | 单 Handler 兼容 | Given 原 `agent-deep-research` 不声明 hosted 集合 | When 获取根 Card、检查实例目录、同步和流式请求 | Then Card/两种调用成功且 taskId 不同；实例目录 404 | 原单实例 JAR、确定性 LLM |
-| T29 | 影子 Task 归属 | Given 正式远端 A2A fixture/profile 可启动 | When A/B 以相同 parentTaskId 委托并恢复 | Then 影子 Task 不覆盖且回到各自父 Task；依赖未交付时明确 SKIPPED | 受控远端 A2A；dependency-gated |
+| T29 | 影子 Task 归属 | Given 可启动的正式远端 A2A profile | When A/B 以相同 parentTaskId 委托并恢复 | Then 影子 Task 不覆盖且回到各自父 Task | 受控远端 A2A |
 | T30 | 目标局部 TaskNotFound | Given Task 只属于 A | When B GetTask、与随机不存在 Task 比较错误，并用原 taskId 从 B 续跑 | Then 两类错误使用相同既有 TaskNotFound code/message/data/details；B 不创建或转投 Task，A 的原 Task 仍存在 | JSON-RPC Task/错误探针 |
 | T31 | 活跃任务进程汇总 | Given A/B 各有一个唯一 contextId 的流式任务，模型 Fixture 已确认两个请求到达并保持未完成 | When 无参数 GET `/v1/current_active_tasks` | Then HTTP 200；`maxConcurrentTasks=4`、`currentActiveTasks=2`；列表恰含两个 contextId，条目均有 taskId/status/startedAt 且无 agentId/agent_id | `OpenAiEchoFixture` 双到达门闩、HTTP JSON 探针 |
 | T32 | 活跃任务按实例筛选 | Given A/B 各有一个已被门闩保持的活动任务 | When 分别 GET `?agentId=agent-a` 与 `?agentId=agent-b` | Then 两个响应均 200、共享上限均为 4、活动数均为 1；列表只含目标实例 contextId 且条目不新增实例字段 | `OpenAiEchoFixture` 双到达门闩、HTTP JSON 探针 |
 | T33 | 已注册空闲实例负载 | Given A 的任务已到达模型并保持，B 已注册但无任务 | When GET `?agentId=agent-b` | Then HTTP 200、`maxConcurrentTasks=4`、`currentActiveTasks=0`、`tasks=[]` | `OpenAiEchoFixture` 单到达门闩、HTTP JSON 探针 |
 | T34 | 空白实例负载参数 | Given hosted-deep ready | When 分别 GET `?agentId=` 和 URL 编码的纯空白值 | Then 两次均 HTTP 400，不返回进程或默认实例快照 | HTTP 状态探针 |
 | T35 | 未知实例负载查询 | Given 目录只有 agent-a、agent-b | When GET `?agentId=missing-agent` | Then HTTP 404，响应不包含 A/B 业务身份且不回退进程/默认实例 | HTTP 状态与响应体探针 |
+| T36 | 远端目录继承、追加和覆盖闭环 | Given 全局目录含 shared/global-only，A 局部含同名 shared 与 local-only，B 无局部配置 | When 由确定性模型让 A/B 分别调用可见远端工具 | Then A 的 shared 命中局部完整条目且使用局部默认值，A 可调用 local-only/global-only；B 的 shared/global-only 命中全局端点，所有 Card 与 A2A 请求计数符合目标归属 | `ToolCallingOpenAiFixture`、`RemoteA2aCatalogFixture` |
+| T37 | 局部发现失败不回退且独立恢复 | Given 全局 shared 可达、A 同名局部 shared 初始不可达、B 继承全局 | When 启动后调用 B，确认 A 无同名工具调用，再恢复 A 端点并有界等待重试后调用 A | Then B 始终调用全局目标；A 恢复前不请求全局同名 A2A，恢复后只请求局部目标；两者重试与结果互不影响 | 可启停 `RemoteA2aCatalogFixture`、逐路径计数 |
+| T38 | 全局后续发现传播不覆盖局部名称 | Given A 局部覆盖 shared 且继承 global-late，B 仅继承全局；全局 Card 初始不可达 | When 恢复全局端点并有界等待，再让 A/B 调用 global-late 和 shared | Then global-late 对 A/B 可用，B 的 shared 使用全局目标，A 的 shared 仍使用局部目标，调用体和计数无跨实例覆盖 | 可恢复远端 Card/A2A、请求审计 |
+| T39 | Intent 候选、委派和恢复使用实例有效目录 | Given Intent 已启用，A/B 同名局部目标指向不同端点且 matcher 策略相同 | When 分别提交唯一语义触发 Intent 委派，再令 A 目标短暂故障并恢复后重试 | Then A/B 的候选、委派校验、实际请求、返回 canary 和恢复均只属于本实例目录，B 不受 A 故障影响 | 确定性 reranker/LLM、可恢复远端 A2A |
+| T40 | 同名同 URL 的 TLS Client 缓存隔离 | Given A/B 的同名局部目标经同一 HTTP Card 地址指向同一 HTTPS A2A，A 配置正确 truststore、B 无信任配置 | When A 成功调用后再从 B 调用 | Then B 失败且不产生第二次 HTTPS 业务请求，证明未复用 A 的已信任 Client；Card 发现仍走 HTTP | HTTP Card/HTTPS A2A、临时 PKCS12 |
+| T41 | 非法局部远端配置启动失败 | Given 依次配置局部重复 name、空白 name、空白 url | When 每个变体独立启动 hosted-deep | Then 均在 ready 前失败且不发布任一实例目录，不回退全局配置 | 参数化临时 `SutStack`、HTTP/进程探针 |
+| T42 | 不支持目录绑定的 Caller 拒绝局部配置 | Given 启用可真实转发但未实现 `bindCatalog` 的兼容 Caller，并给 A 配置局部目标 | When 启动 hosted-deep | Then 在 ready 前失败，不静默忽略局部目录、不发布部分实例 | demo 兼容 Caller 开关、负向 `SutStack` |
+| T43 | 同一旧式 Caller 保持全局配置兼容 | Given 启用与 T42 相同 Caller，仅配置全局远端目标 | When 启动并让 A/B 调用全局工具 | Then 进程 ready，A/B 均从全局目录成功完成真实 A2A 调用，未要求 `bindCatalog` | demo 兼容 Caller 开关、工具调用 LLM、远端 A2A |
 
 ## 6. Test Agent 与 Fixture
 
@@ -100,6 +110,8 @@ T28：同一驱动 -> agent-deep-research（原单 Handler JAR）
 | `hosted-deep` | 真实 SUT | 正式 fat JAR `com.openjiuwen.example:multi-deep-research-hosted-demo:0.1.1`；一个进程注册 A/B 两个真实 DeepAgent。 |
 | `deep-research` | 真实 SUT | 正式 `agent-deep-research:0.1.1` 单 Handler 制品，只用于 T28 回归。 |
 | `OpenAiEchoFixture` | Fixture | 本地随机端口的 OpenAI 兼容 HTTP 服务，回显 system identity 和用户文本，并提供可观测请求到达、30 秒 watchdog 和显式释放门闩；不实现被测能力。 |
+| `ToolCallingOpenAiFixture` | Fixture | 暴露 SUT 提交的工具定义，按测试指令返回一次标准 `tool_calls`，接收工具结果后返回最终 canary；同时提供确定性 reranker 响应以驱动真实 Intent 路径。 |
+| `RemoteA2aCatalogFixture` | Fixture | 随机或固定端口提供带 skills 的 Agent Card、同步/流式 JSON-RPC、路由启停、调用计数和请求体捕获；TLS 变体以临时 PKCS12 提供 HTTPS A2A。 |
 | Redis | 真实依赖 | 由现有 `redis` service binding 提供；仅从公开重启后行为断言，不读取内部 key。 |
 | HTTP/A2A/SSE/活动任务/日志探针 | Fixture | 生成唯一 payload，解析公开响应与负载快照，核对 PID/日志；共享驱动不改变每个场景的一对一追溯。 |
 
@@ -115,20 +127,23 @@ T28：同一驱动 -> agent-deep-research（原单 Handler JAR）
 - 活动任务无参汇总必须同时看到 A/B；按注册 ID 查询只看到目标实例，已注册空闲实例为 200 空列表，空白和未知 ID 分别为 400/404，均不得回退。
 - 实例筛选不拆分进程并发额度；所有快照返回相同共享上限，任务条目保持 taskId/conversationId/status/startedAt 合同且不新增实例字段。
 - LLM 输出只检查身份、唯一 canary 和历史隔离，不逐字匹配自然语言。
+- 局部同名条目必须完整覆盖全局条目；发现失败不回退，全局后续更新只传播未覆盖名称，工具、Intent 候选/委派和实际 A2A 请求必须使用同一有效目录。
+- 同名同 URL 的目录不得跨 TLS 配置复用 Client；非法局部配置和不支持绑定的 Caller 在 ready 前失败，同一 Caller 的全局配置仍可实际调用。
 
 ## 8. 执行策略
 
-- 测试类为 `DeepAgentMultiInstanceHostingBlackboxTest`；Txx 映射方法 `txx<ScenarioName>`、Story `FEAT-037.Txx: <场景>`、tag `story-feat-037-txx`、DisplayName `FEAT-037 Txx DeepAgent <场景>`，矩阵 33 行均已实现为唯一方法。
-- 自动化状态：除 dependency-gated/`SKIPPED` 的 T29 外，矩阵场景均为 `verified`；T15、T17、T26、T30 已于 2026-09-15 按新合同精确复测通过。
+- T01-T35 保持在 `DeepAgentMultiInstanceHostingBlackboxTest` 且既有 33 个方法已通过，本轮不修改、不选择执行。T36-T43 落在新类 `DeepAgentHostedRemoteCatalogBlackboxTest`，方法名 `txx<ScenarioName>`、Story `FEAT-037.Txx: <场景>`、tag `story-feat-037-txx`、DisplayName `FEAT-037 Txx DeepAgent <场景>`，共 8 个新增唯一方法。
+- 自动化状态：T01-T35 的 33 个方法均为 `verified`；T36-T43 的 8 个方法均为 `verified`。
+- 2026-09-20 WSL 增量执行：首轮 T41 的 3 个参数化变体与 T42 为 4 PASS；修正测试侧 Agent Card SDK 合同及 ApplicationReady 后发现竞态后，精确重跑受影响的 T36-T40、T43，为 6 PASS、0 FAIL、0 ERROR、0 SKIPPED。两阶段合计 8 个方法、10 次 JUnit invocation 全部通过；首轮其余失败均分类为 `test-code error`，未形成产品缺陷。
 - 2026-09-15 WSL 精确复测：T15/T17/T26/T30 为 4 PASS、0 FAIL、0 ERROR、0 SKIPPED；T26 记录 `peerHistoryRetained=false`，与 L2 规定的会话级 release 边界一致。2026-09-12 的四项 FAIL 使用了已被最新 Feature/L2 明确废止的 Oracle，重新分类为 `design error` 历史证据，不再作为产品缺陷。T12、T24 对应的旧需求不属于本期合同。
-- Smoke：T01、T05、T06、T08、T09、T13-T16、T28、T31、T32、T34、T35。Full suite：整个测试类，共 33 个方法。
+- 增量 Smoke：T36、T37、T39-T43。增量 Full suite：新类全部 8 个方法；不得使用旧类选择器或 `feat-037` 分组执行本轮。
 - 每次运行由 `OpenAiEchoFixture` 先启动，再启动 hosted SUT；类结束关闭 SUT 和 fixture。Redis 场景单独启动临时栈并在 finally 中回收。
 - 每个请求使用 `FEAT037_DEEP_<Txx>_<UUID>` canary 和唯一 contextId；HTTP 60s、模型链路 180s，异步均使用有界请求/轮询。
 - 本地验收必须通过 WSL runner 精确执行，不直接使用 PowerShell Surefire 结果：
 
 ```powershell
 .\.agents\skills\feature-acceptance-testing\scripts\run-wsl-tests.ps1 `
-  -TestSelector "DeepAgentMultiInstanceHostingBlackboxTest#t15UnknownInstanceReturnsProtocolErrorWithoutCatalog,DeepAgentMultiInstanceHostingBlackboxTest#t17ResponsePreservesProtocolWithoutHostedMetadata,DeepAgentMultiInstanceHostingBlackboxTest#t26SharedSessionResetKeepsTargetRouting,DeepAgentMultiInstanceHostingBlackboxTest#t30WrongInstanceUsesTaskNotFoundWithoutOwnerLookup" `
+  -TestSelector "DeepAgentHostedRemoteCatalogBlackboxTest" `
   -Environment openjiuwen
 ```
 
@@ -137,6 +152,7 @@ T28：同一驱动 -> agent-deep-research（原单 Handler JAR）
 | 项目 | 影响 | 当前状态 | 解锁条件 |
 |---|---|---|---|
 | 历史 Oracle 变更 | T15/T17/T26/T30 的旧预期已被最新 Feature/L2 替换 | 原 product confirmed 结论撤销；DeepAgent 四个目标方法 4/4 PASS | 保留本轮 WSL/Surefire 证据，后续按新合同回归 |
-| 远端影子 Task fixture | T29 当前不能真实触发 | dependency-gated | 交付可由测试自动启动的正式远端 A2A profile/制品 |
+| 既有场景证据 | T01-T35 不属于本轮执行范围 | 33/33 已通过并复用原证据；代码保持不变 | 产品、环境或 Oracle 变化时另行确定最小影响集 |
+| Feature/L2 远端配置范围 | Feature §6.6 仍称实例 YAML 用于 Card，L2 已定义实例 `remote-agents` | 按用户确认的新增特性和 L2 设计 T36-T43；等待 Feature 反刷 | Feature 明确加入实例远端目录合同 |
 | CancelTask | 不生成 T12 方法 | OUT；本期四方法集合不包含 CancelTask | 新 Feature 明确纳入时重新设计独立场景 |
 | 全局 owner/同名会话拒绝 | 不生成 T24 方法；按目标实例局部作用域处理 | OUT；不得恢复旧全局 owner Oracle | 新 Feature 明确改变目标局部语义时重新设计 |

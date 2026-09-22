@@ -29,8 +29,12 @@
         <!-- agent-runtime-java (com.openjiuwen) — white-box contract tests (e.g. Feat003) reach into
              SUT middleware classes. The aggregator `agent-runtime-java` is pom-only (no classes);
              `agent-service-app` is the jar that transitively brings spec + adapters-common +
-             adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY. -->
-        <agent-runtime-java.version>0.1.1</agent-runtime-java.version>
+             adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY.
+             0.1.1 → 0.1.2 (2026-09-16): FEAT-036 edpa cases (WhitelistEchoAgent) require
+             AgentFailureDescriptor/AgentExecutionException, which only exist in 0.1.2+ (locally
+             installed from D:\code\test\agent-runtime-java, see build-logs/rtj-build-20260914-r2.log);
+             mirror-published 0.1.1 lacks both classes and fails test-compile. -->
+        <agent-runtime-java.version>0.1.2</agent-runtime-java.version>
         <agent-runtime-ext-java.version>0.1.1</agent-runtime-ext-java.version>
         <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>

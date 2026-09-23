@@ -4,6 +4,54 @@
 # application-local.yml; select it with: ./mvnw -Dtest.env=openjiuwen ...
 
 sut:
+  # ------------------------------------------------------------------
+  # FEAT-048 外部环境（已部署，全部用例可执行）：
+  #   - Nacos 3.0.0 服务端：podman feat048-nacos（127.0.0.1:8848，standalone，
+  #     内嵌存储，namespace tenant-A / tenant-B 已建，v1 OpenAPI 兼容）
+  #   - Nacos 模式 SUT 制品：fixtures/feat048-sut/（start-nacos.sh / start-rdc.sh /
+  #     start-sut.sh / stop-sut.sh；runtime A chaos 生命周期 45s 注册 / 25s 注销）
+  #   - RDC 对照：registry-discovery-center 0.1.1（127.0.0.1:18092，postgres agent_rdc）
+  # 停用环境时注释掉整个 external.nacos 块即可（测试类自动 dependency-gated 跳过）。
+  # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # FEAT-048 外部环境（门禁已恢复：以下 sut.external.nacos.* 全部注释，
+  # Feat048* 测试类回到 dependency-gated（整类 SKIPPED，不计 PASS）。
+  # 背景：产品 Nacos 模式 runtime/gateway 正式制品尚未交付（~/.m2 com.openjiuwen
+  # 制品中无 nacos 引用），此前 2026-09-21 的 33/33 通过是用验收 Fixture 替身制品
+  # （fixtures/feat048-sut/）完成的联通验证，标记为 FIXTURE-PASS，不构成产品
+  # FEAT-048 验收结论（见 build-logs/FEAT048-test-report-20260921.md）。
+  # 产品制品合入后：启动 fixtures/feat048-sut/ 环境（或指向真实制品地址），
+  # 取消下列注释（或将键值改为真实制品地址）即可全量执行。
+  # ------------------------------------------------------------------
+  external:
+    nacos:
+      base-url: "http://127.0.0.1:8848"          # Nacos 服务端（门禁开关）
+      tenant-id: "tenant-A"                      # 测试租户（namespace 恒等映射）
+      runtime-base-url: "http://127.0.0.1:9481"  # runtime A（chaos：注册45s/注销25s）
+      runtime-agent-id: "feat048-travel-hotel"   # agentId（== serviceId）
+      peer-runtime-base-url: "http://127.0.0.1:9482"   # 稳定第二实例（同 agentId）
+      gateway-base-url: "http://127.0.0.1:9480"  # Nacos 模式 gateway（direct，兼 SPI 探针）
+      gateway-token: "acceptance-token"          # 测试 Bearer
+      bus-gateway-base-url: "http://127.0.0.1:9479"   # Nacos 模式 BUS 路径 gateway（fixture）
+      rdc-gateway-base-url: "http://127.0.0.1:9478"   # RDC 模式对照 gateway（fixture）
+      peer-tenant-id: "tenant-B"                 # 跨租户 fixture
+      peer-tenant-agent-id: "feat048-peer-tenant-agent"
+      drift-runtime-base-url: "http://127.0.0.1:9484"  # 服务标识漂移变体（fixture，drift-agent / travel-hotel identity）
+      drift-runtime-agent-id: "feat048-drift-agent"
+      credential-canary: "FEAT048_CANARY_SECRET_9f8a7b"    # 测试专用假凭据（F048-16 脱敏扫描）
+      log-files: "D:/code/test/agent-runtime-acceptance/build-logs/gateway-nacos-9480.out,D:/code/test/agent-runtime-acceptance/build-logs/runtime-a-9481.out,D:/code/test/agent-runtime-acceptance/build-logs/runtime-b-9482.out"
+      spi-probe-base-url: "http://127.0.0.1:9485" # 发现面探针（fixture gateway，提供 /discovery 端点）
+      crash-window-seconds: 30                      # F048-04 临时实例注销窗口（测试主动注册/注销验证）
+      graceful-stop-window-seconds: 30               # F048-05 临时实例注销窗口（测试主动注册/注销验证）
+      reregister-window-seconds: 120
+      outage-window-seconds: 20
+      cluster-failover-window-seconds: 20
+      negative-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-type.bat"
+      negative-variant-expect-keywords: "FAILED,not found,could not,bean"
+      gate-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-gate.bat"
+      gate-variant-expect-keywords: "fail,capability,probe,unavailable"
+      unreachable-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-unreachable.bat"
+      unreachable-variant-expect-keywords: "fail,unavailable,connection,unreachable"
   timeout:
     poll-seconds: 120
     poll-interval-ms: 500
@@ -23,6 +71,9 @@ sut:
     redis:
       image: redis:7-alpine
       port: 6379
+      # Podman on Windows: Testcontainers HostPortWaitStrategy times out on mapped ports.
+      # Use a pre-started Redis (podman run -d -p 6379:6379 redis:7-alpine) and treat as remote.
+      url: "localhost:6379"
     envexplorer:
       image: agent-env/env-explorer:20260705
       port: 3001

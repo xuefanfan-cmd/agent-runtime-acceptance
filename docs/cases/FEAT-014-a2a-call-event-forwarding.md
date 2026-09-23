@@ -181,3 +181,25 @@ relay 多实例旅程的环境门禁：以 `AGENT_BUS_RELAY_INSTANCES>=2` 拉起
 ```
 
 测试结束关闭观察器、Event Bus、Agent/RDC、容器和代理，恢复网络并清除临时消息/目录。退出标准：Feature 当前事件转发能力全部通过或明确门禁，长期 Task 操作有 deferred 处置；不把 FEAT-004/017 回灌、直接 A2A 成功响应或 broker contract 结果冒充 FEAT-014 全链。
+
+---
+
+## 6. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-014 需求文档 PR !172 更新（2026-09-11）：route handle 消费与注册中心实现可替换（统一注册中心 SPI，RDC/Nacos 双实现，FEAT-048）；事件信封契约不变。本节验证实现替换不改变 A2A 两跳事件转发行为；SPI 双实现契约归 FEAT-048 主档。
+
+### 6.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F014-N01 | Nacos 实现下 A2A 两跳等价 | A2A 事件链路（caller runtime/event-bus/relay/callee runtime）以 `agent-registry.type=nacos` 运行，callee 已自注册 | 复跑本档 `a2a.two-hop-round-trip` / `a2a.delivery-and-isolation` 主链路 | 两跳事件调用、远端投递与租户隔离语义与 RDC 基线等价；callee 侧服务标识校验命中（`serviceId == agentId` 同源不变量）；信封与脱敏断言不变 | dependency-gated |
+| F014-N02 | Nacos 短时不可用容灾 | 同上；已完成一次成功两跳后屏蔽 Nacos（TTL 窗口内） | 在本地缓存有效期内再次发起两跳调用 | TTL 内已知目标两跳调用维持；无可用本地信息时显式失败，不猜测路由、不跨租户降级；恢复后自动收敛 | dependency-gated |
+
+### 6.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F014-N01..N02
+```
+
+门禁：Nacos 服务端与 Nacos 模式 A2A 事件链路制品就绪前 SKIPPED，不计 PASS。

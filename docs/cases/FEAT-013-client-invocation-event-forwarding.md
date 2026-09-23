@@ -182,3 +182,25 @@ relay 多实例旅程的环境门禁：以 `AGENT_BUS_RELAY_INSTANCES>=2` 拉起
 ```
 
 测试结束关闭观察器、Gateway/Event Bus/Agent/RDC 和容器，恢复 broker/网络并确认端口和临时数据清理。退出标准：Feature 当前事件族完整通过或明确门禁；长期 Task 操作有 deferred 处置；contract 与 blackbox 分开统计，不以临时 Gateway 或手工成功事件冒充全链。
+
+---
+
+## 6. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-013 需求文档 PR !172 更新（2026-09-11）：registry-discovery-center 实现可替换（统一注册中心 SPI，RDC/Nacos 双实现，FEAT-048）；route handle 支撑语义与事件信封契约不变。本节验证实现替换不改变事件转发行为；SPI 双实现契约归 FEAT-048 主档。
+
+### 6.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F013-N01 | Nacos 实现下事件转发等价 | 事件链路（Gateway/event-bus/relay/runtime）以 `agent-registry.type=nacos` 运行 | 复跑本档 `event.round-trip` / `event.delivery-safety` 主链路 | 调用事件、响应事件与事件信封语义不变（与 RDC 基线等价）；事件总线不感知注册中心实现；routeHandle 由 Nacos 实现解析但对测试不透明；脱敏扫描不变 | dependency-gated |
+| F013-N02 | Nacos 不可达时事件链路失败语义 | 同上；屏蔽 Gateway/relay 到 Nacos 的连接 | 发起需选路的客户端调用 | 按注册中心不可用语义确定失败（不伪造事件、不猜测路由）；事件审计零增量；恢复后链路自动恢复转发 | dependency-gated |
+
+### 6.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F013-N01..N02
+```
+
+门禁：Nacos 服务端与 Nacos 模式事件链路制品就绪前 SKIPPED，不计 PASS。

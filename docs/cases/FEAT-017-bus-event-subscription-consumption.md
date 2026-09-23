@@ -124,3 +124,25 @@ RDC -> three runtime service identities and routes
 - 投影故障场景先建立正常基线，再只故障 publisher；Task 查询用于证明执行状态不回滚。
 - 异步等待采用有界 observer 与 Task 轮询，不用 Broker 内部状态或 Runtime 日志替代公开投影。
 - payloadRef-only、大载荷、订阅和远端调用场景按文档合同保留独立 Oracle，不因环境是否具备对应依赖而合并或删除。
+
+---
+
+## 9. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-017 需求文档 PR !172 更新（2026-09-11）：服务标识一致性不变量——Nacos 模式下实例候选 `serviceId` 与消费侧服务标识配置同源（`serviceId == agentId`），信封校验与投递过滤语义不变（FEAT-048 §5.1.5）。本节验证消费端（callee runtime）在 Nacos 模式下的投递过滤与信封校验行为。
+
+### 9.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F017-N01 | Nacos 模式投递过滤命中 | callee runtime 以 `agent-registry.type=nacos` 运行并自注册（agentId == 本地服务标识配置）；上游经 bus 发信封 `targetServiceId == agentId` 的调用事件 | 上游发起两跳/总线调用 | callee 侧信封校验与投递过滤命中，事件被本实例消费并完成业务；`sourceServiceId` 语义不变（取自调用方本地配置，与注册中心无关） | dependency-gated |
+| F017-N02 | 服务标识漂移防护（负向） | 同上，但另部署一个 agentId 与消费侧服务标识配置**不同源**的实例（模拟两侧漂移） | 上游按漂移 agentId 发投递事件 | 漂移实例不消费该事件（投递过滤 miss 表达），事件不丢失到错误实例；该场景作为部署不变量违反的可观测证据（bus 投递路由 miss），按 Bug/部署问题分诊而非产品通过项 | dependency-gated |
+
+### 9.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F017-N01..N02
+```
+
+门禁：Nacos 服务端与 Nacos 模式 runtime 正式制品就绪前 SKIPPED；F017-N02 需可控的双标识变体部署，制品支持后激活。

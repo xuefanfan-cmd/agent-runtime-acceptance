@@ -225,6 +225,12 @@ sut:
       artifact: edp-agent-engine
       version: 0.1.1
       profile: multi
+    # DFX-005 current common-branch artifact (parent revision 0.1.2).
+    edpa-dfx005:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.2
+      profile: multi
     deep-research-auto:
       group: com.openjiuwen.example
       artifact: agent-deep-research

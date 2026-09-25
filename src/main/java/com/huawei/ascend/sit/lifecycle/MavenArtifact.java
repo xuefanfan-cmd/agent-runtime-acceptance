@@ -12,7 +12,14 @@ import java.nio.file.Path;
  * SUT definition declarative in {@code application-*.yml} and decoupled from
  * where the build happens to lay files down.
  */
-public record MavenArtifact(String groupId, String artifactId, String version) {
+public record MavenArtifact(String groupId, String artifactId, String version, String classifier) {
+
+    /**
+     * Classifier-less artifact (the common case): resolves to {@code <artifactId>-<version>.jar}.
+     */
+    public MavenArtifact(String groupId, String artifactId, String version) {
+        this(groupId, artifactId, version, null);
+    }
 
     public MavenArtifact {
         requireNonBlank(groupId, "groupId");
@@ -33,14 +40,23 @@ public record MavenArtifact(String groupId, String artifactId, String version) {
     /**
      * Absolute path of this artifact's jar inside the given local repository root.
      *
+     * <p>When a {@linkplain #classifier() classifier} is declared the file name becomes
+     * {@code <artifactId>-<version>-<classifier>.jar}. Host agents that package their runnable
+     * jar under a classifier (Spring Boot's {@code exec} is the common one, used by both
+     * edp-agent-java and deepanalyze-java) leave the plain jar non-executable, so the framework
+     * must be told which file to launch.
+     *
      * @param m2RepoRoot local repository root (e.g. {@code ~/.m2/repository}), no trailing slash
      */
     public Path jarPath(String m2RepoRoot) {
+        String fileName = classifier == null || classifier.isBlank()
+                ? artifactId + "-" + version + ".jar"
+                : artifactId + "-" + version + "-" + classifier + ".jar";
         return Path.of(m2RepoRoot,
                 groupId.replace('.', '/'),
                 artifactId,
                 version,
-                artifactId + "-" + version + ".jar");
+                fileName);
     }
 
     private static void requireNonBlank(String value, String name) {

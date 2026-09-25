@@ -98,6 +98,14 @@
             <artifactId>spring-jdbc</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- FEAT-054 共享 PG 数据面：用例需要自己用 DA 侧权威 DDL 建库并种子数据。
+             本地仓库已有该驱动（离线构建）。 -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.12</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>

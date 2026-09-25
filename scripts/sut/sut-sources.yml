@@ -46,15 +46,20 @@ envs:
         # SDK the examples resolve. Fill `repo` to enable lazy clone; on a dev box
         # point AGENT_CORE_DIR at your checkout (e.g. ~/agent_java/agent-core-java).
         repo: https://gitcode.com/openJiuwen/agent-core-java.git
-        ref:  830
+        # FEAT-054 起钉 commit（原分支名 930，2026-09-21）。0.1.16 的已发布构件缺
+        # ResourceMgr.addTool(Tool,Object,Object)，只有该分支新提交才有，必须从源码构建。
+        ref:  20b1090e0
         dir:  ${AGENT_CORE_DIR:third_party/agent-core-java}
       agent-runtime-java:
         repo: https://gitcode.com/openJiuwen/agent-runtime-java.git
-        ref:  develop
+        # 原分支名 develop，2026-09-21；已发布 0.1.3 的 agent-service-app 缺
+        # RemoteAgentCatalogChangedEvent.agentId()，需从源码构建。
+        ref:  4642486
         dir:  ${AGENT_RUNTIME_DIR:third_party/agent-runtime-java}
       agent-solution:
         repo: https://gitcode.com/openJiuwen/agent-solution.git
-        ref:  common
+        # 原分支名 common，2026-09-21；本批次冻结的 DA 宿主快照。
+        ref:  3681a0966
         dir:  ${SUT_SOURCE_DIR:third_party/agent-solution}
     steps:
       # Pre-build the SDK / runtime FIRST when iterating on agent-core-java /
@@ -68,6 +73,11 @@ envs:
       - { source: agent-solution, module: common/agent-core-ext-java }
       - { source: agent-solution, module: common/agent-runtime-ext-java }
       - { source: agent-solution, module: common/agent-runtime-ext-java/agent-service-spec-ext }
+      # FEAT-054 DA 宿主：必须排在 agent-runtime-ext-java 之后——本特性在 ext 里新增的
+      # 技能运行期访问类（SkillHubRuntimeAccess / SkillHubRuntimeAccessProvider）尚未进入
+      # 0.1.2 正式构件，且 ext 的 revision 与已发布版本号同为 0.1.2，只有从源码 install
+      # 才会覆盖本地仓库里的旧件；DA 编译依赖该扩展。
+      - { source: agent-solution, module: common/agents/deepanalyze-java }
       - { source: agent-solution, module: common/agent-bus/registry-discovery-center }
       - { source: agent-solution, module: common/example/multi-react-travel-demo }
       - { source: agent-solution, module: common/example/multi-deep-research-demo }

@@ -827,13 +827,17 @@ public final class SutStack implements AutoCloseable {
             String group = config.getString("sut.agents." + name + ".group");
             String artifactId = config.getString("sut.agents." + name + ".artifact");
             String version = config.getString("sut.agents." + name + ".version");
+            // Optional classifier: host agents (edp-agent-java, deepanalyze-java) publish the
+            // runnable Spring Boot jar under the "exec" classifier and leave the plain jar thin.
+            // Absent ⇒ classifier-less resolution, i.e. unchanged behaviour for existing SUTs.
+            String classifier = config.getString("sut.agents." + name + ".classifier");
             if (group == null || artifactId == null || version == null) {
                 throw new IllegalStateException(
                         "No artifact configured for agent '" + name + "'. Set sut.agents." + name
                                 + ".{group,artifact,version} (managed), or sut.agents." + name
                                 + ".url (remote), in application-*.yml.");
             }
-            return new MavenArtifact(group, artifactId, version);
+            return new MavenArtifact(group, artifactId, version, classifier);
         }
     }
 }

@@ -20,6 +20,7 @@ tags: [blackbox, contract, integration, agent-bus, feat-013]
 | L2 | `D:\code-agent\feature-docs\develop\03-architecture\L2-Low-Level-Design\agent-bus\feat-013-client-invocation-event-forwarding.md` |
 | Feature/L2 仓 | `main@7e1632dd96d49dad05747d8804631234be3cf457`，读取日期 2026-08-06 |
 | acceptance 仓 | `main@eb5e3f20ca39f0a8bc647c1ca17b8a637370ce05`，读取日期 2026-08-06；本文为工作区设计变更 |
+| 多实例部署输入 | Technical-AF/docs PR #162（merge request head `cc6aef71`「event-bus支持多实例需求设计文档」），读取日期 2026-09-16 |
 | 测试 Agent | `com.openjiuwen.example:travel-demo-mainplan/trip/hotel:0.1.0`，外部 JAR |
 
 L2 为 `as-built`，但其正式 Gateway 未落地、runtime response producer 仍 in-flight；因此完整往返保持 `dependency-gated`。Feature 未把 `INVOCATION_INPUT_REQUIRED` 列入 FEAT-013 事件族和验收清单，L2 中该投影来自 FEAT-017 修订；本方案只把它视为 FEAT-012/017 依赖事实，不作为 FEAT-013 单特性通过条件。未查阅产品源码。
@@ -34,6 +35,7 @@ FEAT-013 的被测黑盒边界是 Gateway、Event Bus 与 runtime 之间的事�
 | 外层治理字段、A2A payload/payloadRef、双向关联、at-least-once 去重 | Gateway 五态折叠细节（FEAT-012）、runtime TaskStore/执行逻辑 |
 | 租户隔离、重复投递、非法信封、大载荷引用、物理机制透明 | registry 查询行为（FEAT-016）、服务间 A2A 事件族（FEAT-014） |
 | STREAM_READY 与 ACCEPTED 分离，实时 token/SSE 不进入 Bus | Gateway SSE 桥接实现本身（FEAT-012） |
+| relay 多实例部署下的负载分担、跨实例去重、单实例故障接续与扩缩容不丢不重的公开事件事实 | outbox claim 租约、inbox 去重表、清理 advisory lock、实例日志归因、PG 连接数/topic 队列数等 L2 §6.5 部署规格内部实现 |
 
 以下真实 Agent 双向用例要求正式 Gateway、Event Bus 和 runtime 事件端均可执行，因此为 **dependency-gated**；只验证 relay 单侧或临时 Gateway 测具不能宣称 FEAT-013 端到端通过。
 
@@ -52,6 +54,8 @@ FEAT-013 的被测黑盒边界是 Gateway、Event Bus 与 runtime 之间的事�
 | `FEAT-013.event.round-trip` | Feature §2/§4/§5.1.1-5.1.7 | blackbox | dependency-gated, P0 | design-only | 双向事件、信封、accepted/rejected/response/failed/terminal、接受后超时 | 公开事件、Gateway 响应、真实 Agent 结果 | INPUT_REQUIRED 不作为本特性 Oracle |
 | `FEAT-013.event.delivery-safety` | Feature §2/§5.1.6/§5.1.8 | contract | dependency-gated, P0 | design-only | 重复投递、非法/跨租户、大载荷引用、broker 故障 | broker 公共边界、目标零增量、错误 | 不计为正式 Gateway/runtime E2E |
 | `FEAT-013.event.stream-boundary` | Feature §2/§4/§5.1.5 | blackbox | dependency-gated, P0 | design-only | ACCEPTED/STREAM_READY 分离、token/SSE 不入 Bus | 公开事件与点对点 SSE | SSE bridge 实现归 FEAT-012 |
+| `FEAT-013.event.relay-multi-instance` | Feature §2 多实例 MUST；L2 §6.5/§7.1/§7.2 | blackbox | dependency-gated, P0 | automated（`AGENT_BUS_RELAY_INSTANCES>=2` 门禁） | 多实例负载分担、请求恰一、hop2 跨实例去重、响应恰一、扩缩容幂等收敛等价证据 | 公开事件唯一性、客户端结果 | lease/inbox/清理内部实现、PG/队列数规格；实例归因内部证据 |
+| `FEAT-013.event.relay-failure-tolerance` | L2 §6.5 崩溃安全、§7.1/§7.2 单实例故障 | blackbox | dependency-gated, P0 | automated（另需 `AGENT_BUS_RELAY_FAULT_URL`） | 单实例故障后幸存实例接手、无重复可见副作用、其余调用不受影响 | 故障前后两批公开事件与客户端结果 | 租约回收时延、重投次数等内部参数 |
 | `FEAT-013.deferred.task-operations` | Feature §2/§4/§6；L2 缺口 | blackbox | deferred | design-only | UNKNOWN 同键恢复、流重连、GetTask、CancelTask/终态 | 待正式 Gateway/runtime 控制事件合同 | 当次 UNKNOWN 仍由 round-trip 覆盖；不生成空测试 |
 
 ### L2 本特性能力追踪（依赖满足后执行）
@@ -65,6 +69,7 @@ FEAT-013 的被测黑盒边界是 Gateway、Event Bus 与 runtime 之间的事�
 | bus 投递幂等、租户隔离、物理机制透明 | `FEAT-013.event.delivery-safety` |
 | registry 只支撑路由、Event Bus 不拥有 Task、各单元仅通过公开契约耦合 | `FEAT-013.event.round-trip` |
 | UNKNOWN 同键恢复、流重连、GetTask、CancelTask | `FEAT-013.deferred.task-operations` |
+| relay 多实例部署：共享消费组负载分担、inbox/outbox 跨实例去重、过期租约回收、扩缩容不丢不重、单实例故障不中断 | `FEAT-013.event.relay-multi-instance` 与 `FEAT-013.event.relay-failure-tolerance`（黑盒只断言公开事件事实与客户端结果） |
 | INVOCATION_INPUT_REQUIRED | 非 FEAT-013 Feature Oracle；由 FEAT-012/017 验证 |
 
 ## 4. 详细用例
@@ -124,17 +129,78 @@ FEAT-013 的被测黑盒边界是 Gateway、Event Bus 与 runtime 之间的事�
 - **标签**：`@Story("FEAT-013.event.stream-boundary: 流控制与实时数据分离")`、`@Tag("story-feat-013-event-stream-boundary")`、`@Tag("blackbox")`。
 - **DisplayName**：`Feat-013 总线只转发流准备和终态而不承载实时 token`。
 
+### FEAT-013.event.relay-multi-instance - relay 多实例负载分担与不丢不重
+
+- **状态/优先级**：dependency-gated, P0（需正式 Event Bus 以 ≥2 个 relay 实例部署）；**自动化状态**：automated（`AGENT_BUS_RELAY_INSTANCES>=2` 时执行，否则 Skipped）。
+- **Story/来源**：Feature §2「event-bus 中继多实例部署」MUST（PR #162 新增）；L2 §6.5 部署规格、§7.1 relay 多实例验收、§7.2「多实例负载分担/多实例扩缩容」场景。
+- **测试类型**：blackbox。
+- **Oracle 来源**：Feature 多实例 MUST 与 L2 §7.2 场景：多实例以共享消费组竞争消化调用事件，全部调用正常返回；客户端不感知实例数量与分派结果，行为与单实例部署一致；扩缩容/重平衡期间的重复投递被幂等收敛（at-least-once + 幂等收敛）。
+- **G**：正式 Gateway、Event Bus 以 ≥2 个 relay 实例部署：消费组取自固定配置 `agent-bus.event-bus-service-id`（非实例专属）、同库同租户；gateway/runtime 仍单实例（L2 §6.5 本期范围仅 relay 层）；测试并发发起多次带唯一 canary 的真实 BUS 调用，事件观察器按 canary/correlation 订阅公开 topic。
+- **W**：并发发起多次（默认 6 次）SendMessage；等待全部客户端结果后继续排空公开 topic 一个静默窗口，再断言公开事件唯一性。
+- **T**：
+  - 全部调用返回 200 且业务结果含各自 canary；客户端不感知实例数量与分派结果；
+  - 每个 canary 在 `ascend_bus_invocation_req` 上恰有一条 `CLIENT_INVOCATION_REQUESTED`；
+  - 该 correlation 在 relay 产出 topic（`ascend_bus_invocation_deliver`/`ascend_bus_invocation_resp_out`）上消息非空且 `messageId` 无重复——多实例并发消费同一 hop1 只产生一条确定性 `eb-` hop2（跨实例去重）；
+  - `ascend_bus_invocation_resp_out` 上恰有一条 `INVOCATION_RESPONSE`，重复投递不形成第二个可见结果。
+- **不应断言**：lease_owner/outbox/inbox 表、清理 advisory lock、实例日志 `[role@instance]` 归因、PG 连接数、topic 队列数、固定重试次数。
+- **失败归类**：调用丢失或重复可见副作用为 Failure；多实例环境缺失（`AGENT_BUS_RELAY_INSTANCES<2`）为 Skipped；观察器或环境异常为 Error。
+- **方法**：`feat013MultiInstanceRelaySharesInvocationLoadWithoutLossOrDuplication()`。
+- **标签**：`@Story("FEAT-013.event.relay-multi-instance: relay 多实例负载分担与不丢不重")`、`@Tag("story-feat-013-event-relay-multi-instance")`、`@Tag("blackbox")`。
+- **DisplayName**：`Feat-013 多 relay 实例竞争消费调用事件且不丢不重`。
+- **扩缩容说明**：滚动扩缩容触发 broker 重平衡的编排属部署侧操作；黑盒等价证据（重复投递被幂等收敛、不丢不重）由本用例与 failure-tolerance 的唯一性断言覆盖，显式 rebalance 旅程由运维验收记录补充，不生成空测试。
+
+### FEAT-013.event.relay-failure-tolerance - 单 relay 实例故障不中断
+
+- **状态/优先级**：dependency-gated, P0（需多实例部署与故障触发端点）；**自动化状态**：automated（`AGENT_BUS_RELAY_INSTANCES>=2` 且 `AGENT_BUS_RELAY_FAULT_URL` 时执行）。
+- **Story/来源**：L2 §6.5 崩溃安全（commit 为每消息最后一步）、§7.1「单实例故障不中断」、§7.2 同名场景。
+- **测试类型**：blackbox。
+- **Oracle 来源**：Feature 多实例 MUST「单实例故障不中断服务」与 L2 §7.2：broker 重投由幸存实例接手完成投递，该调用最终成功；同一调用不产生重复副作用（不重复建 Task、不重复投递 hop2）；故障期间其余调用不受影响；崩溃实例持有的过期租约由幸存实例回收后继续推进。
+- **G**：多实例 relay 部署同上一用例；环境另行提供故障触发端点 `AGENT_BUS_RELAY_FAULT_URL`（HTTP POST 使一个 relay 实例在处理途中终止，由部署编排侧实现）。
+- **W**：先完成一批基线调用；触发单实例终止；随后再并发发起一批调用并等待全部结果；对故障前后两批调用统一断言公开事件唯一性。
+- **T**：故障后新调用全部成功返回且含 canary；两批调用的公开事件均满足「请求恰一、relay hop2 `messageId` 无重复、`INVOCATION_RESPONSE` 恰一」；不出现第二个可见结果、重复 Task 或伪造成功；基线调用结果不受故障影响。
+- **不应断言**：租约回收时延（leaseDurationMs 内部参数）、broker 重投次数、进程/数据库内部状态。
+- **失败归类**：故障后调用丢失或重复可见副作用为 Failure；多实例环境或故障端点缺失为 Skipped；触发端点异常为 Error。
+- **方法**：`feat013InvocationSurvivesSingleRelayInstanceFailure()`。
+- **标签**：`@Story("FEAT-013.event.relay-failure-tolerance: 单 relay 实例故障不中断")`、`@Tag("story-feat-013-event-relay-failure-tolerance")`、`@Tag("blackbox")`。
+- **DisplayName**：`Feat-013 单 relay 实例故障后幸存实例接手且无重复副作用`。
+
 ## 5. 文件、执行与退出标准
 
-计划一个文件：`src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/Feat013ClientInvocationEventBlackboxTest.java`。
+计划一个文件：`src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/ClientInvocationEventBlackboxTest.java`（含 round-trip、delivery-safety、stream-boundary 与 relay 多实例两个新增用例；配套公开观察器 `RocketMqBlackboxProbe.java` 与外部栈夹具 `AgentBusExternalFixture.java`）。
 
 relay 启动、topic 创建和数据库 migration 不单独设特性用例；事件往返已覆盖等价可用性。具体 broker 产品可替换，不把 RocketMQ 特有重试码写入产品断言。
 
 执行基线：JDK 21；PowerShell 使用 `.\mvnw.cmd`，WSL/Git Bash 使用 `./mvnw`；默认 Maven 仓库 `~/.m2/repository`；Docker 提供 broker、PostgreSQL 和故障代理。正式 Gateway 与 runtime producer/consumer 的坐标和 acceptance 别名当前缺失，是完整往返门禁；Event Bus 制品还须记录 classifier 和构建 SHA。事件 payload、确定性 LLM 和 canary 由测试自动准备。
 
+relay 多实例旅程的环境门禁：以 `AGENT_BUS_RELAY_INSTANCES>=2` 拉起 relay 实例集（共享 `agent-bus.event-bus-service-id` 消费组、同一 PostgreSQL 与租户）；故障旅程另需 `AGENT_BUS_RELAY_FAULT_URL` 指向可终止单个 relay 实例的编排端点。未满足时用例按 Skipped 门禁，不以单实例部署冒充多实例通过。
+
 ```powershell
 .\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=feat-013 test
 .\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=story-feat-013-event-delivery-safety test
+.\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=story-feat-013-event-relay-multi-instance test
+.\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=story-feat-013-event-relay-failure-tolerance test
 ```
 
 测试结束关闭观察器、Gateway/Event Bus/Agent/RDC 和容器，恢复 broker/网络并确认端口和临时数据清理。退出标准：Feature 当前事件族完整通过或明确门禁；长期 Task 操作有 deferred 处置；contract 与 blackbox 分开统计，不以临时 Gateway 或手工成功事件冒充全链。
+
+---
+
+## 6. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-013 需求文档 PR !172 更新（2026-09-11）：registry-discovery-center 实现可替换（统一注册中心 SPI，RDC/Nacos 双实现，FEAT-048）；route handle 支撑语义与事件信封契约不变。本节验证实现替换不改变事件转发行为；SPI 双实现契约归 FEAT-048 主档。
+
+### 6.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F013-N01 | Nacos 实现下事件转发等价 | 事件链路（Gateway/event-bus/relay/runtime）以 `agent-registry.type=nacos` 运行 | 复跑本档 `event.round-trip` / `event.delivery-safety` 主链路 | 调用事件、响应事件与事件信封语义不变（与 RDC 基线等价）；事件总线不感知注册中心实现；routeHandle 由 Nacos 实现解析但对测试不透明；脱敏扫描不变 | dependency-gated |
+| F013-N02 | Nacos 不可达时事件链路失败语义 | 同上；屏蔽 Gateway/relay 到 Nacos 的连接 | 发起需选路的客户端调用 | 按注册中心不可用语义确定失败（不伪造事件、不猜测路由）；事件审计零增量；恢复后链路自动恢复转发 | dependency-gated |
+
+### 6.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F013-N01..N02
+```
+
+门禁：Nacos 服务端与 Nacos 模式事件链路制品就绪前 SKIPPED，不计 PASS。

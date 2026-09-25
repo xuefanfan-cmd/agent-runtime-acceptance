@@ -4,6 +4,54 @@
 # application-local.yml; select it with: ./mvnw -Dtest.env=openjiuwen ...
 
 sut:
+  # ------------------------------------------------------------------
+  # FEAT-048 外部环境（已部署，全部用例可执行）：
+  #   - Nacos 3.0.0 服务端：podman feat048-nacos（127.0.0.1:8848，standalone，
+  #     内嵌存储，namespace tenant-A / tenant-B 已建，v1 OpenAPI 兼容）
+  #   - Nacos 模式 SUT 制品：fixtures/feat048-sut/（start-nacos.sh / start-rdc.sh /
+  #     start-sut.sh / stop-sut.sh；runtime A chaos 生命周期 45s 注册 / 25s 注销）
+  #   - RDC 对照：registry-discovery-center 0.1.1（127.0.0.1:18092，postgres agent_rdc）
+  # 停用环境时注释掉整个 external.nacos 块即可（测试类自动 dependency-gated 跳过）。
+  # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # FEAT-048 外部环境（门禁已恢复：以下 sut.external.nacos.* 全部注释，
+  # Feat048* 测试类回到 dependency-gated（整类 SKIPPED，不计 PASS）。
+  # 背景：产品 Nacos 模式 runtime/gateway 正式制品尚未交付（~/.m2 com.openjiuwen
+  # 制品中无 nacos 引用），此前 2026-09-21 的 33/33 通过是用验收 Fixture 替身制品
+  # （fixtures/feat048-sut/）完成的联通验证，标记为 FIXTURE-PASS，不构成产品
+  # FEAT-048 验收结论（见 build-logs/FEAT048-test-report-20260921.md）。
+  # 产品制品合入后：启动 fixtures/feat048-sut/ 环境（或指向真实制品地址），
+  # 取消下列注释（或将键值改为真实制品地址）即可全量执行。
+  # ------------------------------------------------------------------
+  external:
+    nacos:
+      base-url: "http://127.0.0.1:8848"          # Nacos 服务端（门禁开关）
+      tenant-id: "tenant-A"                      # 测试租户（namespace 恒等映射）
+      runtime-base-url: "http://127.0.0.1:9481"  # runtime A（chaos：注册45s/注销25s）
+      runtime-agent-id: "feat048-travel-hotel"   # agentId（== serviceId）
+      peer-runtime-base-url: "http://127.0.0.1:9482"   # 稳定第二实例（同 agentId）
+      gateway-base-url: "http://127.0.0.1:9480"  # Nacos 模式 gateway（direct，兼 SPI 探针）
+      gateway-token: "acceptance-token"          # 测试 Bearer
+      bus-gateway-base-url: "http://127.0.0.1:9479"   # Nacos 模式 BUS 路径 gateway（fixture）
+      rdc-gateway-base-url: "http://127.0.0.1:9478"   # RDC 模式对照 gateway（fixture）
+      peer-tenant-id: "tenant-B"                 # 跨租户 fixture
+      peer-tenant-agent-id: "feat048-peer-tenant-agent"
+      drift-runtime-base-url: "http://127.0.0.1:9484"  # 服务标识漂移变体（fixture，drift-agent / travel-hotel identity）
+      drift-runtime-agent-id: "feat048-drift-agent"
+      credential-canary: "FEAT048_CANARY_SECRET_9f8a7b"    # 测试专用假凭据（F048-16 脱敏扫描）
+      log-files: "D:/code/test/agent-runtime-acceptance/build-logs/gateway-nacos-9480.out,D:/code/test/agent-runtime-acceptance/build-logs/runtime-a-9481.out,D:/code/test/agent-runtime-acceptance/build-logs/runtime-b-9482.out"
+      spi-probe-base-url: "http://127.0.0.1:9485" # 发现面探针（fixture gateway，提供 /discovery 端点）
+      crash-window-seconds: 30                      # F048-04 临时实例注销窗口（测试主动注册/注销验证）
+      graceful-stop-window-seconds: 30               # F048-05 临时实例注销窗口（测试主动注册/注销验证）
+      reregister-window-seconds: 120
+      outage-window-seconds: 20
+      cluster-failover-window-seconds: 20
+      negative-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-type.bat"
+      negative-variant-expect-keywords: "FAILED,not found,could not,bean"
+      gate-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-gate.bat"
+      gate-variant-expect-keywords: "fail,capability,probe,unavailable"
+      unreachable-variant-command: "cmd /c D:\\code\\test\\agent-runtime-acceptance\\build-logs\\neg-unreachable.bat"
+      unreachable-variant-expect-keywords: "fail,unavailable,connection,unreachable"
   timeout:
     poll-seconds: 120
     poll-interval-ms: 500
@@ -23,6 +71,9 @@ sut:
     redis:
       image: redis:7-alpine
       port: 6379
+      # Podman on Windows: Testcontainers HostPortWaitStrategy times out on mapped ports.
+      # Use a pre-started Redis (podman run -d -p 6379:6379 redis:7-alpine) and treat as remote.
+      url: "localhost:6379"
     envexplorer:
       image: agent-env/env-explorer:20260705
       port: 3001
@@ -109,6 +160,10 @@ sut:
       spring:
         properties:
           openjiuwen.service.a2a.remote-agents[0].name: "travel-trip"
+    hosted-react:
+      group: com.openjiuwen.example
+      artifact: multi-react-travel-hosted-demo
+      version: 0.1.1
     mainplan-redis:
       group: com.openjiuwen.example
       artifact: travel-demo-mainplan
@@ -177,8 +232,26 @@ sut:
     deep-research:
       group: com.openjiuwen.example
       artifact: agent-deep-research
-      version: 0.1.0
+      version: 0.1.1
       llm-api-key-property: openjiuwen.demo.deep-research.api-key
+    hosted-deep:
+      group: com.openjiuwen.example
+      artifact: multi-deep-research-hosted-demo
+      version: 0.1.1
+    # FEAT-042 production EDPA engine. Its executable Spring Boot artifact is
+    # published with the `exec` classifier; the feature test supplies a
+    # classifier-aware black-box launcher without changing framework semantics.
+    edpa-multi:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.1
+      profile: multi
+    # DFX-005 current common-branch artifact (parent revision 0.1.2).
+    edpa-dfx005:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.2
+      profile: multi
     deep-research-auto:
       group: com.openjiuwen.example
       artifact: agent-deep-research
@@ -213,6 +286,461 @@ sut:
       artifact: agent-verify
       version: 0.1.0
       llm-api-key-property: openjiuwen.demo.verify-agent.api-key
+    # FEAT-031 Studio DSL demo — start→input→setVariable→message→card→code→llm→streamTransform→end
+    studio-dsl-demo:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8097
+      llm-api-key-property: studio-dsl.api-key
+      spring:
+        properties:
+          studio-dsl.agent: main
+          studio-dsl.api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+          studio-dsl.model-name: ${LLM_MODEL:gpt-4o-mini}
+          studio-dsl.ssl-verify: ${LLM_SSL_VERIFY:true}
+    # FEAT-031 exception node test — start→exception
+    studio-dsl-exc:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8098
+      spring:
+        properties:
+          studio-dsl.agent: exc
+    # FEAT-031 code failure surface — KeyError (JJ)
+    studio-dsl-code-err:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8099
+      spring:
+        properties:
+          studio-dsl.agent: code-err
+    # FEAT-031 code failure surface — invalid JSON (KK)
+    studio-dsl-code-io-err:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8100
+      spring:
+        properties:
+          studio-dsl.agent: code-io-err
+    # FEAT-031 code failure surface — non-dict return (V)
+    studio-dsl-code-return-err:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8101
+      spring:
+        properties:
+          studio-dsl.agent: code-return-err
+    # FEAT-031 input node test — start→input→end
+    studio-dsl-input:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8103
+      spring:
+        properties:
+          studio-dsl.agent: input
+    # FEAT-031 setVariable operators — increment/decrement/empty/empty_str/empty_arr
+    studio-dsl-setvar-ops:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8104
+      spring:
+        properties:
+          studio-dsl.agent: setvar-ops
+    # FEAT-031 code stdout capture — print + return dict
+    studio-dsl-code-stdout:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8105
+      spring:
+        properties:
+          studio-dsl.agent: code-stdout
+    # FEAT-031 code blacklist — os.system blocked by CODE_BLACK_LIST
+    studio-dsl-code-blacklist:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8106
+      spring:
+        properties:
+          studio-dsl.agent: code-blacklist
+      java:
+        system-properties:
+          CODE_BLACK_LIST: '["os.system"]'
+    # FEAT-031 code timeout — time.sleep(30) with 3s timeout
+    studio-dsl-code-timeout:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8107
+      spring:
+        properties:
+          studio-dsl.agent: code-timeout
+    # FEAT-031 intentDetection — start→intentDetection→end
+    studio-dsl-intent:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8108
+      llm-api-key-property: studio-dsl.api-key
+      spring:
+        properties:
+          studio-dsl.agent: intent
+          studio-dsl.api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+          studio-dsl.model-name: ${LLM_MODEL:gpt-4o-mini}
+          studio-dsl.ssl-verify: ${LLM_SSL_VERIFY:true}
+    # FEAT-031 extractor — start→extractor→end
+    studio-dsl-extractor:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8109
+      llm-api-key-property: studio-dsl.api-key
+      spring:
+        properties:
+          studio-dsl.agent: extractor
+          studio-dsl.api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+          studio-dsl.model-name: ${LLM_MODEL:gpt-4o-mini}
+          studio-dsl.ssl-verify: ${LLM_SSL_VERIFY:true}
+    # FEAT-031 loop — start→loop→end
+    studio-dsl-loop:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8110
+      spring:
+        properties:
+          studio-dsl.agent: loop
+    # FEAT-031 intentDetection config invalid (HH)
+    studio-dsl-intent-invalid:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8111
+      spring:
+        properties:
+          studio-dsl.agent: intent-invalid
+    # FEAT-031 extractor config invalid (II)
+    studio-dsl-extractor-invalid:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8112
+      spring:
+        properties:
+          studio-dsl.agent: extractor-invalid
+    # FEAT-031 plugin API unreachable (LL)
+    studio-dsl-plugin-fail:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8113
+      spring:
+        properties:
+          studio-dsl.agent: plugin-fail
+    # FEAT-031 mcp tool not found (MM)
+    studio-dsl-mcp-fail:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8114
+      spring:
+        properties:
+          studio-dsl.agent: mcp-fail
+    # FEAT-031 agent config missing (NN)
+    studio-dsl-agent-fail:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8115
+      spring:
+        properties:
+          studio-dsl.agent: agent-fail
+    # FEAT-031 streamTransform config invalid (OO)
+    studio-dsl-stream-fail:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8116
+      spring:
+        properties:
+          studio-dsl.agent: stream-fail
+    # FEAT-031 loop empty list (EE)
+    studio-dsl-loop-empty:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8117
+      spring:
+        properties:
+          studio-dsl.agent: loop-empty
+    # FEAT-031 knowledgeRetrieval mockDocuments (L)
+    studio-dsl-kb:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8118
+      spring:
+        properties:
+          studio-dsl.agent: kb
+    # FEAT-031 MCP docserver (for mcp normal call test)
+    studio-dsl-mcp-server:
+      group: com.openjiuwen.example
+      artifact: agent-mcp-docserver
+      version: 0.1.0-SNAPSHOT
+      port: 18095
+      ready-mode: tcp
+      spring:
+        properties:
+          mcp-doc-server.json-rpc-path: /mcp
+    # FEAT-031 mcp normal call (U) — connects to mcp-docserver
+    studio-dsl-mcp-ok:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8119
+      spring:
+        properties:
+          studio-dsl.agent: mcp-ok
+          studio-dsl.mcp-url: http://127.0.0.1:18095/mcp
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
+    # FEAT-031 agent normal call (V) — inline ReAct agent
+    studio-dsl-agent-ok:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8120
+      llm-api-key-property: studio-dsl.api-key
+      spring:
+        properties:
+          studio-dsl.agent: agent-ok
+          studio-dsl.api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+          studio-dsl.model-name: ${LLM_MODEL:gpt-4o-mini}
+          studio-dsl.ssl-verify: ${LLM_SSL_VERIFY:true}
+    # FEAT-031 plugin normal call (T) — connects to mcp-docserver as HTTP API
+    studio-dsl-plugin-ok:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8121
+      spring:
+        properties:
+          studio-dsl.agent: plugin-ok
+          studio-dsl.plugin-url: http://127.0.0.1:18095/mcp
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
+    # FEAT-031 LLM API unreachable (GG) — wrong endpoint → FAILED
+    studio-dsl-llm-fail:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8122
+      spring:
+        properties:
+          studio-dsl.agent: llm-fail
+    # FEAT-031 aggregate node (E)
+    studio-dsl-aggregate:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8123
+      spring:
+        properties:
+          studio-dsl.agent: aggregate
+    # FEAT-031 QA node (X1) — random strategy
+    studio-dsl-qa:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8124
+      spring:
+        properties:
+          studio-dsl.agent: qa
+    # FEAT-031 ParamOutput node (X9)
+    studio-dsl-param-output:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8125
+      spring:
+        properties:
+          studio-dsl.agent: param-output
+    # FEAT-031 errorBranch constraint (RR) — message node with errorBranch
+    studio-dsl-errorbranch-constraint:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8126
+      spring:
+        properties:
+          studio-dsl.agent: errorbranch-constraint
+    # FEAT-031 exception constraint (SS) — loop node with defaultOutputs
+    studio-dsl-exception-constraint:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8127
+      spring:
+        properties:
+          studio-dsl.agent: exception-constraint
+    # FEAT-031 ParamOutput empty input (X10)
+    studio-dsl-param-output-empty:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8128
+      spring:
+        properties:
+          studio-dsl.agent: param-output-empty
+    # FEAT-031 subWorkflow node (F)
+    studio-dsl-subworkflow:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8129
+      spring:
+        properties:
+          studio-dsl.agent: subworkflow
+    # FEAT-031 code environment isolation (R)
+    studio-dsl-code-isolation:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8130
+      spring:
+        properties:
+          studio-dsl.agent: code-isolation
+    # FEAT-031 QA index strategy (X3)
+    studio-dsl-qa-index:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8131
+      spring:
+        properties:
+          studio-dsl.agent: qa-index
+    # FEAT-031 QA structured message (X4)
+    studio-dsl-qa-struct:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8132
+      spring:
+        properties:
+          studio-dsl.agent: qa-struct
+    # FEAT-031 QA session history (X5)
+    studio-dsl-qa-history:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8133
+      spring:
+        properties:
+          studio-dsl.agent: qa-history
+    # FEAT-031 ComplexIntentDetection (X6)
+    studio-dsl-complex-intent:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8134
+      spring:
+        properties:
+          studio-dsl.agent: complex-intent
+    # FEAT-031 variable lifecycle (AA)
+    studio-dsl-var-lifecycle:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8135
+      spring:
+        properties:
+          studio-dsl.agent: var-lifecycle
+    # FEAT-031 nesting depth exceeded (BB)
+    studio-dsl-nesting-limit:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8136
+      spring:
+        properties:
+          studio-dsl.agent: nesting-limit
+    # FEAT-031 streamTransform template+concat (W2)
+    studio-dsl-stream-template:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8137
+      spring:
+        properties:
+          studio-dsl.agent: stream-template
+    # FEAT-031 ComplexIntentDetection config invalid (QQ)
+    studio-dsl-complex-intent-invalid:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8138
+      spring:
+        properties:
+          studio-dsl.agent: complex-intent-invalid
+    # FEAT-031 branch route test — start→branch→msg/other→end
+    studio-dsl-branch-route:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8139
+      spring:
+        properties:
+          studio-dsl.agent: branch-route
+    # FEAT-031 defaultOutputs recovery test — start→code(error,defaultOutputs)→end
+    studio-dsl-default-outputs:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8140
+      spring:
+        properties:
+          studio-dsl.agent: default-outputs
+    # FEAT-031 errorBranch recovery test — start→code(error,errorBranch)→end
+    studio-dsl-error-branch:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8141
+      spring:
+        properties:
+          studio-dsl.agent: error-branch
+    # FEAT-031 code interrupt reason test — start→code(timeout)→end
+    studio-dsl-code-interrupt-reason:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8142
+      spring:
+        properties:
+          studio-dsl.agent: code-interrupt-reason
+    # FEAT-031 questioner node test — start→questioner→end
+    studio-dsl-questioner:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-demo
+      version: 0.1.0
+      port: 8102
+      llm-api-key-property: studio-dsl.api-key
+      spring:
+        properties:
+          studio-dsl.agent: questioner
+          studio-dsl.api-base: ${LLM_API_BASE:http://localhost:4000/v1}
+          studio-dsl.model-name: ${LLM_MODEL:gpt-4o-mini}
+          studio-dsl.ssl-verify: ${LLM_SSL_VERIFY:true}
     # workflow scenario
     expense-review-workflow:
       group: com.openjiuwen.example
@@ -269,17 +797,39 @@ sut:
         envexplorer:
           url-key: openjiuwen.service.versatile.url-template
           url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+    # FEAT-036 SUT agents (locally installed from D:\code\test\agent-solution).
+    # echo-agent is the agent-bus-consumer-callee-demo jar (deterministic echo, no LLM);
+    # edp-agent is the edp-agent-engine jar (LLM-driven delegation host, exec classifier
+    # copied over thin jar in m2 to work with the framework's classifier-unaware MavenArtifact);
+    # edp-agent-multipart is the customer-multipart-app demo jar (custom-rest SPI + multipart).
+    echo-agent:
+      group: com.openjiuwen.example
+      artifact: agent-bus-consumer-callee-demo
+      version: 0.1.1
+      spring:
+        properties:
+          openjiuwen.service.bus.consumer.enabled: "false"
+    edp-agent:
+      group: com.openjiuwen
+      artifact: edp-agent-engine
+      version: 0.1.1
+    edp-agent-multipart:
+      group: com.customer
+      artifact: customer-multipart-app
+      version: "1.0.0"
   # Per-agent LLM api-key injection: an agent that declares `llm-api-key-property: <spring-key>`
   # gets the global LLM_API_KEY value (below) injected at launch as `--<spring-key>=<LLM_API_KEY>`,
   # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works
   # even where code-scanning blanked the agent's `${LLM_API_KEY}` placeholder. The secret value lives
   # ONLY here; each agent entry below carries just the property-key pointer, not the value.
+  # Global non-secret JVM defaults. Credentials remain blank in versioned configuration;
+  # tests that require a live model must inject them at process launch.
   java:
     system-properties:
-#      LLM_API_BASE:
-#      LLM_MODEL:
-#      LLM_API_KEY:
-#      LLM_SSL_VERIFY:
+      LLM_API_BASE: "https://ws-z7f9qzn05hmkiq2l.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+      LLM_MODEL: "qwen3.8-max"
+      LLM_API_KEY: ""
+      LLM_SSL_VERIFY: "false"
 #      # —— HTTP proxy + no-proxy (standard JVM proxy properties) ——
 #      http.proxyHost:
 #      http.proxyPort:

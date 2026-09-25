@@ -20,8 +20,8 @@ related_docs:
   - FEAT-015 L2 低层设计：spring-ai-ascend `architecture/L2-Low-Level-Design/agent-bus/Feat-Func-015-agent-card-registration-and-discovery.md`（PR #418，537 行）
   - FEAT-015 运行态设计：spring-ai-ascend `architecture/L2-Low-Level-Design/agent-bus/registry-discovery-runtime-design.cn.md`（911 行，⚠️ 旧版 push 注册模型，已被 PR #418 取代，仅作参考）
   - FEAT-015 开发确认回复：`D:\01-文档资料\01-Projects\04-Test_Work\01-Design_File\FEAT-015 SIT 测试 — 开发确认回复.mkd`（2026-07-22）
-revision: v1.2
-revision_date: 2026-07-22
+revision: v1.3
+revision_date: 2026-09-20
 ---
 
 # FEAT-015 — Agent Card 注册与发现 用例设计
@@ -43,6 +43,8 @@ revision_date: 2026-07-22
 > ④ provider-stale-source：static provider 无法模拟 provider 不可用；黑盒变通方案为 SQL 注入 freshness；
 > ⑤ provider-source-revision：blocked → partial，DB 表 `registry_source_state` 可查；
 > ⑥ reconciliation：确认可清库，附 SQL 清理脚本。
+
+> **v1.3 更新（2026-09-20）**：依据 FEAT-015 需求文档 PR !172 更新（注册模型按实现分态），新增 §3.8「Nacos 自注册模式（FEAT-048 联动）」三条子用例（nacos-self-registration / nacos-card-idempotent / nacos-boundary，均为 dependency-gated），覆盖矩阵与框架落点同步更新。
 
 ---
 
@@ -74,6 +76,8 @@ revision_date: 2026-07-22
 | 最后有效快照 — STALE_CARD（Card 刷新失败） | `FEAT-015.stale-card-fallback` | 未覆盖 | partial | 需可控地触发 Card 抓取失败 |
 | 最后有效快照 — STALE_SOURCE（provider 不可用） | `FEAT-015.provider-stale-source` | 未覆盖 | partial | static provider 无法模拟 provider 不可用；黑盒变通：SQL 注入 `freshness='STALE_SOURCE'` |
 | 注册发现实现可替换 | `FEAT-015.provider-swap` | 未覆盖 | partial | 需自定义 Provider Bean |
+| Nacos 自注册模式（FEAT-048 联动） | `FEAT-015.nacos-self-registration` | 未覆盖 | dependency-gated | 需 Nacos 3.x（AI 开启）+ Nacos 模式 runtime 制品；见 §3.8 |
+| Nacos 自注册卡片幂等（FEAT-048 联动） | `FEAT-015.nacos-card-idempotent` | 未覆盖 | dependency-gated | 同 name + version 重复发布/多实例并发发布无副作用；见 §3.8 |
 | 租户与调用方边界 | `FEAT-015.tenant-isolation` | 未覆盖 | partial | 需跨租户已注册 Card |
 | 审计与可观测 | `FEAT-015.audit` | 未覆盖 | deferred | SHOULD 级别；审计面暴露方式待定 |
 
@@ -369,6 +373,38 @@ DELETE FROM registry_source_state;
   不便连库时可用 discover 结果间接验证；revision 严格断言建议查表
 - **框架落点**：待新建 `ProviderSourceRevisionTest`（需 `RegistryDbProbe` 直连 DB）。
 
+### 3.8 Nacos 自注册模式（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-015 需求文档 PR !172 更新（2026-09-16）：注册模型按注册中心实现分态。RDC 模式保持本文其余章节的部署发布事实接入、主动抓取与持续对账模型；Nacos 模式由 `agent-runtime` 侧注册组件经统一注册面 SPI 自注册标准 Agent Card 并维护实例 endpoint。Nacos 模式下本档的 provider 接入、主动抓取、对账、registration status / freshness 状态机**均不适用**，仅「多实例发布去重、租户边界」语义在两种模式下都必须满足。详细矩阵与主门禁见 `FEAT-048-agent-registry-spi-nacos.md`。
+
+#### FEAT-015.nacos-self-registration — Nacos 模式自注册卡片与实例 endpoint
+
+- **状态**：dependency-gated（需 Nacos 3.x 服务端 AI 能力开启 + Nacos 模式 runtime 正式制品）
+- **FEAT 依据**：需求 §2「Nacos 自注册模式」+ FEAT-048 §2/§4
+- **G**：Nacos 服务端就绪（3.x、AI 开启、namespace 已建）；runtime 以 `agent-registry.type=nacos` 启动且开启注册
+- **W**：启动 runtime → 经 Nacos OpenAPI 查询卡片与实例列表；以另一租户 namespace 查询同 agentId
+- **T**：标准 Agent Card 发布成功且内容**实例无关**（不含本机地址等实例信息）；实例 endpoint 以临时实例注册；同 name + version 重复发布幂等无副作用；跨租户 namespace 查询不返回该 agent（租户边界满足）；RDC 模式专属字段（registrationStatus/freshness）不出现在 Nacos 模式注册事实中
+- **PASS**：上述全部成立。**FAIL**：卡片含实例信息 / 重复发布产生副作用 / 跨租户可见。**INCONCLUSIVE**：Nacos 环境未就绪（SKIPPED）。
+- **框架落点**：`Feat048AgentRegistrySpiNacosBlackboxTest`（agent_bus，FEAT-048 主档承载，本档联动引用）。
+
+#### FEAT-015.nacos-card-idempotent — 多实例并发发布卡片去重
+
+- **状态**：dependency-gated
+- **FEAT 依据**：需求 §2「Nacos 自注册模式」（多实例并发发布内容必须实例无关）+ FEAT-048 §4「多实例并发发布卡片」
+- **G**：同一 agent 的两个 runtime 实例并发启动并发布同 name + version 卡片
+- **W**：并发拉起两实例，等待注册完成，查询卡片与实例列表
+- **T**：卡片合并为一个逻辑事实（无重复卡片、无版本漂移）；两实例 endpoint 相互独立注册、互不覆盖——对应本档「多实例发布同一 Card → 一个逻辑候选」在 Nacos 模式的等价语义
+- **框架落点**：`Feat048AgentRegistrySpiNacosBlackboxTest`（F048-06）。
+
+#### FEAT-015.nacos-boundary — Nacos 模式结构化发现不越界
+
+- **状态**：dependency-gated
+- **FEAT 依据**：需求 §2 适用性说明（确定性结构化发现保留为 RDC 模式能力）+ FEAT-048 §5.2
+- **G**：Nacos 模式环境就绪
+- **W**：在 Nacos 模式下尝试按能力约束/标签/安全方案进行结构化过滤查询
+- **T**：Nacos 模式消费方发现只走统一发现面 SPI 的实例寻址语义（byAgentId/byServiceId）；结构化过滤不作为 Nacos 模式正向能力（显式能力不支持或不暴露），不越界
+- **框架落点**：`Feat048AgentRegistrySpiNacosBlackboxTest`（F048-07 联动）。
+
 ---
 
 ## 4. 框架落点汇总
@@ -394,6 +430,7 @@ DELETE FROM registry_source_state;
 | provider-empty | `ProviderConfigTest` | runnable |
 | provider-stale-source | `ProviderStaleSourceTest` | partial |
 | provider-source-revision | `ProviderSourceRevisionTest` | partial |
+| nacos-self-registration / nacos-card-idempotent / nacos-boundary | `Feat048AgentRegistrySpiNacosBlackboxTest`（FEAT-048 主档，agent_bus 包） | dependency-gated |
 | audit | — | deferred |
 
 包：`com.huawei.ascend.sit.cases.integration.registry_discovery`

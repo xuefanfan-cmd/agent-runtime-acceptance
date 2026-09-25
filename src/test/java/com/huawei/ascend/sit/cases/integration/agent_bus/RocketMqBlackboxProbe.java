@@ -41,7 +41,32 @@ public final class RocketMqBlackboxProbe implements AutoCloseable {
             consumer.start();
             consumers.add(consumer);
         }
-        Thread.sleep(2_000L);
+        awaitAssignmentAndSeekToEnd();
+    }
+
+    /**
+     * A fresh lite-pull consumer group with CONSUME_FROM_LAST_OFFSET does not reliably start at the
+     * queue end (observed replaying thousands of retained history messages before reaching live
+     * traffic). Poll until rebalance assigns every subscribed topic's queues, then seek every
+     * assigned queue to its end so the probe observes only messages published from now on.
+     */
+    private void awaitAssignmentAndSeekToEnd() throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        boolean allAssigned;
+        do {
+            allAssigned = true;
+            for (DefaultLitePullConsumer consumer : consumers) {
+                if (consumer.assignment().isEmpty()) {
+                    allAssigned = false;
+                    consumer.poll(250L);
+                }
+            }
+        } while (!allAssigned && System.nanoTime() < deadline);
+        for (DefaultLitePullConsumer consumer : consumers) {
+            for (org.apache.rocketmq.common.message.MessageQueue queue : consumer.assignment()) {
+                consumer.seekToEnd(queue);
+            }
+        }
     }
 
     public List<ObservedMessage> awaitAtLeast(int count, Predicate<ObservedMessage> predicate,
@@ -49,24 +74,56 @@ public final class RocketMqBlackboxProbe implements AutoCloseable {
         long deadline = System.nanoTime() + timeout.toNanos();
         List<ObservedMessage> matched = matching(predicate);
         while (System.nanoTime() < deadline && matched.size() < count) {
-            for (DefaultLitePullConsumer consumer : consumers) {
-                for (MessageExt message : consumer.poll(250)) {
-                    ObservedMessage observed = new ObservedMessage(message.getTopic(),
-                            message.getProperty("eventType"), message.getProperty("tenantId"),
-                            message.getProperty("messageId"), message.getProperty("correlationId"),
-                            message.getProperty("sourceServiceId"), message.getProperty("targetServiceId"),
-                            message.getProperty("payloadRef"), message.getProperty("inlinePayload"),
-                            new String(message.getBody(), StandardCharsets.UTF_8));
-                    this.observed.add(observed);
-                }
-            }
+            pollAll();
             matched = matching(predicate);
         }
         assertThat(matched).as("matching public Agent Bus messages").hasSizeGreaterThanOrEqualTo(count);
         return List.copyOf(matched);
     }
 
-    private List<ObservedMessage> matching(Predicate<ObservedMessage> predicate) {
+    /** Keep polling every subscribed topic for the given window so late duplicates become visible. */
+    public void drain(Duration duration) {
+        long deadline = System.nanoTime() + duration.toNanos();
+        while (System.nanoTime() < deadline) {
+            pollAll();
+        }
+    }
+
+    /**
+     * Poll until no new message arrives for the quiet window (late duplicates / broker redelivery
+     * become visible), bounded by the total cap. Lite-pull delivery is throttled per poll cycle,
+     * so a fixed window can assert before the consumer has caught up; quiet-based draining only
+     * makes the observation window longer, strengthening duplicate/loss detection.
+     */
+    public void drainUntilQuiet(Duration quiet, Duration maxTotal) {
+        long totalDeadline = System.nanoTime() + maxTotal.toNanos();
+        long quietDeadline = System.nanoTime() + quiet.toNanos();
+        while (System.nanoTime() < totalDeadline) {
+            int before = observed.size();
+            pollAll();
+            if (observed.size() > before) {
+                quietDeadline = System.nanoTime() + quiet.toNanos();
+            }
+            if (System.nanoTime() >= quietDeadline) {
+                return;
+            }
+        }
+    }
+
+    private void pollAll() {
+        for (DefaultLitePullConsumer consumer : consumers) {
+            for (MessageExt message : consumer.poll(250)) {
+                observed.add(new ObservedMessage(message.getTopic(),
+                        message.getProperty("eventType"), message.getProperty("tenantId"),
+                        message.getProperty("messageId"), message.getProperty("correlationId"),
+                        message.getProperty("sourceServiceId"), message.getProperty("targetServiceId"),
+                        message.getProperty("payloadRef"), message.getProperty("inlinePayload"),
+                        new String(message.getBody(), StandardCharsets.UTF_8)));
+            }
+        }
+    }
+
+    public List<ObservedMessage> matching(Predicate<ObservedMessage> predicate) {
         return observed.stream().filter(predicate).toList();
     }
 

@@ -29,8 +29,12 @@
         <!-- agent-runtime-java (com.openjiuwen) — white-box contract tests (e.g. Feat003) reach into
              SUT middleware classes. The aggregator `agent-runtime-java` is pom-only (no classes);
              `agent-service-app` is the jar that transitively brings spec + adapters-common +
-             adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY. -->
-        <agent-runtime-java.version>0.1.1</agent-runtime-java.version>
+             adapters-agentcore, covering all referenced com.openjiuwen.service.* packages. LOCAL-ONLY.
+             0.1.1 → 0.1.2 (2026-09-16): FEAT-036 edpa cases (WhitelistEchoAgent) require
+             AgentFailureDescriptor/AgentExecutionException, which only exist in 0.1.2+ (locally
+             installed from D:\code\test\agent-runtime-java, see build-logs/rtj-build-20260914-r2.log);
+             mirror-published 0.1.1 lacks both classes and fails test-compile. -->
+        <agent-runtime-java.version>0.1.2</agent-runtime-java.version>
         <agent-runtime-ext-java.version>0.1.1</agent-runtime-ext-java.version>
         <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>
@@ -77,6 +81,13 @@
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>mockwebserver</artifactId>
             <version>${okhttp.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- A2A gateway outbound integration: record requests and proxy SSE from the real Runtime. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.9.1</version>
             <scope>test</scope>
         </dependency>
 
@@ -240,9 +251,16 @@
                     <!-- 2026-08-28 临时排除：M2 里 com.openjiuwen:agent-client-sdk-for-jvm:0.1.0
                          jar 是空的（324 字节，只含 MANIFEST），com.openjiuwen.client.api.* 类无提供者。
                          排除全部 13 个依赖该 SDK 的 test 源码（agent_bus 全目录 + deepagent 3 个 + react_travel 4 个），
-                         让其他 45+ 个用例可编译可跑；SDK 修好后可移除本段。 -->
+                         让其他 45+ 个用例可编译可跑；SDK 修好后可移除本段。
+                         2026-09-16：agent-client-sdk-for-jvm:0.1.1（150 files/128 classes）已可用，
+                         **/agent_bus/** 整目录排除收窄为下列 5 个仍引用旧版 RDC/SDK 内部 API 的陈旧
+                         白盒/契约用例，其余 agent_bus 用例（含 FEAT-011/012/013/014 黑盒）恢复编译。 -->
                     <testExcludes>
-                        <exclude>**/agent_bus/**</exclude>
+                        <exclude>**/agent_bus/ClientGatewayBusA2aRouteEndToEndIT.java</exclude>
+                        <exclude>**/agent_bus/ClientToolRuntimeBlackboxTest.java</exclude>
+                        <exclude>**/agent_bus/LocalToolBlackboxTest.java</exclude>
+                        <exclude>**/agent_bus/RegistryRouteQueryContractTest.java</exclude>
+                        <exclude>**/agent_bus/StandardAgentClientBlackboxTest.java</exclude>
                         <exclude>**/deepagent_deepresearch/MultiHopCallTreeBlackboxTest.java</exclude>
                         <exclude>**/deepagent_deepresearch/RuntimeProducerCallTreeFixture.java</exclude>
                         <exclude>**/deepagent_deepresearch/SkillHubDeepAgentBlackboxTest.java</exclude>

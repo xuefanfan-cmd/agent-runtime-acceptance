@@ -151,3 +151,25 @@ Gateway/Agent/Bus 能启动不单独设用例；正常 BUS 调用已覆盖就绪
 ```
 
 测试结束关闭 Gateway/Event Bus/Agent/RDC、容器和观察器，恢复故障链路并确认端口/临时目录释放。退出标准：730 能力全部通过或明确门禁，长期 MUST 均有 deferred 处置；contract 与 blackbox 结果分开统计，投影重放不得冒充真实 Agent 全链。
+
+---
+
+## 6. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-012 需求文档 PR !172 更新（2026-09-11）：routeHandle 与选路候选来源经统一注册中心 SPI（FEAT-048）提供，RDC/Nacos 实现可替换；事件信封契约不变。本节验证"Nacos 实现下 BUS 路径信封与选路语义不变"；注册/发现契约归 FEAT-048 主档。
+
+### 6.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F012-N01 | Nacos 模式 bus 选路与信封不变 | Gateway BUS 路径以 `agent-registry.type=nacos` 运行；callee runtime 已自注册（`serviceId == agentId`） | 经 Gateway BUS 路径发起真实 travel 调用 | 事件信封结构不变；`targetServiceId` 取自发现候选 `serviceId`（等于 agentId，与消费侧服务标识配置同源）；callee 侧投递过滤与校验命中，调用完成；client 响应不泄漏 endpoint/routeHandle/BUS correlationId | dependency-gated |
+| F012-N02 | Nacos 模式治理失败零入队等价 | 同上；构造无候选 agentId、Nacos 不可达 | 经 Gateway BUS 路径发对应请求 | 治理/选路失败不入队语义与 RDC 基线等价；Nacos 不可用时事件审计零增量、无下游调用；错误正文无物理拓扑与明文凭据 | dependency-gated |
+
+### 6.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F012-N01..N02
+```
+
+门禁：Nacos 服务端与 Nacos 模式 Gateway/runtime/Event Bus 正式制品就绪前 SKIPPED；服务标识一致性不变量的正向证据以 bus 链路实际投递命中为准。

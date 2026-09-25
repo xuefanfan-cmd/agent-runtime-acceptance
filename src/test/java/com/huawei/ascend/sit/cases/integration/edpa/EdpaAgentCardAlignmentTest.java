@@ -91,4 +91,64 @@ class EdpaAgentCardAlignmentTest extends BaseManagedStackTest {
                 + " streaming=" + card.capabilities().streaming()
                 + " pushNotifications=" + card.capabilities().pushNotifications());
     }
+
+    /**
+     * ⚠️ 2026-09-04 新增(承接 SA 评审问题 3):被委托方 streaming 能力前置探测。
+     *
+     * <p>SSE 主线用例(P3/P4/C1~C3/S1/R1)的硬 1/硬 2 依赖被委托方产生流式 `agentEvent`;
+     * 若被委托方 Card `capabilities.streaming=false`,硬判据会以"wire 最小结构缺失"形态
+     * 误报为契约违约(实为**前置依赖不满足**)。
+     *
+     * <p>本用例只探 Agent Card 声明面(生产实测视角:EDPA 也只能通过 Card 判断远端能力,
+     * `remote-agents[].streaming` 是 EDPA 本地策略,不越界测别人的本地配置)。任一被委托方
+     * Card 声明 `capabilities.streaming=false` → 判 INCONCLUSIVE(前置依赖不满足,与
+     * `EDP_AGENT_MODEL_API_KEY==null` / 版本指纹缺失同层)。
+     *
+     * <p>由于 A1 的 stack 只起 edpa-engine 单节点,本用例通过起 2 个 {@link MockRemoteAgentServer}
+     * 分别声明 `streaming=true`(默认)承担"最小 downstream streaming Card 探测"的验证 —— 相当于
+     * 一次 mock 自检(Mock Card JSON 里硬编码 `capabilities.streaming=true`)。
+     */
+    @Test
+    @DisplayName("FEAT-028.A1.downstream-streaming: 被委托方 Card capabilities.streaming 前置探测(mock 自检)")
+    void downstreamCardStreamingPreflight() throws Exception {
+        try (com.huawei.ascend.sit.mock.MockRemoteAgentServer searchMock =
+                     com.huawei.ascend.sit.mock.MockRemoteAgentServer.builder()
+                             .name("search-mock").start();
+             com.huawei.ascend.sit.mock.MockRemoteAgentServer verifyMock =
+                     com.huawei.ascend.sit.mock.MockRemoteAgentServer.builder()
+                             .name("verify-mock").start()) {
+
+            // Mock 侧 Card JSON 里 capabilities.streaming 硬编码为 true(见
+            // MockRemoteAgentServer.buildCardJson):这条 mock 自检等价于验证
+            // "下游 Card 探测机制在有 streaming 声明的 Mock 上能正确读取"。
+            // 生产环境等价断言 = 真实下游 Agent Card 声明 capabilities.streaming=true。
+            java.net.URI searchCardUri = java.net.URI.create(
+                    searchMock.baseUrl() + "/.well-known/agent-card.json");
+            java.net.URI verifyCardUri = java.net.URI.create(
+                    verifyMock.baseUrl() + "/.well-known/agent-card.json");
+
+            java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+            String searchCardJson = http.send(
+                    java.net.http.HttpRequest.newBuilder(searchCardUri).GET().build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+            String verifyCardJson = http.send(
+                    java.net.http.HttpRequest.newBuilder(verifyCardUri).GET().build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+
+            LOG.info("[a1-downstream] searchMock streaming assertion via Card JSON;"
+                    + " json chars=" + searchCardJson.length()
+                    + " verifyMock chars=" + verifyCardJson.length());
+
+            // 两个 Mock 的 Card 都应声明 capabilities.streaming=true(硬编码事实)
+            assertThat(searchCardJson)
+                    .as("[a1-downstream] search Mock Card 应声明 capabilities.streaming=true。"
+                            + "生产环境本条 = 真实 search-agent Card 声明 streaming=true;"
+                            + "任一被委托方声明 streaming=false → SSE 主线用例判 INCONCLUSIVE")
+                    .contains("\"streaming\":true");
+            assertThat(verifyCardJson)
+                    .as("[a1-downstream] verify Mock Card 应声明 capabilities.streaming=true。"
+                            + "生产环境本条 = 真实 verify-agent Card 声明 streaming=true")
+                    .contains("\"streaming\":true");
+        }
+    }
 }

@@ -1,0 +1,8 @@
+planrule:
+  role: Runtime code routing probe
+  description: Return the deterministic non-LLM runtime probe response.
+  scope:
+    allowed: Echo the hosted Agent identity, workspace, and request inputs.
+    denied: Invoke a model or tool.
+  supplementary_prompt:
+    additional_prompt: "This scenario runs with task loop disabled for deterministic routing verification."

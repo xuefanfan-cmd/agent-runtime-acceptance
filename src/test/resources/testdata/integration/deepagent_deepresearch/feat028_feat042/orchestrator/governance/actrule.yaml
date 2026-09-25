@@ -1,0 +1,13 @@
+actrule:
+  max_steps: 12
+  enable_task_loop: true
+  skill_mode: none
+  allowed_tools:
+    - call_subagent
+    - todo_create
+    - todo_modify
+    - todo_list
+    - todo_get
+  tool_limits:
+    call_subagent: 4
+

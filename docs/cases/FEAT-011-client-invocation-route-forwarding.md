@@ -235,3 +235,26 @@ ReAct Gateway E2E 已实际执行 PASS 1/1（92.995 秒），DeepAgent Gateway E
 均为 0 skipped/failure/error；这些结果不替代 owner TTL 和跨租户等尚未执行场景。退出标准：Gateway 公共合同、
 ReAct/DeepAgent 风险 E2E 与最小受影响回归通过或有明确 INCONCLUSIVE/blocked 证据；
 不以直连 Runtime、内部表、开发单测或 fake Gateway 结果宣称 FEAT-011 通过。
+
+---
+
+## 7. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-011 需求文档 PR !172 更新（2026-09-11）：Gateway 的服务发现与 routeHandle 解析依赖统一注册中心 SPI（FEAT-048），RDC / Nacos 实现可替换；实现切换不改变本特性的路由决策、失败语义与对外行为。本节只验证"Nacos 实现下 Gateway 语义不变 + 拓扑不泄漏"；注册中心实现自身的注册/发现/解析契约归 FEAT-048 主档。
+
+### 7.1 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F011-N01 | Nacos 模式直连路由等价 | Gateway 以 `agent-registry.type=nacos` 运行；travel agent 已自注册 Nacos | 经 Gateway facade 发显式/默认 agentId 的 SendMessage 与 SendStreamingMessage | 路由决策、同步/流式响应、SSE 桥接与拓扑隐藏行为与 §4 `direct.create-and-stream` RDC 基线等价；client 响应不含 endpoint、routeHandle、实例地址；routeHandle 由 Nacos 实现解析但对测试保持不透明 | dependency-gated |
+| F011-N02 | Nacos 模式治理与选路失败等价 | 同上；构造无候选 agentId、Nacos 不可达、畸形 routeHandle | 经 Gateway 发对应请求 | 失败语义与 §4 `direct.governance-and-routing-failure` RDC 基线等价（route_not_found / service_unavailable 等确定错误，不伪造 Task）；Nacos 不可用时不产生下游 Agent 调用；错误正文无物理拓扑与明文凭据 | dependency-gated |
+| F011-N03 | 实现切换回滚零行为变化 | 同环境先 Nacos 后切回 rdc（或反向），travel 栈不变 | 两模式下分别复跑 Gateway 重连合同与 E2E 主链路 | Gateway 对外行为（路由、粘滞续跑、GetTask/SubscribeToTask、SSE Bridge）两模式等价；routeHandle 跨实现不互通，切换后旧 handle 相关续跑按既定失败语义处理，不产生错误实例命中 | dependency-gated |
+
+### 7.2 框架落点与门禁
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F011-N01..N03（与 FEAT-012/016/017 联动共用）
+```
+
+门禁：Nacos 3.x 服务端（AI 开启）与携带 Nacos 实现的 Gateway 正式制品就绪前，本节用例 SKIPPED，不计 PASS；F011-N03 的切换执行须按迁移方案一次性整体切换，不做灰度双跑。

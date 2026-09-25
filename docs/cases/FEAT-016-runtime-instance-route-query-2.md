@@ -667,3 +667,28 @@ src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
 ---
 
 > **红线**：本设计验收证据必须来自上述用例的独立执行。直查 RDC 不能替代 agent-runtime 代理投影（TC-18）；MVP 显式失败不能替代中心降级（TC-17）；预查询或 endpoint 命中不能替代 Gateway 实际选路消费（TC-15）。任何分支不满足 Oracle 即记为 Bug，并在修复后同步翻转断言。
+
+---
+
+## 15. Nacos 实现增量场景（FEAT-048 联动，dependency-gated）
+
+> 依据 FEAT-016 需求文档 PR !172 更新（2026-09-16）：已知目标路由查询经统一注册中心 SPI（FEAT-048）向 gateway 与 agent-runtime 提供，RDC 与 Nacos 为首批两个实现，按 `agent-registry.type` 切换；实现切换不改变本特性查询语义、租户隔离与脱敏要求。本节仅覆盖 Nacos 实现特有差异与不变量；实现切换等价回归（F048-11）与主矩阵见 `FEAT-048-agent-registry-spi-nacos.md`。RDC 模式既有 TC-01..TC-18 语义不变，作为切换回归基线复跑。
+
+### 15.1 Nacos 增量用例
+
+| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
+|---|---|---|---|---|---|
+| F016-N01 | byAgentId/byServiceId 双目标一致 | Nacos 模式下同一 agentId 两实例自注册 | 分别按 agentId 与 serviceId 查询候选 | 两目标形态返回同一实例集合；候选 `serviceId == agentId`（Nacos 一元标识收敛）；候选含契约版本，不含物理 endpoint/routeKey 明文 | dependency-gated |
+| F016-N02 | capability 目标能力不支持 | Nacos 模式消费方就绪 | 以 `tenantId + capability` 查询 | 返回明确的能力不支持语义（capability 为可选目标形态）；不静默降级为其他查询、不返回空候选冒充"无匹配"；错误可与"无可用候选"区分（对齐 TC-08 反枚举：不泄露存在性） | dependency-gated |
+| F016-N03 | 二值健康候选收敛 | 同一 agentId 一实例在线、一实例已崩溃 | 轮询候选集合 | 不健康实例直接从候选消失，无 ONLINE/DEGRADED 中间态表达（与 TC-03 RDC 语义的差异记录性验证）；候选中实例均以可用语义表达 | dependency-gated |
+| F016-N04 | 版本字段与租户隔离保持 | Nacos 模式双租户、不同契约版本实例注册 | 查询版本字段；跨租户查询与解析 | contractVersion/capabilityVersion 原样可见（对齐 TC-04）；跨租户查询 `200 []` 不泄露存在性、跨租户解析拒绝（对齐 TC-07）；脱敏扫描不变（对齐 TC-09） | dependency-gated |
+| F016-N05 | routeHandle 实现差异与不透明性 | Nacos 模式取得合法 handle；另持有 RDC 模式旧 handle | 以 Nacos 模式消费方解析 Nacos handle 与 RDC 旧 handle | Nacos handle 为自描述引用（租户参与编码、本地解析、租户比对失败按引用非法处理，对齐 TC-11）；RDC 旧 handle 在 Nacos 模式下按引用非法失败（跨实现引用不互通）；测试不 Base64 解码、不推断编码格式（对齐 TC-06） | dependency-gated |
+
+### 15.2 框架落点
+
+```text
+src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
+  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F016-N01..N05（与 FEAT-011/012/017 联动共用）
+```
+
+门禁：Nacos 3.x 服务端（AI 开启）与 Nacos 模式 gateway/runtime 正式制品就绪前，本节全部用例 SKIPPED，不计 PASS；`agent-registry.*` 键名与错误码待 FEAT-048 L2 合入后锁定。

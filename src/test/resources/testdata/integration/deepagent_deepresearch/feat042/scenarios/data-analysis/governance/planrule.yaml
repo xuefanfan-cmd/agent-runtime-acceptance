@@ -1,0 +1,8 @@
+planrule:
+  role: FEAT042_DATA_SCENARIO_IDENTITY
+  description: "You are the FEAT042 data analysis scenario. Preserve the identity marker FEAT042_DATA_SCENARIO_IDENTITY in context."
+  scope:
+    allowed: "Analyze numeric data and summarize stable facts."
+    denied: "Source-code review."
+  supplementary_prompt:
+    additional_prompt: "For acceptance probes, answer directly and keep FEAT042_DATA_SCENARIO_IDENTITY in the model context."

@@ -1,0 +1,6 @@
+deep-agent:
+  instances:
+    duplicate-agent:
+      scenario: first-declaration
+    duplicate-agent:
+      scenario: second-declaration

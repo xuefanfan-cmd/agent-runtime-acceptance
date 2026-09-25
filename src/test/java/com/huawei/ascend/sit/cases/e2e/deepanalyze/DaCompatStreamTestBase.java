@@ -29,6 +29,7 @@ abstract class DaCompatStreamTestBase extends BaseManagedStackTest {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     agent.property("deepanalyze.compat.heartbeat-ms", "500")
                             // 运行时 A2A TaskStore 与 core checkpointer 走 Redis；默认主机名 "redis" 在本地解析不到。
                             .serviceBinding("redis", "REDIS_HOST", "{{host}}")

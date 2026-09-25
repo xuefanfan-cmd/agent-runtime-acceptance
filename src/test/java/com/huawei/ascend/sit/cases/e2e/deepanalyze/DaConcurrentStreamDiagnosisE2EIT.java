@@ -48,6 +48,7 @@ class DaConcurrentStreamDiagnosisE2EIT extends DaCompatStreamTestBase {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     agent.property("deepanalyze.compat.heartbeat-ms", "500")
                             // DEBUG：抓失败请求自身的内层异常（此前只有收尾期中断堆栈，不足以定根因）
                             .property("logging.level.com.openjiuwen.da", "DEBUG")

@@ -52,6 +52,7 @@ class DaCardTruthfulnessE2EIT extends BaseManagedStackTest {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     // 调用半边需要真实任务跑通：运行时 TaskStore/checkpointer 走 Redis，由栈自管拉起。
                     agent.serviceBinding("redis", "REDIS_HOST", "{{host}}")
                             .serviceBinding("redis", "REDIS_PORT", "{{port}}");

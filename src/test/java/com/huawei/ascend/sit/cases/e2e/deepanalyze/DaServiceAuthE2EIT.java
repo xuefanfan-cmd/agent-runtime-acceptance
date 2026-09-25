@@ -44,7 +44,7 @@ class DaServiceAuthE2EIT extends BaseManagedStackTest {
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
-        return SutStack.builder(config).agent(AGENT, a -> a
+        return SutStack.builder(config).agent(AGENT, a -> DaModelEnvironment.bind(a)
                 .property("deepanalyze.auth.enabled", "true")
                 .property("deepanalyze.auth.engine-secret", TEST_SECRET));
     }

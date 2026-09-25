@@ -52,6 +52,7 @@ class DaMinimalTaskE2EIT extends BaseManagedStackTest {
                 .streaming(false)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     // 运行时 A2A TaskStore 与 core checkpointer 走 Redis（application.yml 的
                     // ${REDIS_HOST:redis} / ${REDIS_PORT:6379} 默认值在本地解析不到 "redis" 主机）。
                     // 引用 backing-services 里的 redis 后由栈自管拉起容器，并把动态 host/port

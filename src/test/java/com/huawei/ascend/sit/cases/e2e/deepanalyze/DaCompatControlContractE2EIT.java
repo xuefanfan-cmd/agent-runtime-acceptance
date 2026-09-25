@@ -47,7 +47,7 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
-        return SutStack.builder(config).agent(AGENT);
+        return SutStack.builder(config).agent(AGENT, agent -> DaModelEnvironment.bind(agent));
     }
 
     private void initClient() {

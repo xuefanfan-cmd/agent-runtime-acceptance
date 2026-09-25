@@ -82,6 +82,7 @@ class DaSharedPgReadE2EIT extends BaseManagedStackTest {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     agent.property("deepanalyze.data.pg.enabled", "true")
                             .property("deepanalyze.data.pg.username", PG_USER)
                             .property("deepanalyze.data.pg.password", PG_PASSWORD)

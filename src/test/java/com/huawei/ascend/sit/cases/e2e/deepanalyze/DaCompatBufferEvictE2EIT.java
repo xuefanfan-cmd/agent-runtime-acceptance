@@ -49,6 +49,7 @@ class DaCompatBufferEvictE2EIT extends DaCompatStreamTestBase {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     agent.property("deepanalyze.compat.heartbeat-ms", "500")
                             .property("deepanalyze.compat.max-events-per-task", String.valueOf(SMALL_CAP))
                             .serviceBinding("redis", "REDIS_HOST", "{{host}}")

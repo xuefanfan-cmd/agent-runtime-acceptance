@@ -46,6 +46,9 @@ class DaFaultInjectionE2EIT extends DaCompatStreamTestBase {
         return com.huawei.ascend.sit.lifecycle.SutStack.builder(config)
                 .streaming(true)
                 .agent(AGENT, agent -> {
+                    // 黑洞模型用例：key 用占位值即可（调用必然失败），但宿主启动校验要求非空——
+                    // 空 key 会被全局 -D 盖掉，故此处同样以 -- 参数注入。
+                    DaModelEnvironment.bindModelKey(agent, System.getenv().getOrDefault("LLM_API_KEY", "unused"));
                     agent.env("LLM_API_KEY", System.getenv().getOrDefault("LLM_API_KEY", "unused"))
                             .env("DA_MODEL_BASE_URL", BLACKHOLE_BASE_URL)
                             .env("DA_MODEL_NAME", System.getenv().getOrDefault("LLM_MODEL", "unused"))

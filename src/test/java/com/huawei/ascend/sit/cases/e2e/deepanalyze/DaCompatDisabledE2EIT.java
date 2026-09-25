@@ -49,6 +49,7 @@ class DaCompatDisabledE2EIT extends BaseManagedStackTest {
                 .streaming(false)
                 .agent(AGENT, agent -> {
                     passThrough(agent, "LLM_API_KEY", "LLM_API_KEY");
+                    DaModelEnvironment.bindModelKey(agent);
                     passThrough(agent, "DA_MODEL_BASE_URL", "LLM_API_BASE");
                     passThrough(agent, "DA_MODEL_NAME", "LLM_MODEL");
                     passThrough(agent, "DA_MODEL_PROVIDER", "LLM_PROVIDER");

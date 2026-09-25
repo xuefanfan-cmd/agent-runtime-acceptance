@@ -64,6 +64,7 @@ class DaConcurrentSiblingTerminalE2EIT extends DaCompatStreamTestBase {
                 .streaming(true)
                 .agent(AGENT, agent -> {
                     bindModelEnvironment(agent);
+                    DaModelEnvironment.bindModelKey(agent);
                     agent.property("deepanalyze.compat.heartbeat-ms", "500")
                             .property("logging.level.com.openjiuwen.da", "DEBUG")
                             .serviceBinding("redis", "REDIS_HOST", "{{host}}")

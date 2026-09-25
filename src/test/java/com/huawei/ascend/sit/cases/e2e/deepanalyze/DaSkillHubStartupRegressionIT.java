@@ -46,7 +46,7 @@ class DaSkillHubStartupRegressionIT extends BaseManagedStackTest {
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
         // 打开既有启动期拉取开关：若新增的运行期访问扩展与此链路冲突，宿主会在启动阶段暴露。
-        return SutStack.builder(config).agent(AGENT, a -> a
+        return SutStack.builder(config).agent(AGENT, a -> DaModelEnvironment.bind(a)
                 .property("openjiuwen.service.middleware.skillhub.enabled", "true"));
     }
 

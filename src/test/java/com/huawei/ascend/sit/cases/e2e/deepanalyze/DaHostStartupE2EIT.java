@@ -52,7 +52,7 @@ class DaHostStartupE2EIT extends BaseManagedStackTest {
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
         // 单 Agent 宿主，无下游：DA 是直连 HTTP 部署形态（设计 §2 决策记录）。
-        return SutStack.builder(config).agent(AGENT);
+        return SutStack.builder(config).agent(AGENT, agent -> DaModelEnvironment.bind(agent));
     }
 
     @Test

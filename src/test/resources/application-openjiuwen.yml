@@ -120,6 +120,16 @@ sut:
           deepanalyze.compat.enabled: "true"
           deepanalyze.compat.max-events-per-task: "5000"
           deepanalyze.auth.enabled: "false"
+    # FEAT-038/039 candidate-bound SIT fixtures. The matrix runner currently selects
+    # the openjiuwen profile for all managed black-box test groups.
+    tool-scripts-edpa:
+      group: com.customer.acceptance
+      artifact: tool-scripts-edpa-sit
+      version: 1.0.0
+    tool-scripts-edpa-malformed-provider:
+      group: com.customer.acceptance
+      artifact: tool-scripts-edpa-malformed-provider-sit
+      version: 1.0.0
     registry-center:
       group: com.openjiuwen
       artifact: registry-discovery-center

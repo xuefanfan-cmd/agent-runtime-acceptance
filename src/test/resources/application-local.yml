@@ -111,6 +111,16 @@ sut:
       group: com.openjiuwen.example
       artifact: edp-agent-engine
       version: 0.1.0
+    # FEAT-038/039 candidate-bound SIT fixtures. These are standalone test assets and are
+    # intentionally not part of the agent-solution product reactor.
+    tool-scripts-edpa:
+      group: com.customer.acceptance
+      artifact: tool-scripts-edpa-sit
+      version: 1.0.0
+    tool-scripts-edpa-malformed-provider:
+      group: com.customer.acceptance
+      artifact: tool-scripts-edpa-malformed-provider-sit
+      version: 1.0.0
   # JVM -D system properties injected into EVERY launched agent (rendered before -jar).
   # Java/JVM convention: proxy + no-proxy go here as standard JVM props; Spring also resolves
   # the agents' ${LLM_*} from these, so LLM may be supplied via -D here too.

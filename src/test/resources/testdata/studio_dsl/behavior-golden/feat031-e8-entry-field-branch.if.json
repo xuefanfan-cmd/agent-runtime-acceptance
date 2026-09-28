@@ -1,0 +1,41 @@
+{
+  "scenario": "feat031-e8-entry-field-branch / loginFlag=0 → if 边",
+  "invocation": {
+    "text": "hello",
+    "metadata": {
+      "inputs": {
+        "loginFlag": "0"
+      }
+    }
+  },
+  "expectedTrace": [
+    "node_start",
+    "node_branch",
+    "node_llm_if",
+    "node_agg",
+    "node_end"
+  ],
+  "expectedMarker": "PATH_MARKER=IF",
+  "forbiddenMarker": "PATH_MARKER=DEFAULT",
+  "expectedMarkers": [
+    "PATH_MARKER=IF"
+  ],
+  "expectationSource": "IR 语义（判断条件 (${node_start.userFields.loginFlag} != '1') 在 loginFlag=0 时为 true）；Python 侧行为 golden 待 studio-runtime 通道可用后补齐（见同目录 provenance.json）"
+}
+*** Add File: 02-Code/02_ForkCode/agent-runtime-acceptance-main/src/test/resources/testdata/studio_dsl/behavior-golden/provenance.json
+{
+  "schemaVersion": "1",
+  "generatedAt": "2026-09-20",
+  "purpose": "FEAT-031 §4.2「运行保真对齐」要求的『同输入下的行为对齐（golden 对比）手段』：本目录保存行为 golden（走哪些节点），由 StudioDslBehaviorAlignment 用例比对。",
+  "javaSide": {
+    "traceSource": "A2A 事件流中的节点帧（payload.node_id），由 StudioDslBehaviorTraceFixture#nodeTrace 提取",
+    "whyNotNodeIoLogs": "IR 横切 ioLogLevel 无消费者（本仓 #302），节点 I/O 日志不可用；节点帧是当前唯一稳定的行为观测面"
+  },
+  "pythonSide": {
+    "status": "NOT_RUN",
+    "reason": "本机无 Studio Python runtime 通道；现有 structural golden（StudioDslGoldenAndSecurityIT / RT-031-04-16）亦为 2026-09-12 由 studio-runtime 镜像生成",
+    "howToGenerate": "沿用 StudioPythonGoldenFixture 的通道：-Dstudio.python.golden.executable=<python> -Dstudio.python.golden.script=<生成脚本> --ir <IR> --input <同输入> --out <behavior-golden.json>",
+    "followUp": "通道可用后按同一 scenario 名生成 Python 侧行为 golden，并与本目录的 expectedTrace 对比；不一致时以 Python 侧为准并同步修订期望"
+  },
+  "currentExpectationSource": "IR 语义（判断条件与连线），非观测值"
+}

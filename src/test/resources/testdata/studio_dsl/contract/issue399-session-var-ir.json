@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "0.6.0",
+  "workflowId": "wf-issue399-session-var",
+  "workflowName": "issue399-session-var",
+  "workflowVersion": "0.0.1",
+  "configs": {
+    "ioLogLevel": "INFO",
+    "stream": true
+  },
+  "description": "ISSUE399 / PR707：Start 声明会话变量 gvar（storage_method=assignment + aging_level=session）；SetVariable 写入 __CANARY__，下游 Message 节点在同一次执行内读回。",
+  "components": [
+    {
+      "id": "node_start",
+      "type": "jiuwen.start",
+      "configs": {
+        "systemFields": {
+          "inputs": [
+            {
+              "sourceType": "input",
+              "description": "user input",
+              "id": "query",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputs": [
+            {
+              "sourceType": "input",
+              "description": "user input",
+              "id": "query",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        "userFields": {"inputs": [], "outputs": []},
+        "preDefinedFields": {
+          "inputs": [
+            {
+              "id": "gvar",
+              "type": "string",
+              "default_value": "D1",
+              "storage_method": "assignment",
+              "aging_level": "session"
+            }
+          ],
+          "outputs": []
+        }
+      },
+      "inputs": {
+        "systemFields": {"query": ""},
+        "userFields": {},
+        "memory": {"gvar": ""}
+      },
+      "outputs": {
+        "systemFields": {"query": ""},
+        "userFields": {},
+        "memory": {"gvar": ""}
+      }
+    },
+    {
+      "id": "node_echo",
+      "type": "jiuwen.message",
+      "configs": {
+        "template": "{{gvar}}",
+        "userFields": {
+          "inputs": [
+            {
+              "sourceType": "ref",
+              "description": "会话变量读回",
+              "id": "gvar",
+              "type": "string",
+              "value": "${node_start.memory.gvar}",
+              "required": true
+            }
+          ],
+          "outputs": []
+        },
+        "systemFields": {"inputs": [], "outputs": []}
+      },
+      "inputs": {
+        "userFields": {"gvar": "${node_start.memory.gvar}"}
+      },
+      "outputs": {"result": ""}
+    },
+    {
+      "id": "node_set_variable",
+      "type": "jiuwen.setVariable",
+      "configs": {
+        "settings": [
+          {
+            "left": {"type": "string", "value": "${node_start.memory.gvar}"},
+            "right": {"type": "string", "value": "__CANARY__", "operator": null}
+          }
+        ],
+        "userFields": {
+          "inputs": [
+            {
+              "sourceType": "ref",
+              "description": "会话变量写入",
+              "id": "gvar",
+              "type": "string",
+              "value": "${node_start.memory.gvar}",
+              "required": true
+            }
+          ],
+          "outputs": []
+        },
+        "systemFields": {"inputs": [], "outputs": []}
+      },
+      "inputs": {
+        "userFields": {"gvar": "${node_start.memory.gvar}"}
+      },
+      "outputs": {"userFields": {}}
+    },
+    {
+      "id": "node_end",
+      "type": "jiuwen.end",
+      "configs": {
+        "responseMode": "directResponse",
+        "responseTemplate": "{{result}}",
+        "userFields": {
+          "inputs": [
+            {
+              "sourceType": "ref",
+              "description": "final result",
+              "id": "result",
+              "type": "string",
+              "value": "${node_echo.result}",
+              "required": false
+            }
+          ],
+          "outputs": []
+        },
+        "systemFields": {"inputs": [], "outputs": []},
+        "isStreamOut": true
+      },
+      "inputs": {
+        "userFields": {"result": "${node_echo.result}"}
+      },
+      "outputs": {"responseContent": ""}
+    }
+  ],
+  "connections": [
+    {"source": {"componentId": "node_start"}, "target": {"componentId": "node_set_variable"}},
+    {"source": {"componentId": "node_set_variable"}, "target": {"componentId": "node_echo"}},
+    {"source": {"componentId": "node_echo"}, "target": {"componentId": "node_end"}}
+  ],
+  "metadata": {}
+}

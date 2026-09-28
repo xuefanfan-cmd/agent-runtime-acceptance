@@ -1,0 +1,9 @@
+{
+  "scenario": "feat031-e10-upstream-field-branch / 上游产出 != 比较值 → 条件为 true → if 边（镜像用例）",
+  "expectedMarkers": [
+    "UPSTREAM_MARKER",
+    "PATH_MARKER=IF"
+  ],
+  "expectationSource": "IR 语义（条件 (${node_up.userFields.raw_output} != 'UPSTREAM_CANARY')；受控模型返回 NOT_THE_CANARY 时为 true）",
+  "note": "观测面＝受控端点请求序列（上游标记 + 命中分支的下游标记）；本条给镜像证据（缺陷下同样走 if，故当前应 PASS）"
+}

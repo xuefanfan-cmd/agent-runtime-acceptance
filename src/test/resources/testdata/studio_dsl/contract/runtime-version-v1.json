@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "0.6.0",
+  "workflowId": "wf-versioned",
+  "workflowName": "versioned runtime contract v1",
+  "workflowVersion": "1",
+  "configs": {"stream": true},
+  "components": [
+    {"id": "node_start", "type": "jiuwen.start", "configs": {"systemFields": {"inputs": [], "outputs": []}, "userFields": {"inputs": [], "outputs": []}}, "inputs": {}, "outputs": {}},
+    {"id": "node_message", "type": "jiuwen.message", "configs": {"template": "rt-031-04-15-offline-canary rt-031-04-22-v1-canary", "systemFields": {"inputs": [], "outputs": []}, "userFields": {"inputs": [], "outputs": []}}, "inputs": {}, "outputs": {"result": ""}},
+    {"id": "node_end", "type": "jiuwen.end", "configs": {"responseMode": "directResponse", "responseTemplate": "{{result}}", "isStreamOut": true, "systemFields": {"inputs": [], "outputs": []}, "userFields": {"inputs": [{"sourceType": "ref", "id": "result", "type": "string", "value": "${node_message.result}", "required": true}], "outputs": []}}, "inputs": {"userFields": {"result": "${node_message.result}"}}, "outputs": {"responseContent": ""}}
+  ],
+  "connections": [
+    {"source": {"componentId": "node_start"}, "target": {"componentId": "node_message"}},
+    {"source": {"componentId": "node_message"}, "target": {"componentId": "node_end"}}
+  ],
+  "metadata": {"releaseKey": "workflow/ir/wf-versioned/v1.json"}
+}

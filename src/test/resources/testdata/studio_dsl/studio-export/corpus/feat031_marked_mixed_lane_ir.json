@@ -1,0 +1,127 @@
+{
+  "workflowId": "feat031-marked-mixed-lane-0001",
+  "schemaVersion": "0.6.0",
+  "workflowName": "feat031-marked-mixed-lane",
+  "description": "FEAT-031 混泳道 sentinel 装配契约语料：start 带 parallelBranchId 扇出两条泳道，泳道 left 内同时挂流式起点 llm 与非流式终点 code，均汇入 end；来源=产品仓 ir_fixtures/test_mixed_lane_stream_ir.json",
+  "components": [
+    {
+      "id": "fork",
+      "type": "jiuwen.start",
+      "configs": {},
+      "inputs": {},
+      "outputs": {}
+    },
+    {
+      "id": "left",
+      "type": "jiuwen.message",
+      "configs": {
+        "template": "L"
+      },
+      "inputs": {},
+      "outputs": {}
+    },
+    {
+      "id": "right",
+      "type": "jiuwen.message",
+      "configs": {
+        "template": "R"
+      },
+      "inputs": {},
+      "outputs": {}
+    },
+    {
+      "id": "llm",
+      "type": "jiuwen.LLMComponent",
+      "configs": {
+        "stream": true,
+        "model": {
+          "modelName": "m1",
+          "modelType": "openai"
+        }
+      },
+      "inputs": {},
+      "outputs": {}
+    },
+    {
+      "id": "code",
+      "type": "jiuwen.code",
+      "configs": {
+        "code": "def main(args): return {}"
+      },
+      "inputs": {},
+      "outputs": {}
+    },
+    {
+      "id": "join",
+      "type": "jiuwen.end",
+      "configs": {
+        "isStreamOut": true
+      },
+      "inputs": {},
+      "outputs": {}
+    }
+  ],
+  "connections": [
+    {
+      "source": {
+        "componentId": "fork",
+        "parallelBranchId": "p1"
+      },
+      "target": {
+        "componentId": "left"
+      }
+    },
+    {
+      "source": {
+        "componentId": "fork",
+        "parallelBranchId": "p1"
+      },
+      "target": {
+        "componentId": "right"
+      }
+    },
+    {
+      "source": {
+        "componentId": "left"
+      },
+      "target": {
+        "componentId": "llm"
+      }
+    },
+    {
+      "source": {
+        "componentId": "left"
+      },
+      "target": {
+        "componentId": "code"
+      }
+    },
+    {
+      "source": {
+        "componentId": "llm"
+      },
+      "target": {
+        "componentId": "join",
+        "parallelBranchId": "p1"
+      }
+    },
+    {
+      "source": {
+        "componentId": "code"
+      },
+      "target": {
+        "componentId": "join",
+        "parallelBranchId": "p1"
+      }
+    },
+    {
+      "source": {
+        "componentId": "right"
+      },
+      "target": {
+        "componentId": "join",
+        "parallelBranchId": "p1"
+      }
+    }
+  ]
+}

@@ -39,6 +39,10 @@
         <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>
         <rocketmq-client.version>5.1.4</rocketmq-client.version>
+        <!-- FEAT-031：ext 版本必须与宿主 SUT fat jar（studio-dsl-ir-sit-demo）内嵌的 ext 同源，
+             否则组件层与端到端层描述的不是同一产品。当前对齐 PR707 合并基线 0.1.2；
+             验证更新基线时用 -Dagent-core-ext-studio-dsl.version=<common@<sha>> 临时 re-pin。 -->
+        <agent-core-ext-studio-dsl.version>0.1.2</agent-core-ext-studio-dsl.version>
     </properties>
 
     <dependencyManagement>
@@ -205,6 +209,19 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-client</artifactId>
             <version>${rocketmq-client.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-031 public Studio IR SDK and offline fetch contracts. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-studio-dsl</artifactId>
+            <version>${agent-core-ext-studio-dsl.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-studio-dsl-fetch</artifactId>
+            <version>${agent-core-ext-studio-dsl.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

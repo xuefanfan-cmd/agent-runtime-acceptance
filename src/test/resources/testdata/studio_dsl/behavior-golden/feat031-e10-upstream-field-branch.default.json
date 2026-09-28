@@ -1,0 +1,9 @@
+{
+  "scenario": "feat031-e10-upstream-field-branch / 上游产出 == canary → 条件为 false → default 边",
+  "expectedMarkers": [
+    "UPSTREAM_MARKER",
+    "PATH_MARKER=DEFAULT"
+  ],
+  "expectationSource": "IR 语义（条件 (${node_up.userFields.raw_output} != 'UPSTREAM_CANARY')；受控模型返回固定 canary UPSTREAM_CANARY）",
+  "note": "观测面＝受控端点请求序列（上游标记 + 命中分支的下游标记）"
+}

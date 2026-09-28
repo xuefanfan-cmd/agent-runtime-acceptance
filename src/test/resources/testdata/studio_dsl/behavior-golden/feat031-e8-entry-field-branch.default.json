@@ -1,0 +1,24 @@
+{
+  "scenario": "feat031-e8-entry-field-branch / loginFlag=1 → default 边",
+  "invocation": {
+    "text": "hello",
+    "metadata": {
+      "inputs": {
+        "loginFlag": "1"
+      }
+    }
+  },
+  "expectedTrace": [
+    "node_start",
+    "node_branch",
+    "node_llm_default",
+    "node_agg",
+    "node_end"
+  ],
+  "expectedMarker": "PATH_MARKER=DEFAULT",
+  "forbiddenMarker": "PATH_MARKER=IF",
+  "expectedMarkers": [
+    "PATH_MARKER=DEFAULT"
+  ],
+  "expectationSource": "IR 语义（判断条件 (${node_start.userFields.loginFlag} != '1') 在 loginFlag=1 时为 false）；Python 侧行为 golden 待 studio-runtime 通道可用后补齐（见同目录 provenance.json）"
+}

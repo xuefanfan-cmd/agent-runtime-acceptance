@@ -1,0 +1,8 @@
+{
+  "scenario": "feat031-e9-query-condition-branch / query 长度>1 → if 边",
+  "expectedMarkers": [
+    "PATH_MARKER=IF"
+  ],
+  "expectationSource": "IR 语义（判断条件 (length(${node_start.systemFields.query}) > 1)；query 长度>1 为 true）",
+  "note": "观测面＝受控端点请求序列（下游标记序列）；节点 id 轨迹为可选增强证据"
+}

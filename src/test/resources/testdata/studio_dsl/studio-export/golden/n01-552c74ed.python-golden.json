@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "1",
+  "workflowId": "552c74ed-b332-4df2-bca6-b6eec76d731e",
+  "componentIds": [
+    "node_1789113619429",
+    "node_1789113624369",
+    "node_end",
+    "node_llm",
+    "node_start"
+  ],
+  "startId": "node_start",
+  "endId": "",
+  "edges": [
+    [
+      "node_1789113619429",
+      "node_1789113624369"
+    ],
+    [
+      "node_1789113624369",
+      "node_end"
+    ],
+    [
+      "node_start",
+      "node_llm"
+    ]
+  ],
+  "streamEdges": [
+    [
+      "node_llm",
+      "node_1789113619429"
+    ]
+  ],
+  "workflowStreaming": true,
+  "crossCutting": {
+    "workflowIoLogLevel": null,
+    "workflowStreamEnabled": null,
+    "nodes": {
+      "node_end": {
+        "ioLogLevel": null,
+        "streamEnabled": true
+      },
+      "node_llm": {
+        "ioLogLevel": null,
+        "streamEnabled": true
+      }
+    }
+  },
+  "modelNames": [
+    "43ac4024-66e7-4f0d-bd38-70b337b3726d|43ac4024-66e7-4f0d-bd38-70b337b3726d"
+  ],
+  "source": "python-IRConverter"
+}

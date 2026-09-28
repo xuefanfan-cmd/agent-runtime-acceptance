@@ -51,13 +51,29 @@ tags: [integration, studiodsl, feat-031]
 
 ## 前置条件
 
-1. `agent-core-ext-studio-dsl` 模块已构建并 install 至 m2。
+1. `agent-core-ext-studio-dsl` 已构建并 install 至 m2；pom 的 `agent-core-ext-studio-dsl.version` 必须与宿主 SUT fat jar（`studio-dsl-ir-sit-demo`）内嵌的 ext 同源，否则组件层与端到端层描述的不是同一产品。当前 pin：`0.1.2`（2026-09-28 对齐 PR707 合并 head）；验证更新基线用 `-Dagent-core-ext-studio-dsl.version=<common@<sha>>` 临时 re-pin。
 2. `-Dtest.env=openjiuwen` + `SAA_*` / `LLM_API_KEY`。
 3. Python 3.x 执行环境就绪（代码节点 Python 脚本执行）。
-4. Redis 可用（start 会话 KV 持久化依赖 Redis，key 前缀 `global.vals.{workflow_id}.{conversation_id}`；非 setVariable 工作流变量）。
-5. `CODE_BLACK_LIST` 环境变量可配置（代码节点黑名单测试）。
-6. 知识库 / MCP server / 远程 Agent / 插件端点就绪（对应节点依赖）。
-7. `A2A_STREAM` 协议（questioner 中断态可见性 + 状态序列断言）。
+4. **Redis 可用，且宿主必须安装 `RuntimeRedisClient`**：PR707 起 Studio DSL 的会话变量与 Start 节点装配统一经 `StudioDslRedisAccess.requireRedisClient()`，未安装即 fail-fast（`STUDIO-DSL-REDIS-CLIENT-UNAVAILABLE`），宿主启动即失败。SIT 夹具宿主在存在 Redis Bean 时自动 `install`；未配置场景用无绑定别名 `studio-dsl-ir-sit-noredis` 验证 fail-fast。会话 KV key 前缀 `global.vals.{workflow_id}.{conversation_id}`（start 节点会话 KV，非 setVariable 工作流变量）。
+5. 进程内组件 / 集成用例（直接调 SDK、不起宿主进程）须注入 `ConversationValsStores.setDefault(ConversationValsStores.memoryStore())`（已落在 `StudioDslContractTestBase` 与 `StudioBranchEdgeSelectionTest`）；这类用例不验证 Redis 交互，Redis 正/负例在 e2e 层。
+6. `CODE_BLACK_LIST` 环境变量可配置（代码节点黑名单测试）。
+7. 知识库 / MCP server / 远程 Agent / 插件端点就绪（对应节点依赖）。
+8. `A2A_STREAM` 协议（questioner 中断态可见性 + 状态序列断言）。
+
+---
+
+## 自动化落点（SIT 资产）
+
+| 层 | 用例类 | 执行入口 | 本地可执行性（2026-09-28） |
+|---|---|---|---|
+| component | `IrComponentContractTest`、`OfflineBundleFetcherContractTest`、`StudioCodeSandboxExecutorContractTest`、`StudioExportCorpusAssemblyTest`、`StudioIrSdkContractTest`、`StudioKnowledgeNodeContractTest`、`StudioNodeCatalogCompatibilityTest`、`StudioBranchEdgeSelectionTest` | `mvn test` | 可执行；8 类 57 用例全绿 |
+| integration | `AuthHookEquivalentTest`、`ObsFetchIntegrationTest` | `mvn test` | 可执行；4 用例全绿 |
+| integration | `StudioDslNodeAcceptanceTest`（47 个 `studio-dsl-*` agent） | `-Dtest.env=openjiuwen` | **本地不可执行**：缺 `com.openjiuwen.example:studio-dsl-demo:0.1.0` 制品与真实 LLM。升级触发条件＝该制品在共享仓/镜像可用（并具备 LLM 凭据） |
+| e2e | `StudioDslRuntimeE2EIT`、`StudioDslPropertyChainIT`、`StudioExportWorkflowE2EIT`、`StudioRealExportPluginInvokeIT`、`UpstreamFieldBranchMatrixIT`、`StudioDslGoldenAndSecurityIT`、`StudioDslRedisUnconfiguredIT` | `mvn ... failsafe:integration-test -Dit.test=<类>` | 可执行；Redis 经 `StudioDslRedisBackedE2EBase` 注入 Testcontainers 实例；未配置负例走 `studio-dsl-ir-sit-noredis` 别名 |
+
+关联缺陷回归入口（供关闭判定引用）：`#311` → `StudioBranchEdgeSelectionTest`；`#314` → `StudioIrSdkContractTest#assembleSentinelForRealNestedMixedLaneCorpus`；`#395` → `UpstreamFieldBranchMatrixIT#nestedSubflowResponseDrivesDefaultBranchOnBlockingWire`（仍 open）；`#399` → `StudioDslRuntimeE2EIT#issue399SessionVariableRedisRoundTrip` 与 `StudioDslRedisUnconfiguredIT`。
+
+> 用例 7d / G3（start 节点会话 KV 跨执行读回）**当前无自动化用例**：代码中检索不到 `global.vals` 的使用；本轮受控探针显示 start 会话 KV 的 `preDefinedFields.default_value` 未 materialize、同 contextId 第二轮读不到第一轮写入值。该路径的承诺口径已于 2026-09-27 在 #399 评论中提交开发确认；确认前该项保持「未覆盖」，不得计入 FEAT-031 已覆盖能力。
 
 ---
 

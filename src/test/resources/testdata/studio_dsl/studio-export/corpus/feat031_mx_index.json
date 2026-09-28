@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "purpose": "FEAT-031 §4 用例设计改造 S2：判断节点条件读上游节点产出 —— 逐执行器覆盖登记（三态）。",
+  "link_template": "node_start -> node_up(<上游类型>) -> node_branch(条件读 node_up 的产出) -> {node_if_sentinel | node_default_sentinel} -> [node_agg] -> node_end",
+  "judgement": "上游产出为非空（哨兵/canary）⇒ 条件按表达式求值；走错边即该执行器产出在运行期对下游不可见。",
+  "counts": {
+    "executors_total": 22,
+    "guarded": 8,
+    "pending_corpus": 3,
+    "not_applicable": 11
+  },
+  "guarded": [
+    {
+      "executor": "createLlm",
+      "ir_types": [
+        "jiuwen.LLMComponent",
+        "jiuwen.llm",
+        "llm_chain",
+        "llmchain"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_e10_upstream_field_branch_ir.json",
+      "corpus_sha256": "",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.raw_output",
+      "expected_edge": "node_llm_default",
+      "case_method": "e10UpstreamFieldDrivesDefaultBranch",
+      "io_log": false,
+      "note": "既有 e10 用例（#319 的回归入口），语料为测试侧合成；不由本生成器重建。**哨兵名是 e10 模板自带的 `node_llm_default` / `node_llm_if`**，不是本生成器产物的 `node_default_sentinel` / `node_if_sentinel` —— 2026-09-22 修：登记表此前写成通用哨兵名，导致参数化守卫对 createLlm 恒报假红（实际已走对边 `node_llm_default`）。"
+    },
+    {
+      "executor": "FlowCodeNode",
+      "ir_types": [
+        "jiuwen.code"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_code_upstream_branch_ir.json",
+      "corpus_sha256": "A1FAA982BF5548A46892E0E13313E07826223728DF5343735507D8431927EB4B",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.raw_output",
+      "expected_edge": "node_default_sentinel",
+      "case_method": "codeUpstreamFieldDrivesDefaultBranch",
+      "io_log": true,
+      "note": "客户现场同型形状（数据处理节点 → 判断）。"
+    },
+    {
+      "executor": "FlowAggregateNode",
+      "ir_types": [
+        "jiuwen.aggregation",
+        "jiuwen.aggregate",
+        "flowaggregate"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_agg_upstream_branch_ir.json",
+      "corpus_sha256": "1722B8543A8D4F6737D0AA30A26CAD8069DB1BD249AAC1B237710DED33E2D852",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.group1",
+      "expected_edge": "node_default_sentinel",
+      "case_method": "aggregationUpstreamFieldDrivesDefaultBranch",
+      "io_log": true,
+      "note": "两条 code 泳道 → 聚合 → 判断。"
+    },
+    {
+      "executor": "FlowQaNode",
+      "ir_types": [
+        "EI.qa",
+        "ei.qa"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_qa_upstream_branch_ir.json",
+      "corpus_sha256": "21178C3AF0188DA17F7735E676EE2B1610543938E2A86352C44CE1F38B3FF6AC",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.response",
+      "expected_edge": "node_if_sentinel",
+      "case_method": "qaUpstreamFieldDrivesIfBranch",
+      "io_log": true,
+      "note": "方向与 code/agg 相反：随机选项必然非空 ⇒ 条件为真 ⇒ 必须走 IF 边。"
+    },
+    {
+      "executor": "FlowPluginNode",
+      "ir_types": [
+        "jiuwen.plugin",
+        "jiuwen.api",
+        "flowapi"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_plugin_upstream_branch_ir.json",
+      "corpus_sha256": "FC98D8609F45C27F2BC5761FA87B9A9BE4D586EF7C251398E0F2897E923DD1BD",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.canary",
+      "expected_edge": "node_if_sentinel",
+      "case_method": "pluginUpstreamFieldDrivesIfBranch",
+      "io_log": true,
+      "note": "受控端点 RecordingPluginMcpEndpointFixture 固定端口 55207（/plugin/weather 返回 plugin-canary）；条件用 `!= ''` 让「产出可见」与「产出丢失」分别落到 IF / default，两个方向都能判别。**引用字段必须用插件回填契约键**：2026-09-21 #284 开发裁定——插件 HTTP 的对外回填契约＝`configs.response` 声明的响应字段名＋固定别名 `raw_output`/`result`/`answer`/`responseContent`＋响应正文自身的键；`outputs.userFields` / `configs.userFields.outputs`只是画布端口占位，运行期不会写入。本语料 `configs.response` 声明 `canary`、受控返回体含 `canary`，故条件与断言都读 `canary`（此前读 `data` 会恒为空 ⇒ 用例结构上不可能通过，属测试侧绑定缺陷）。"
+    },
+    {
+      "executor": "FlowMcpNode",
+      "ir_types": [
+        "jiuwen.mcp",
+        "jiuwen.flowMcp"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_mcp_upstream_branch_ir.json",
+      "corpus_sha256": "1403246420EF7E3F218832663DF05E096C82FDD3D91601B17501DD460B3FA2C0",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.content",
+      "expected_edge": "node_if_sentinel",
+      "case_method": "mcpUpstreamFieldDrivesIfBranch",
+      "io_log": true,
+      "note": "同一受控端点提供 /mcp（tools/call 返回 mcp-canary）；type=streamable_http、auth 置空走直连。**引用字段＝MCP 回填契约键 `content`**：`FlowMcpEngine` 把 tools/call 结果写成 `userFields.content`（列表，元素含 `type`/`text`）与 `userFields.isError`，不写 `raw_output`/`data`；故条件与断言都读 `content`（`content` 是列表，值级断言用「非空」而非「含 canary」）。"
+    },
+    {
+      "executor": "FlowAgentNode",
+      "ir_types": [
+        "jiuwen.LLMReAct",
+        "jiuwen.agent",
+        "flowagent"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_agent_upstream_branch_ir.json",
+      "corpus_sha256": "E0E0056C9BE5C975BACFFD6CF41650F95C5ED974649B8951601A76C3DB9B370D",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.output",
+      "expected_edge": "node_if_sentinel",
+      "case_method": "agentUpstreamFieldDrivesIfBranch",
+      "io_log": true,
+      "note": "配置形状取自真实导出 test_agent_parallel_flow_ir.json 的 jiuwen.LLMReAct 组件；modelName 换成 e10 已验证可映射的部署 id（原 a3fa46c0… 未在宿主 bundle 映射中）。"
+    },
+    {
+      "executor": "FlowParamOutputNode",
+      "ir_types": [
+        "EI.ParamOutput",
+        "ei.paramoutput"
+      ],
+      "status": "guarded",
+      "corpus": "feat031_mx_paramoutput_upstream_branch_ir.json",
+      "corpus_sha256": "1904654D7CBBFBD99610062ADEDECA4F65FA4FCD8434E8ABAC0889ABB33CB68F",
+      "upstream_node_id": "node_up",
+      "referenced_field": "userFields.input_param1",
+      "expected_edge": "node_if_sentinel",
+      "case_method": "paramOutputUpstreamFieldDrivesIfBranch",
+      "io_log": true,
+      "note": "配置形状取自真实导出 feat031_b1_param_extraction_ir.json 里的 EI.ParamOutput 组件（该组件本身配置自洽，是「把引用值透出成输出字段」，不依赖 composite 上下文）。"
+    }
+  ],
+  "pending_corpus": [
+    {
+      "executor": "FlowExtractorNode",
+      "ir_types": [
+        "jiuwen.extractor",
+        "jiuwen.infoExtraction"
+      ],
+      "status": "pending-corpus",
+      "referenced_field": "",
+      "evidence": "契约核对（2026-09-23/24）：① 设计 FEAT-031 §3.5.1 判 MUST「从输入中提取结构化字段」；② Java 有实现（`IrComponentFactory` → `FlowExtractorNode` → `ExtractorEngine.invoke` → `asDict(replyKeyFields(...))`）；③ 配置契约：`ExtractorConfigValidator` 要求 `field_names` 为列表、每项含 `field_name`/`description`/`cn_field_name`，且 `prompt_template` 必填；④ 产出契约：`ExtractorLlmExtractor.parseAndNormalize` 取**模型响应的严格 JSON 对象**的键作为输出字段。生成器已就绪（`extractor_node()` / `build_extractor_upstream()`，字段名 `canary`）。",
+      "reason": "**卡在测试夹具而非契约**：本矩阵类在 `@BeforeAll` 把类级受控模型桩的响应固定为 `UPSTREAM_CANARY`，而 extractor 需要模型返回严格 JSON（`{\"canary\":\"EXTRACTOR_CANARY\"}`）才能产出值；又因为 `placeholderGuardKeepsUpstreamOutputVisible` 是**按索引 guarded 段参数化**跑的，一旦把 extractor 登记成 guarded，该参数化用例也会拿类级桩去跑它 ⇒ 必然假红。故先不登记为 guarded、不落语料（避免留下没有用例承接的语料）。"
+    },
+    {
+      "executor": "FlowKnowledgeRetrievalNode",
+      "ir_types": [
+        "jiuwen.knowledgeRetrieval"
+      ],
+      "status": "pending-corpus",
+      "referenced_field": "",
+      "evidence": "真实导出语料 test_knowledge_repo_flow_ir.json 的 observed type 为 jiuwen.plugin（装配侧知识检索字段已由 RT-031-04-31…36 覆盖）。",
+      "reason": "真实导出未产出 jiuwen.knowledgeRetrieval 类型（agent-studio 侧未实现该导出映射，设计侧判 OUT/范围外），无上游产出可引用。"
+    },
+    {
+      "executor": "FlowCardNode",
+      "ir_types": [
+        "jiuwen.card",
+        "jiuwen.flowCard"
+      ],
+      "status": "pending-corpus",
+      "referenced_field": "",
+      "evidence": "契约核对（2026-09-23）① 设计 FEAT-031 §3.5.1 把 card 列为 MUST、`jiuwen.card`/`jiuwen.flowCard` 两别名；② Java 有实现：`IrComponentFactory` → `FlowCardNode`，`FlowCardEngine.invoke` 返回 `Map.of(\"result\", rendered)`（rendered 由 `configs.template` 渲染）⇒ 输出键固定 `result`、零外部依赖。③ 首版语料实测（run latest-matrix-v4）：节点产出**值可见**（窗口实测 `CARD_CANARY`），但用例的**引用形态**没对上——按 2026-09-22 的外部调用类写法（条件 `${node_up.userFields.result}` + 声明 `${node_up.userFields.result}`）判成了 default，说明 card 的产出不是以该形态暴露给下游。",
+      "reason": "**引用形态两种都不通**（探针 run probe-card-ref，2026-09-23）：① 条件+声明都写 `${node_up.userFields.result}` ⇒ default；② 都写顶层 `${node_up.result}` ⇒ 也 default。同轮窗口证据：卡片节点产出是**平铺**的 `outputs={result=CARD_CANARY}`（不在 `userFields` 下）；分支的 `inputs={userFields={result=CARD_CANARY}}` 确实收到了该值，但条件仍判 default ⇒ 说明**条件求值走的引用路径与节点作用域平铺产出对不上**，而不是「值丢失」。仍不建门禁用例（避免把测试侧缺陷记成产品问题）。"
+    }
+  ],
+  "not_applicable": [
+    {
+      "executor": "FlowInputNode",
+      "ir_types": [
+        "jiuwen.input",
+        "jiuwen.flowInput"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "userFields.city / userFields.num",
+      "evidence": "真实导出语料 test_input_flow_ir.json 的 jiuwen.input 组件声明 outputs.userFields.city/num，但取值由调用方输入决定（无输入时为空）。",
+      "reason": "SIT 入口当前不支持把调用方输入映射到工作流输入字段（E1c 实测 OUT/deferred），因此无法构造「非空产出」来判别走边方向。"
+    },
+    {
+      "executor": "FlowQuestionerNode",
+      "ir_types": [
+        "jiuwen.questioner"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "userFields.USER_RESPONSE / STATUS",
+      "evidence": "真实导出语料 test_question_ir_dsl.json 的 jiuwen.questioner 组件声明 outputs.userFields.USER_RESPONSE/STATUS，取值来自用户回答。",
+      "reason": "取值来自人机交互回答，单轮自动用例无法制造稳定的非空值。"
+    },
+    {
+      "executor": "FlowMessageNode",
+      "ir_types": [
+        "jiuwen.message"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 test_system_flow_ir.json 的 jiuwen.message 组件 configs.userFields.outputs 为空、无 outputs.userFields 声明。",
+      "reason": "该执行器不对外暴露 userFields 产出字段，下游条件无处引用。"
+    },
+    {
+      "executor": "FlowSetVariableNode",
+      "ir_types": [
+        "jiuwen.setVariable"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 feat031_e3_loop_child_ir.json / loop_full_test_flow_ir.json 的 jiuwen.setVariable 组件无 outputs 声明（写入工作流变量作用域）。",
+      "reason": "产出落在工作流变量作用域，不经 userFields 下发给下游；本维度不适用。"
+    },
+    {
+      "executor": "FlowStreamTransformNode",
+      "ir_types": [
+        "jiuwen.streamTransform"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 feat031_n01_stream_transform_ir.json 的 jiuwen.streamTransform 组件无 outputs 声明。",
+      "reason": "转换结果随流式帧下发，不经 userFields。"
+    },
+    {
+      "executor": "FlowExceptionNode",
+      "ir_types": [
+        "jiuwen.exception"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 test_structuredmessages_flow_ir.json 的 jiuwen.exception 组件无 outputs 声明；源码核对（common@d6abccdb9）：`FlowExceptionNode.doInvoke` 返回 `NodePayload.ofFields(Map.of())` —— 空 payload，不写任何 userFields。",
+      "reason": "异常路径节点，**结构上不产出可被下游引用的 userFields**：设计（FEAT-031 §4）定性它为「在异常分支中承载异常处理逻辑」（处理器，不是产出方），L2 组件登记表把它登记为 `FlowExceptionNode`。⇒「判断节点读【异常节点】产出」这一形状**建不出来**，记 not-applicable（非待确认项）。"
+    },
+    {
+      "executor": "FlowIntentDetectionNode",
+      "ir_types": [
+        "jiuwen.intentDetection"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 common_intent_flow_ir.json 的 jiuwen.intentDetection 组件无 outputs 声明。",
+      "reason": "该节点经 branches 选择走向，不通过 userFields 产出供条件引用。"
+    },
+    {
+      "executor": "FlowComplexIntentDetectionNode",
+      "ir_types": [
+        "EI.ComplexIntentDetection"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "真实导出语料 test_advanced_intentions_flow_ir.json 的 EI.ComplexIntentDetection 组件无 outputs 声明（配置含 branches[].configs.ir_path 子流程）。",
+      "reason": "同上：走向由 branches/子流程决定，不经 userFields 产出。"
+    },
+    {
+      "executor": "FlowBranchNode",
+      "ir_types": [
+        "jiuwen.branch"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "分支节点本身即条件求值方，其 configs.branches[].boolExpression 引用上游节点产出（本矩阵的被测对象就是它）。",
+      "reason": "作为「上游」没有意义，矩阵中它是读取方。"
+    },
+    {
+      "executor": "FlowStartNode",
+      "ir_types": [
+        "jiuwen.start"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "入口字段来源已由 e8/e9 覆盖（入口自定义字段、systemFields.query）。",
+      "reason": "入口节点不是「上游产出」维度。"
+    },
+    {
+      "executor": "FlowEndNode",
+      "ir_types": [
+        "jiuwen.end"
+      ],
+      "status": "not-applicable",
+      "referenced_field": "",
+      "evidence": "终点节点无下游。",
+      "reason": "无下游即无该维度。"
+    }
+  ],
+  "value_shapes": [
+    {
+      "shape": "non-empty-string",
+      "corpus": "feat031_mx_code_upstream_branch_ir.json",
+      "produced": "UPSTREAM_CANARY",
+      "condition": "(${node_up.userFields.raw_output} != 'UPSTREAM_CANARY')",
+      "expected_edge": "node_default_sentinel",
+      "status": "asserted",
+      "note": "P0 已有用例（非空串 ⇒ 表达式为假 ⇒ default）。"
+    },
+    {
+      "shape": "empty-string",
+      "corpus": "feat031_mx_code_empty_upstream_branch_ir.json",
+      "produced": "",
+      "condition": "(${node_up.userFields.raw_output} != '')",
+      "expected_edge": "node_default_sentinel",
+      "status": "asserted",
+      "note": "空串 ⇒ `!= ''` 为假 ⇒ 必须走 default。这一条与「产出丢失也走 default」方向相同，是**对照侧**：用来证明 default 边本身可达，避免把「永远走 default」误判成通过。"
+    },
+    {
+      "shape": "quoted-string",
+      "corpus": "feat031_mx_value_quoted_ir.json",
+      "produced": "A \"B\" C",
+      "condition": "(${node_up.userFields.raw_output} != '')",
+      "expected_edge": "node_if_sentinel",
+      "status": "executed（2026-09-22 脚本型轮次：最新 tip 799b7f49b 整类轮 PASS；未单独做 A/B 判别力）",
+      "note": "含双引号的非空串 ⇒ `!= ''` 为真 ⇒ 走 IF。判别力＝引号既不被吞、也不截断后续内容（值级断言「含 `A \"B\"`」）。**换行形态故意不做**：宿主 io-log 是单行渲染，值里的换行会把行切断、值级证据不可靠，要测换行需先换观测面。"
+    },
+    {
+      "shape": "null",
+      "corpus": "",
+      "produced": null,
+      "condition": "",
+      "expected_edge": "",
+      "status": "口径已由实现定义；设计不承诺业务语义",
+      "note": "**2026-09-22 更正**：登记表此前写「无值时走了 IF、口径未定」，那是从**另一个条件** `${…} != 'UPSTREAM_CANARY'`（左值为空 ⇒ 不等于 canary ⇒ 真）的观测**错误外推**到 `!= ''`。查设计档 + 被测实现后结论明确：① 设计（FEAT-031 §4 连线装配行）写明「条件表达式由配置声明，**引擎不解释业务语义**」——『缺值时走哪条边』不是产品承诺，不该外抛；② 实现 `ConditionEvaluator.resolveExprValue` 对解析不到的字段引用**返回空串**并打 WARN（`Branch condition field ref unresolved; evaluating as empty`），`stringify(null)` 亦为空串 ⇒ `${X} != ''` 在「字段缺失 / 值为 null / 明确空串」三种情况下**一律为假 ⇒ 走 default**（与实测 `codeEmpty` 一致）。⇒ 该形态可建用例，但语义属**实现行为、非设计契约**：只做**值级**断言（下游确实看到该字段的值），不把『走哪条边』作门禁。"
+    },
+    {
+      "shape": "number",
+      "corpus": "feat031_mx_value_number_ir.json",
+      "produced": 42,
+      "condition": "(${node_up.userFields.raw_output} != '')",
+      "expected_edge": "node_if_sentinel",
+      "status": "executed（2026-09-22 整类轮 PASS：装配通过、下游可见 `42`、判成 IF）",
+      "note": "字段声明仍是 `type=string`（与真实导出一致），运行期返回数字 42 ⇒ 非空 ⇒ IF。值级只断言非空（渲染形态由宿主决定）。"
+    },
+    {
+      "shape": "object",
+      "corpus": "feat031_mx_value_object_ir.json",
+      "produced": {
+        "k": "v"
+      },
+      "condition": "(${node_up.userFields.raw_output} != '')",
+      "expected_edge": "node_if_sentinel",
+      "status": "executed（2026-09-22 整类轮 PASS：装配通过、下游可见 `{k=v}`、判成 IF）",
+      "note": "非空对象 ⇒ IF。值级只断言非空。"
+    },
+    {
+      "shape": "array",
+      "corpus": "feat031_mx_value_array_ir.json",
+      "produced": [
+        "a",
+        "b"
+      ],
+      "condition": "(${node_up.userFields.raw_output} != '')",
+      "expected_edge": "node_if_sentinel",
+      "status": "executed（2026-09-22 整类轮 PASS：装配通过、下游可见 `[a, b]`、判成 IF）",
+      "note": "非空数组 ⇒ IF。值级只断言非空。"
+    }
+  ],
+  "connection_shapes": [
+    {
+      "shape": "if-elseif-default-chain",
+      "corpus": "feat031_mx_code_elseif_chain_ir.json",
+      "expected_edge": "node_b1_sentinel",
+      "forbidden_edges": [
+        "node_b2_sentinel",
+        "node_default_sentinel"
+      ],
+      "status": "executed（2026-09-22：B 侧 PASS、A 侧 FAIL ⇒ 有判别力）",
+      "note": "上游 code 产出 canary ⇒ 第一支命中；用来把「多分支求值顺序与选择」单独钉住。"
+    },
+    {
+      "shape": "parallel-join",
+      "corpus": "",
+      "expected_edge": "",
+      "forbidden_edges": [],
+      "status": "covered-elsewhere",
+      "note": "已有：`feat031_mx_agg_upstream_branch_ir.json`（两条 code 泳道 → 聚合 → 判断）与 `feat031_e2` / mixedlane 语料覆盖并行汇入。"
+    },
+    {
+      "shape": "loop-body",
+      "corpus": "feat031_mx_loop_body_upstream_branch_ir.json",
+      "expected_edge": "node_default_sentinel",
+      "forbidden_edges": [
+        "node_if_sentinel"
+      ],
+      "status": "executed（2026-09-22：判据修正后 PASS——原边级判据属**测试侧缺陷**（IrWorkflowAssembler:1051-1053 对「两端都在 loopBody」的连接直接 return，体内是线性链、分支不路由），改为断言「真迭代 + 体内产出对判断可见 + 分支决定=default」）",
+      "note": "**2026-09-22 前置核实完毕，探针不需要跑**：① 数组投递通道存在 —— 既有用例 `StudioExportWorkflowE2EIT#e3bRunsLoopAndChildFromCallerInputs`（L287）就是 `.withMetadata(Map.of(\"inputs\", Map.of(\"questions\", loopItems)))`（`loopItems` 是 `List`），宿主侧 `StudioDslInputMerge.mergeInto` 原样透传（`inputs.put(key, entry.getValue())`，不限类型）；② `loopBody` 语义已钉住 —— `IrWorkflowAssembler`（L896-911）把 `configs.loopBody` 当**有序的体节点 id 列表**，逐个建为 loop body child；体内连接由两端都在 `loopBody` 的 connection 决定，体入口/出口是虚拟端点 `node_loop_input` / `node_loop_output`（样例 `feat031_e3_loop_child_ir.json`）。⇒ 只差按此写语料。历史缺陷 #300（循环 End）落在这一维。"
+    },
+    {
+      "shape": "nested-subflow",
+      "corpus": "feat031_mx_nested_subflow_parent_ir.json",
+      "companion_corpora": [
+        "feat031_mx_nested_subflow_child_ir.json"
+      ],
+      "expected_edge": "node_default_sentinel",
+      "forbidden_edges": [
+        "node_if_sentinel"
+      ],
+      "status": "executed（2026-09-22：FAIL；定性为**产品问题候选**——子流产出只留在流式帧里，父级声明字段 responseContent 取不到值；证据链＝A/B 探针 + 源码路径 + L2 §3.5/§3.6。本地登记见 01-Design_File/20260922/pr661-verify/FEAT-031-新增两条用例发现-本地登记-20260922.md）",
+      "note": "形状可建：父 + 子两个语料文件；**子语料不需要登记进 `manifest.json`**（2026-09-22 更正，原判断为「必须登记」）。已核对：① 子 IR 由用例经宿主控制面 `children` 传入（`StudioDslHostControlClient#replace` 第 4 参，`body.put(\"children\", children)`），运行链不读 manifest；② 仓库里没有任何用例枚举 `corpus/` 目录或要求语料必须登记（`StudioExportCorpusAssemblyTest` 只遍历 `manifest.catalog()`）；③ 矩阵族其余 13 份语料（`feat031_mx_*`）同样不在 manifest 里，按同一约定用直接路径加载。登记反而会给 `manifest.json` 增加门禁/run-spec 输入耦合（须同步刷哈希），故不登记。用例写法：`control.replace(source, parent, mapping, Map.of(childRefPath, child))`（`childRefPath` 取父 IR 的 `configs.reference.path`）。历史缺陷 #283（父套子回灌）、#314（并行嵌套混泳道）落在这一维。"
+    },
+    {
+      "shape": "exception-path",
+      "corpus": "",
+      "expected_edge": "",
+      "forbidden_edges": [],
+      "status": "not-applicable",
+      "note": "`jiuwen.exception` 执行器结构上不产出可被下游引用的 `userFields`（`FlowExceptionNode.doInvoke` 返回空 payload；设计定性为「在异常分支中承载异常处理逻辑」）⇒「判断节点读异常节点产出」建不出来。证据见 `EXECUTOR_REGISTRY` 的 `FlowExceptionNode` 条目。"
+    }
+  ]
+}

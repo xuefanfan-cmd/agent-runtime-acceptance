@@ -1,0 +1,21 @@
+{
+  "workflowId": "wf-minimal",
+  "workflowName": "minimal contract v2",
+  "description": "FEAT-031 explicit reload contract input",
+  "workflowVersion": "2",
+  "schemaVersion": "0.6.0",
+  "configs": {
+    "ioLogLevel": "DEBUG",
+    "stream": false
+  },
+  "components": [
+    {"id": "node_start", "type": "jiuwen.start", "configs": {}},
+    {"id": "node_end", "type": "jiuwen.end", "configs": {}}
+  ],
+  "connections": [
+    {
+      "source": {"componentId": "node_start"},
+      "target": {"componentId": "node_end"}
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "workflowId": "wf-unknown-component",
+  "schemaVersion": "0.6.0",
+  "components": [
+    {"id": "node_start", "type": "jiuwen.start", "configs": {}},
+    {"id": "node_unknown", "type": "jiuwen.notRegistered", "configs": {}},
+    {"id": "node_end", "type": "jiuwen.end", "configs": {}}
+  ],
+  "connections": [
+    {
+      "source": {"componentId": "node_start"},
+      "target": {"componentId": "node_unknown"}
+    },
+    {
+      "source": {"componentId": "node_unknown"},
+      "target": {"componentId": "node_end"}
+    }
+  ]
+}

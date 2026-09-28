@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0",
+  "purpose": "RT-031-04-16 Java/Python assembly topology golden",
+  "generatedAt": "2026-09-12T14:52:22+08:00",
+  "generator": {
+    "runtime": "studio-runtime (docker compose service of 7.209.189.212)",
+    "imageId": "sha256:d687088bb02ee6de533eaf8a76a0727c92c4b9100d3d1b3f4bfe789129eee41c",
+    "imageTag": "studio-runtime:1.0.0.20260907012251.x86_64",
+    "pythonVersion": "3.11.15",
+    "jiuwenModule": "/opt/cloud/agent-runtime/app/jiuwen/__init__.py",
+    "irConverterModule": "jiuwen.serve.controllers.execution.ir_converter",
+    "script": "src/test/resources/testdata/studio_dsl/studio-export/golden/tools/dump_ir_assemble_golden.py",
+    "scriptSha256": "E5D70D35EF95A2942B877596B695F7E44FE0AD3D640695F4DA4BAD0E3A1072D5",
+    "supersededProductScript": "agent-core-ext-studio-dsl/tools/dump_ir_assemble_golden.py",
+    "supersededProductScriptSha256": "EF7812AB469BAA5730A7BC963677AAEFE776498D366989C83C11B4C81D3421A3",
+    "deviation": "test-side copy; the only change is the workflow-level streaming probe. The product script is read-only for this task, so the correction lives on the test side and the deviation is recorded here.",
+    "isolation": "docker run --rm --network none --read-only (plus tmpfs for /tmp and the runtime log dir)"
+  },
+  "input": {
+    "artifact": "feat031-n01-stream-transform",
+    "workflowId": "552c74ed-b332-4df2-bca6-b6eec76d731e",
+    "studioVersionId": "1789116192089",
+    "irSha256": "5C2283E42643CF9833EA440B464517E00BD1AB69F8097106FE6B1C7ECB03F04D"
+  },
+  "golden": {
+    "file": "n01-552c74ed.python-golden.json",
+    "sha256": "A592116A44CCA166BB853BDF9C3255C03B0101BE27DE9FFE0B966E2BD3A57AEE",
+    "schemaVersion": "1",
+    "source": "python-IRConverter"
+  },
+  "knownSchemaGaps": [
+    {
+      "field": "endId",
+      "pythonValue": "",
+      "javaValue": "",
+      "reason": "the dump script resolves the end component through Workflow.end_comp_id/endCompId, which the deployed runtime does not expose, and the Java assembler reflection does not resolve Workflow.endCompId either, so both sides stay empty; the end node identity is still covered by componentIds and edges",
+      "rt16Disposition": "OUT / non-gating until the dump tool resolves the end component id"
+    },
+    {
+      "field": "workflowStreaming",
+      "agreedSemantics": "the workflow level streaming flag of the assembled workflow, taken from each runtime's own workflow object (Python Workflow._is_streaming, Java Workflow.isStreaming)",
+      "pythonValue": true,
+      "javaValue": true,
+      "observedDifference": "2026-09-12 first execution of RT-031-04-16 reported exactly one gating difference: workflowStreaming actual=true expected=false",
+      "javaDerivation": "agent-core-java Workflow sets isStreaming=true when a component declares responseMode=streaming (Workflow.java:356-357); the N01 end node is streaming",
+      "note": "attributed on 2026-09-12 as a probe defect, not a runtime difference; kept as a gating field",
+      "resolution": "the deployed openjiuwen Workflow stores the flag in the private _is_streaming attribute (openjiuwen/core/workflow/workflow.py:241 in the deployed image, set by Workflow.set_end_comp when response_mode == \"streaming\") and exposes no public is_streaming accessor, so the superseded probe returned the default false for every workflow; the deployed IRConverter does pass response_mode=\"streaming\" for an end node whose configs.isStreamOut is true (jiuwen/serve/controllers/execution/ir_converter.py:2618-2622), so the runtime flag is true. The corrected probe reads _is_streaming and reports true, and workflowStreaming was the only field that changed between the superseded and the corrected golden",
+      "evidence": "_evidence/rt-031-04-16-caliber-attribution-20260912.md"
+    }
+  ]
+}

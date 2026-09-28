@@ -1,0 +1,32 @@
+{
+  "workflowId": "wf-minimal",
+  "workflowName": "minimal contract",
+  "description": "FEAT-031 direct SDK contract input",
+  "workflowVersion": "1",
+  "schemaVersion": "0.6.0",
+  "configs": {
+    "ioLogLevel": "INFO",
+    "stream": false
+  },
+  "components": [
+    {
+      "id": "node_start",
+      "type": "jiuwen.start",
+      "configs": {}
+    },
+    {
+      "id": "node_end",
+      "type": "jiuwen.end",
+      "configs": {}
+    }
+  ],
+  "connections": [
+    {
+      "source": {"componentId": "node_start"},
+      "target": {"componentId": "node_end"}
+    }
+  ],
+  "metadata": {
+    "source": "acceptance-contract"
+  }
+}

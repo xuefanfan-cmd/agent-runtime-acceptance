@@ -1,0 +1,8 @@
+{
+  "release": false,
+  "rowCount": 1,
+  "irPathToLocal": {
+    "workflow/ir/wf-minimal.json": "ir/wf-minimal.json"
+  },
+  "modelMapping": "model-mapping.json"
+}

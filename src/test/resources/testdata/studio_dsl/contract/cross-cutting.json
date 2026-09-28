@@ -1,0 +1,31 @@
+{
+  "workflowId": "wf-cross-cutting",
+  "schemaVersion": "0.6.0",
+  "configs": {
+    "ioLogLevel": "DEBUG",
+    "stream": true
+  },
+  "components": [
+    {"id": "node_start", "type": "jiuwen.start", "configs": {}},
+    {
+      "id": "node_message",
+      "type": "jiuwen.message",
+      "configs": {
+        "ioLogLevel": "INFO",
+        "stream": true,
+        "pythonConfig": {"handler": "pkg.module:hook"}
+      }
+    },
+    {"id": "node_end", "type": "jiuwen.end", "configs": {}}
+  ],
+  "connections": [
+    {
+      "source": {"componentId": "node_start"},
+      "target": {"componentId": "node_message"}
+    },
+    {
+      "source": {"componentId": "node_message"},
+      "target": {"componentId": "node_end"}
+    }
+  ]
+}

@@ -1,0 +1,884 @@
+{
+  "schemaVersion": "1.0",
+  "studio": {
+    "repository": "agent-studio",
+    "branch": "studio-2.0",
+    "commit": "11e86f7d67e493062bddfa3b4f20d5946d987c69",
+    "captureMode": "byte-for-byte copies of repository-owned Studio IR fixtures"
+  },
+  "catalogSources": [
+    {
+      "role": "current-node-panel",
+      "path": "frontend/src/routes/agent-center/app-flow/components/nodes-group-modal/nodes-group-modal.component.ts",
+      "sha256": "37CF3829EECD22656BA1BA173CEAAEA8114A961CA18DF6A41A4E8572EB5FD06E"
+    },
+    {
+      "role": "backend-node-types",
+      "path": "backend/studio-common/src/main/java/com/openjiuwen/studio/agent/common/enums/NodeType.java",
+      "sha256": "427C5B1C9F7A935D112F3A1861CD64076D413DEB7689EB8551AE6678BFAB8936"
+    },
+    {
+      "role": "dsl-to-ir-adapters",
+      "path": "backend/studio-manager-service/src/main/java/com/openjiuwen/studio/agent/manager/workflow/jiuwen/adapt/IRAdapter.java",
+      "sha256": "E703A1B5EC0B1FB0CB9639A384207C8C571063E96763A44E94E9056570125FA5"
+    },
+    {
+      "role": "java-accepted-types",
+      "repository": "agent-solution",
+      "commit": "5564a68c9e953123762fea001a7e37efd7d7a7a6",
+      "path": "common/agent-core-ext-java/agent-core-ext-studio-dsl/src/main/java/com/openjiuwen/studio/dsl/ir/IrComponentFactory.java",
+      "sha256": "E2207F552ABB1D35D77B1B914C085CA451C30CB8EB0396213659562244B6FCA1"
+    }
+  ],
+  "catalog": [
+    {
+      "node": "Start",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.start",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "system",
+      "componentIds": [
+        "node_start"
+      ],
+      "criticalFields": [
+        "systemFields",
+        "userFields"
+      ]
+    },
+    {
+      "node": "End",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.end",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "system",
+      "componentIds": [
+        "node_end"
+      ],
+      "criticalFields": [
+        "responseMode",
+        "responseTemplate",
+        "isStreamOut"
+      ]
+    },
+    {
+      "node": "LLM",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.LLMComponent",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "system",
+      "componentIds": [
+        "node_llm"
+      ],
+      "criticalFields": [
+        "model",
+        "templateContent",
+        "responseFormat"
+      ]
+    },
+    {
+      "node": "Workflow",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.workflowComposite",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "param-extraction",
+      "componentIds": [
+        "composite_node_node_1761649332651_node_8b47c46f650b432a9bd2d7d7d5dfaae0"
+      ],
+      "criticalFields": [
+        "reference",
+        "preDefinedFields",
+        "userFields"
+      ]
+    },
+    {
+      "node": "Branch",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.branch",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "advanced-intentions",
+      "componentIds": [
+        "node_1750381364778"
+      ],
+      "criticalFields": [
+        "branches",
+        "userFields"
+      ]
+    },
+    {
+      "node": "IntentDetection",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.intentDetection",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "intent",
+      "componentIds": [
+        "node_1748413511365"
+      ],
+      "criticalFields": [
+        "branches",
+        "llm",
+        "prompt"
+      ]
+    },
+    {
+      "node": "Code",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.code",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "system",
+      "componentIds": [
+        "node_1741657511603"
+      ],
+      "criticalFields": [
+        "code",
+        "fg_id",
+        "fg_url",
+        "fg_urn"
+      ]
+    },
+    {
+      "node": "ComplexIntentDetection",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "EI.ComplexIntentDetection",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "advanced-intentions",
+      "componentIds": [
+        "node_1750316866737"
+      ],
+      "criticalFields": [
+        "branches",
+        "groups",
+        "llm",
+        "prompt"
+      ]
+    },
+    {
+      "node": "Loop",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.loop",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "loop",
+      "componentIds": [
+        "node_loop"
+      ],
+      "criticalFields": [
+        "loopBody",
+        "loopType",
+        "preDefinedFields"
+      ]
+    },
+    {
+      "node": "Plugin",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.plugin",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "plugin",
+      "componentIds": [
+        "node_1727403791211"
+      ],
+      "criticalFields": [
+        "url",
+        "method",
+        "arguments",
+        "response",
+        "auth"
+      ]
+    },
+    {
+      "node": "Mcp",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.mcp",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "mcp",
+      "componentIds": [
+        "node_1727403791211"
+      ],
+      "criticalFields": [
+        "url",
+        "type",
+        "tool_name",
+        "auth"
+      ]
+    },
+    {
+      "node": "Message",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.message",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "advanced-intentions",
+      "componentIds": [
+        "node_1750381339443"
+      ],
+      "criticalFields": [
+        "template",
+        "isStructMessage"
+      ]
+    },
+    {
+      "node": "StreamTransform",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.streamTransform",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "feat031-n01-stream-transform",
+      "componentIds": [
+        "node_1789113624369"
+      ],
+      "criticalFields": [
+        "userFields",
+        "systemFields",
+        "transformer"
+      ]
+    },
+    {
+      "node": "Questioner",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.questioner",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "questioner",
+      "componentIds": [
+        "node_1740108902156"
+      ],
+      "criticalFields": [
+        "questionContent",
+        "fieldNames",
+        "model",
+        "mode"
+      ]
+    },
+    {
+      "node": "Input",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.input",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "input",
+      "componentIds": [
+        "node_input"
+      ],
+      "criticalFields": [
+        "systemFields",
+        "userFields"
+      ]
+    },
+    {
+      "node": "QA",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "EI.qa",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "qa",
+      "componentIds": [
+        "node_1747878097015"
+      ],
+      "criticalFields": [
+        "options",
+        "qaStrategy",
+        "enable_history"
+      ]
+    },
+    {
+      "node": "StructuredMessagesException",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.exception",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "exception",
+      "componentIds": [
+        "node_1757992515180"
+      ],
+      "criticalFields": [
+        "systemFields",
+        "userFields"
+      ]
+    },
+    {
+      "node": "SetVariable",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.setVariable",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "loop",
+      "componentIds": [
+        "node_set_variable"
+      ],
+      "criticalFields": [
+        "settings",
+        "userFields"
+      ],
+      "nestedParentId": "node_loop"
+    },
+    {
+      "node": "Aggregation",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.aggregation",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "agent-parallel",
+      "componentIds": [
+        "node_1755764492951"
+      ],
+      "criticalFields": [
+        "mode",
+        "groups",
+        "userFields"
+      ]
+    },
+    {
+      "node": "KnowledgeRepo",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.knowledgeRetrieval",
+      "catalogGate": "compatible",
+      "corpusStatus": "exported-as-plugin",
+      "artifact": "knowledge-repo",
+      "componentIds": [
+        "node_1737183484514"
+      ],
+      "observedType": "jiuwen.plugin",
+      "criticalFields": [
+        "url",
+        "method",
+        "arguments",
+        "response"
+      ]
+    },
+    {
+      "node": "KnowledgeRepo",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.knowledgeRetrieval",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "feat031-l2s7-knowledge-repo",
+      "componentIds": [
+        "node_kb"
+      ],
+      "criticalFields": [
+        "knowledgeBaseIds",
+        "retrievalConfig"
+      ]
+    },
+    {
+      "node": "ParamExtraction",
+      "availability": "default",
+      "exportMode": "expanded",
+      "exportType": "jiuwen.paramExtraction",
+      "catalogGate": "expanded",
+      "corpusStatus": "ready-expanded-graph",
+      "artifact": "param-extraction",
+      "componentIds": [
+        "composite_node_node_1761649332651_node_988643695aa6490ba17bd49d5f742831",
+        "composite_node_node_1761649332651_node_1d6be87c12d941e4910f86443c6e7809",
+        "composite_node_node_1761649332651_node_8b47c46f650b432a9bd2d7d7d5dfaae0"
+      ],
+      "expandedTypes": [
+        "EI.ParamOutput",
+        "jiuwen.branch",
+        "jiuwen.workflowComposite"
+      ],
+      "criticalFields": [],
+      "componentCriticalFields": {
+        "composite_node_node_1761649332651_node_988643695aa6490ba17bd49d5f742831": [
+          "systemFields",
+          "userFields"
+        ],
+        "composite_node_node_1761649332651_node_1d6be87c12d941e4910f86443c6e7809": [
+          "branches",
+          "systemFields",
+          "userFields"
+        ],
+        "composite_node_node_1761649332651_node_8b47c46f650b432a9bd2d7d7d5dfaae0": [
+          "reference",
+          "preDefinedFields",
+          "userFields"
+        ]
+      }
+    },
+    {
+      "node": "Agent",
+      "availability": "default",
+      "exportMode": "direct",
+      "exportType": "jiuwen.LLMReAct",
+      "catalogGate": "compatible",
+      "corpusStatus": "ready",
+      "artifact": "agent-parallel",
+      "componentIds": [
+        "node_1755764338259"
+      ],
+      "criticalFields": [
+        "model",
+        "plugins",
+        "systemPrompt",
+        "maxIteration"
+      ]
+    },
+    {
+      "node": "Card",
+      "availability": "card-whitelist",
+      "exportMode": "direct",
+      "exportType": "jiuwen.card",
+      "catalogGate": "conditional-unverified",
+      "corpusStatus": "missing-real-export",
+      "artifact": null,
+      "componentIds": [],
+      "criticalFields": []
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "feat031-mixedlane-parallel-nested",
+      "file": "corpus/feat031_mixedlane_parallel_nested_ir.json",
+      "sourcePath": "Studio 部署 validate→publish→export 的真实导出 2026-09-21；工作流 FEAT031_CH4_MixedLaneParallel_V1（workflow_id=213962e1-1120-4ffc-8496-d7d14b7df3de，version_id=1789908958763）。形状：start 并行扇出两条泳道，泳道A 内再分叉流式 LLM + 非流式 Code，三者汇入 End；汇合边 parallelBranchId 为多值（嵌套并行组拼接）。登记用途：多值并行标记解析缺口（#314）的回归语料，待修复后启用为 sentinel 用例语料。",
+      "sha256": "DBB12F45E7288F4B3C2A150282A48CAABE31300B116FF4F012C6672601280317",
+      "workflowId": "213962e1-1120-4ffc-8496-d7d14b7df3de",
+      "dimensions": [
+        "parallel",
+        "streaming",
+        "nested-parallel"
+      ],
+      "knownBlocker": "无（#314 修复已合入 PR !646 / merge ef4266b83；2026-09-21 起由 StudioIrSdkContractTest#assembleSentinelForRealNestedMixedLaneCorpus 消费并断言 lane-done + 混泳道 sentinel）"
+    },
+    {
+      "id": "feat031-marked-mixed-lane",
+      "file": "corpus/feat031_marked_mixed_lane_ir.json",
+      "sourcePath": "产品仓 agent-core-ext-studio-dsl/src/test/resources/ir_fixtures/test_mixed_lane_stream_ir.json（2026-09-20 复制为 SIT 语料，结构未改动；带 parallelBranchId 的混泳道契约形状）",
+      "sha256": "99D5E1E10E4CD7F67E424C45487262E87FCAC70880517ED93D07CFC38979DF07",
+      "workflowId": "feat031-marked-mixed-lane-0001",
+      "dimensions": [
+        "parallel",
+        "streaming"
+      ]
+    },
+    {
+      "id": "system",
+      "file": "corpus/test_system_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_system_flow_ir.json",
+      "sha256": "B75A3777C5CD98DB0CACDD3F4B538BDDCB7730D70A66342A357464D6050939BD",
+      "workflowId": "f3c9f639-5c98-43de-87a2-6071cb3f2aba",
+      "dimensions": [
+        "sequential",
+        "branch"
+      ]
+    },
+    {
+      "id": "advanced-intentions",
+      "file": "corpus/test_advanced_intentions_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_advanced_intentions_flow_ir.json",
+      "sha256": "964F98799BF1F355013C7F3795A9C8E23BD0BEA8A165B7C8149C73435D53E31B",
+      "workflowId": "9c3d51f4-d5e7-41ca-a607-da0a4e9a61ad",
+      "dimensions": [
+        "branch"
+      ]
+    },
+    {
+      "id": "agent-parallel",
+      "file": "corpus/test_agent_parallel_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_agent_parallel_flow_ir.json",
+      "sha256": "D6A6447797DBE1A515548AA906C5E1BFF3E0E39918C01DA4F6ACF17FEC6399B3",
+      "workflowId": "e558d03f-a01e-42d5-a65e-a7370371ef84",
+      "dimensions": [
+        "parallel",
+        "external-call"
+      ],
+      "knownBlocker": "原登记『jiuwen.LLMReAct is not accepted by Java』已于 2026-09-21 失效：设计侧同日把 jiuwen.LLMReAct 登记为 jiuwen.agent 的别名（L2 §4.5.2 行 20 → FlowAgentNode），并给出 Agent 节点仅声明 configs.model.modelName 时由 FlowAgentEngine 消费 session model_map 的执行期口径（L2 §1.3）。本语料经标准入口的运行失败归 #285/#313（见 G1 §十九），不再是『Java 不接受该类型』"
+    },
+    {
+      "id": "loop",
+      "file": "corpus/loop_full_test_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/loop_full_test_flow_ir.json",
+      "sha256": "2F3A6E58A8F8059E90D804D1C4FEFB102AD6150DBC514450C25FF5AB6ACD69D6",
+      "workflowId": "2046ecaa-60ec-4e6c-be56-b7d87f8ec2e7",
+      "dimensions": [
+        "loop"
+      ]
+    },
+    {
+      "id": "param-extraction",
+      "file": "corpus/test_param_extraction_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_param_extraction_flow_ir.json",
+      "sha256": "772BAAD6292576D5CC9F8B46AFE0FB4301FCAAAD6F6A9ED791547197820E0B77",
+      "workflowId": "4a44070d-2412-422a-8df9-4cdfc5b95580",
+      "dimensions": [
+        "subworkflow",
+        "branch",
+        "exception"
+      ]
+    },
+    {
+      "id": "intent",
+      "file": "corpus/common_intent_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/common_intent_flow_ir.json",
+      "sha256": "56CCE05D2DA0D8C39A02434542EF42311C923B768D9E8B8331158C292E1D88D0",
+      "workflowId": "86cd27ee-1d53-4c8f-b8a0-c887eb6316f9",
+      "dimensions": [
+        "branch"
+      ]
+    },
+    {
+      "id": "input",
+      "file": "corpus/test_input_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_input_flow_ir.json",
+      "sha256": "ABD934F8B82554C9342E847DD3143553050C2626B1879641B86BF9A7BBC4BFAC",
+      "workflowId": "test_input_id",
+      "dimensions": [
+        "user-interaction"
+      ]
+    },
+    {
+      "id": "questioner",
+      "file": "corpus/test_question_ir_dsl.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_question_ir_dsl.json",
+      "sha256": "4671B048CAB882517BF5CB48624E188B31A316215F8697C64A2EDFA3EF4CB59E",
+      "workflowId": "5303a906-742d-4c55-b774-f30ade67d357",
+      "dimensions": [
+        "user-interaction"
+      ]
+    },
+    {
+      "id": "mcp",
+      "file": "corpus/test_workflow_mcp_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_workflow_mcp_ir.json",
+      "sha256": "58DC32D9EAED7E85EFE113BF9E0FFE57600A39AB54996844FB62481CFE94C86E",
+      "workflowId": "test_mcp_id",
+      "dimensions": [
+        "external-call"
+      ]
+    },
+    {
+      "id": "qa",
+      "file": "corpus/test_workflow_qa_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_workflow_qa_ir.json",
+      "sha256": "A6593DEAD037914B098BA2C85A349050605C3E6EA129630257C58BAC8A678264",
+      "workflowId": "20f0689c-8f7e-4fc6-a15f-f1be75d15dda",
+      "dimensions": [
+        "user-interaction"
+      ]
+    },
+    {
+      "id": "plugin",
+      "file": "corpus/test_plugin_ir_dsl.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_plugin_ir_dsl.json",
+      "sha256": "ACB2C520ABFFE45B0D86F66C5FD42958E68DD4930B85D2FE3D81C5F77B9E8C30",
+      "workflowId": "test_llm_id",
+      "dimensions": [
+        "external-call"
+      ]
+    },
+    {
+      "id": "plugin-legal",
+      "file": "corpus/test_plugin_ir_dsl_legal.json",
+      "sourcePath": "派生自 backend/studio-manager/src/test/resources/flow_dsl/test_plugin_ir_dsl.json（原文件零改动）：仅把插件节点 configs.userFields.inputs 与 inputs.userFields 改为与其 configs.arguments 同名（meetingRoom/start/end，字面量取值），用于表达画布正常产物的形状（画布加插件节点时输入字段由插件 input_schema 生成）。不自洽的原快照与 Studio 侧对齐问题见 01-Design_File/20260922/studio-side/。",
+      "sha256": "A091E01D280E96D7B4DE8CCF48A911FCF3979D49C3379DF32BA64FCF7A5BC530",
+      "workflowId": "test_llm_id",
+      "dimensions": [
+        "external-call"
+      ]
+    },
+    {
+      "id": "exception",
+      "file": "corpus/test_structuredmessages_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_structuredmessages_flow_ir.json",
+      "sha256": "0961F64B97AC9E620BF9C9E7ABECFA4ECFAF5EA62E487762B797751DD3A240A7",
+      "workflowId": "test_llm_id",
+      "dimensions": [
+        "exception"
+      ]
+    },
+    {
+      "id": "knowledge-repo",
+      "file": "corpus/test_knowledge_repo_flow_ir.json",
+      "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_knowledge_repo_flow_ir.json",
+      "sha256": "80C8C0056D129F3017B9E6D52C6ACD1DF5F072697B4BEB4585368F615E323F30",
+      "workflowId": "66bd6ca5-9b26-48b7-99bf-f4b8d12d34cd",
+      "dimensions": [
+        "external-call"
+      ],
+      "knownBlocker": "KnowledgeRepo fixture exports jiuwen.plugin instead of jiuwen.knowledgeRetrieval"
+    },
+    {
+      "id": "feat031-l2s7-knowledge-repo",
+      "file": "corpus/feat031_l2s7_knowledge_repo_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库语料 workflow 10b9efe1-1efd-4f0f-9ab5-240696caec3b version 1789831761204（dev IR workflow/ir/10b9efe1-1efd-4f0f-9ab5-240696caec3b/10b9efe1-1efd-4f0f-9ab5-240696caec3b_1789831761204.json）；画布 Start(query) -> KnowledgeRepo(configs.repos=[feat031_l2s7_kb_0001], top_k/recall_threshold/search_mode/faq_threshold) -> End(output_list)；重建脚本 01-Design_File/20260919/create-l2s7-knowledgerepo-corpus.ps1（该环境无 LakeSearch，validate 经测试侧预置 1 条知识库资源行通过）",
+      "sha256": "FA2CAD629139A660A8702401F4E5BF97E916714ED78781C8E27869E4911C7416",
+      "workflowId": "10b9efe1-1efd-4f0f-9ab5-240696caec3b",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval",
+        "external-call"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-multi",
+      "file": "corpus/feat031_l2s7_kb_multi_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C4（多知识库）workflow eebc789c-58dc-4212-8942-e4dda37949b3；configs.repos=[feat031_l2s7_kb_0001, feat031_l2s7_kb_0002]；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1（报告 knowledge-contract-probe/report.json）",
+      "sha256": "0F12CA1ED161334AAED336E378CE7F4D6F7D18DD82F68D636005BAB2A6EB7B05",
+      "workflowId": "eebc789c-58dc-4212-8942-e4dda37949b3",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-closed",
+      "file": "corpus/feat031_l2s7_kb_closed_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C3（引用状态 CLOSE 的知识库）workflow ff09786b-3e13-470c-9789-008c6e69e49e；configs.repos=[feat031_l2s7_kb_closed]（该行 status=CLOSE）；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1",
+      "sha256": "DD9A8B875C1332B6558387087D9DF0E05894F4521FD2344C30462F94201BE9E3",
+      "workflowId": "ff09786b-3e13-470c-9789-008c6e69e49e",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-topk-zero",
+      "file": "corpus/feat031_l2s7_kb_topk_zero_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C5a（top_k=0）workflow 33fcf19a-580d-4c36-8950-8a971772a175；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1",
+      "sha256": "77C22910AF577944E232017C4D9B79D1EC6931C4BFC694A72208A9EF85663F40",
+      "workflowId": "33fcf19a-580d-4c36-8950-8a971772a175",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-search-mode-invalid",
+      "file": "corpus/feat031_l2s7_kb_search_mode_invalid_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C5b（search_mode=not-a-mode）workflow 356c84c2-c1ab-494e-b3d2-e5ddea933ca0；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1",
+      "sha256": "D595C25D6F0264EEA91D916BF0C3D60D8D94A0E5DE1FC0230FBD3E16DBC94AC0",
+      "workflowId": "356c84c2-c1ab-494e-b3d2-e5ddea933ca0",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-topk-large",
+      "file": "corpus/feat031_l2s7_kb_topk_large_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C5c（top_k=100000）workflow ee93379e-0fca-4b34-85c2-e8c597f21c36；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1",
+      "sha256": "2F5E6FAF7850833FCC720E69E49BE7E3D61F5DEE0D3F889C6432798C32822A8B",
+      "workflowId": "ee93379e-0fca-4b34-85c2-e8c597f21c36",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-l2s7-kb-tags",
+      "file": "corpus/feat031_l2s7_kb_tags_ir.json",
+      "sourcePath": "Studio export 2026-09-19 L2S7 知识库契约探针变体 C6（common_tags 设为单条 RULE）workflow 876571be-10f9-472c-82e4-5839cfc9ed7e；导出 IR 的 retrievalConfig.tags 为 \"(feat031\\\\-probe\\\\-tag)\"；探针脚本 01-Design_File/20260919/probe-l2s7-knowledge-contract.ps1",
+      "sha256": "D513ACAB16AD8AA7091B800D7BFF366CD971B8C190654334A30A7BAB239CCAFA",
+      "workflowId": "876571be-10f9-472c-82e4-5839cfc9ed7e",
+      "dimensions": [
+        "sequential",
+        "knowledge-retrieval"
+      ]
+    },
+    {
+      "id": "feat031-n01-stream-transform",
+      "file": "corpus/feat031_n01_stream_transform_ir.json",
+      "sourcePath": "Studio export 2026-09-11 N01 workflow 552c74ed-b332-4df2-bca6-b6eec76d731e version 1789116192089 (release IR)",
+      "sha256": "5C2283E42643CF9833EA440B464517E00BD1AB69F8097106FE6B1C7ECB03F04D",
+      "workflowId": "552c74ed-b332-4df2-bca6-b6eec76d731e",
+      "dimensions": [
+        "sequential",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-e2-branch-parallel",
+      "file": "corpus/feat031_e2_branch_parallel_ir.json",
+      "sourcePath": "Studio export 2026-09-11 E2 workflow b6edb144-082d-49ff-acd7-ea87f260eff4 version 1789119601479 (release IR)",
+      "sha256": "BFEA94633174D67BC8F63D53A00B43F764192DA48D5E0299901C13AEFFBA4E3C",
+      "workflowId": "b6edb144-082d-49ff-acd7-ea87f260eff4",
+      "dimensions": [
+        "branch",
+        "parallel"
+      ],
+      "knownBlocker": "原登记『contains jiuwen.LLMReAct, which Java does not accept』已于 2026-09-21 失效（同 agent-parallel：LLMReAct 现映射 jiuwen.agent/FlowAgentNode，见 L2 §4.5.2 行 20 与 §1.3）；本语料运行期失败归 #285/#313，与类型接受无关"
+    },
+    {
+      "id": "feat031-e3-loop-child",
+      "file": "corpus/feat031_e3_loop_child_ir.json",
+      "sourcePath": "Studio export 2026-09-11 E3 workflow 31a12716-dbfa-4930-bc7e-c1b115992a4e version 1789121007639 (release IR, ParamExtraction expanded)",
+      "sha256": "BEB531BE60A698746CEE4DD5F26C0587B8FC629513485413B7DBC53842CC4723",
+      "workflowId": "31a12716-dbfa-4930-bc7e-c1b115992a4e",
+      "dimensions": [
+        "loop",
+        "subworkflow",
+        "parameter-expansion"
+      ],
+      "knownBlocker": "references child IRs a48265d0-1bb8-46c0-a5a2-d804e243723e and e8baae37-5deb-4367-96ba-8911e8387b51 that are not part of this corpus"
+    },
+    {
+      "id": "feat031-e3-child",
+      "file": "corpus/feat031_e3_child_ir.json",
+      "sourcePath": "Studio export 2026-09-11 E3 child workflow bd2031b4-dfcc-4691-9056-8fac2f50650f version 1789119636747 (release IR)",
+      "sha256": "A1CF70D976DD42B25AAC46BB863A6910B1C01FFBDE905D6BB27E6B00508B0FE2",
+      "workflowId": "bd2031b4-dfcc-4691-9056-8fac2f50650f",
+      "dimensions": [
+        "sequential"
+      ]
+    },
+    {
+      "id": "feat031-ref-userfield-probe",
+      "file": "corpus/feat031_ref_userfield_probe_ir.json",
+      "sourcePath": "test-side probe derived from feat031_e3_child_ir.json (Start declares and exposes userFields.city -> Message declares and wires content=${node_start.userFields.city} -> End echoes it); created 2026-09-14 to verify the caller-side userFields delivery channel",
+      "sha256": "F17A8DEA5F03B9705805E2968C871DABF0FC2E7B1F3DC276F3DB733662E7C49F",
+      "workflowId": "bd2031b4-dfcc-4691-9056-8fac2f50650f",
+      "dimensions": [
+        "sequential",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-e5-plugin-endpoint",
+      "file": "corpus/feat031_e5_plugin_endpoint_ir.json",
+      "sourcePath": "Studio export 2026-09-12 E5 workflow cc883479-a6d7-49e4-8a88-2a2e263007fd version 1789195839868 (release IR), plugin 435b4bc2-43f7-4611-988a-6a74921a43f8 tool d08e9a5875a042ed url http://localhost:55207/plugin/weather",
+      "sha256": "98574D738659135189A03838236D5A6F06F861BB62B2C3FACCF13618BF564FF7",
+      "workflowId": "cc883479-a6d7-49e4-8a88-2a2e263007fd",
+      "dimensions": [
+        "sequential",
+        "streaming",
+        "external-call"
+      ]
+    },
+    {
+      "id": "feat031-e2e-parent-child",
+      "file": "corpus/feat031_e2e_parent_child_ir.json",
+      "sourcePath": "Studio export 2026-09-17 E2E parent-child workflow 092f5034-bd52-4511-b98b-8499a88a7153 version 1789647867436 (published IR); 父 Start(query) -> 子工作流 -> End(result=${node_subworkflow.responseContent})；本语料专为端到端父调子与结果回灌制作",
+      "sha256": "DC1296E711FDF7ED43AB73A4DF5FF9B0541228D837A26A19026186970C9ED81B",
+      "workflowId": "092f5034-bd52-4511-b98b-8499a88a7153",
+      "dimensions": [
+        "sequential",
+        "subworkflow",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-e2e-parent-child-child",
+      "file": "corpus/feat031_e2e_parent_child_child_ir.json",
+      "sourcePath": "Studio export 2026-09-17 E2E child workflow 29ee2fda-749e-4425-904f-b1f220d68f84 version 1789647866285 (published IR); 子 Start(query) -> Message(回显 query) -> End；由 feat031-e2e-parent-child 的 workflowComposite 节点按 reference.path 引用",
+      "sha256": "6E1D3EE3E427C246D38AF16512930E62F3304F44FAAF4C19EE228B11FF8AFF32",
+      "workflowId": "29ee2fda-749e-4425-904f-b1f220d68f84",
+      "dimensions": [
+        "sequential",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-b1-loop-child",
+      "file": "corpus/feat031_b1_loop_child_ir.json",
+      "sourcePath": "Studio export 2026-09-18 B1 自洽语料 parent workflow 377afcf1-1d05-4fd3-8ebd-4b4fb05c6713 (dev IR workflow/ir/377afcf1-1d05-4fd3-8ebd-4b4fb05c6713/377afcf1-1d05-4fd3-8ebd-4b4fb05c6713.json)；父 Start(query, questions[array]) -> 子工作流 -> Loop(array, body=[LLM]) -> End；循环列由调用方 metadata.inputs 提供（arrLoopVar=${node_start.userFields.questions}），同一份语料内循环与子流都真实执行；创建脚本 01-Design_File/20260918/FEAT-031/create-b1-loop-child-corpus.ps1",
+      "sha256": "F2232ACF4CFFF2FBCE83888B052F92A2DE7F6662D7F56C99BD3D3E4A7638305D",
+      "workflowId": "377afcf1-1d05-4fd3-8ebd-4b4fb05c6713",
+      "dimensions": [
+        "sequential",
+        "loop",
+        "subworkflow",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-b1-loop-child-child",
+      "file": "corpus/feat031_b1_loop_child_child_ir.json",
+      "sourcePath": "Studio export 2026-09-18 B1 自洽语料 child workflow c8875472-af66-49d2-9042-2c317cb962c5 version 1789713662497 (published IR at workflow/ir/c8875472-af66-49d2-9042-2c317cb962c5/c8875472-af66-49d2-9042-2c317cb962c5_1789713662497.json)；子 Start(query) -> Message(回显 query) -> End；由 feat031-b1-loop-child 的 workflowComposite 节点按 reference.path 引用",
+      "sha256": "0038AE9C3AA58AD77FDE3E2E70A79119D27C9022D2051CD193893D0C3FC756BF",
+      "workflowId": "c8875472-af66-49d2-9042-2c317cb962c5",
+      "dimensions": [
+        "sequential",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-b1-param-extraction",
+      "file": "corpus/feat031_b1_param_extraction_ir.json",
+      "sourcePath": "Studio export 2026-09-18 B1 参数展开语料 workflow 42c051a6-d035-4427-9b69-4fe7a4548447 (dev IR workflow/ir/42c051a6-d035-4427-9b69-4fe7a4548447/42c051a6-d035-4427-9b69-4fe7a4548447.json)；Start(query) -> ParamExtraction(领域对象 buyer + 上下文变量，processing_workflows 为空) -> End(消费提取结果)；由 E3 现场节点 DSL 派生并清空已删除的外部校准子流引用；创建脚本 01-Design_File/20260918/FEAT-031/create-param-extraction-corpus.ps1",
+      "sha256": "10A486DC8F1196C61239308044B50D001FFD685FB78F306DFB251EB3827A8FCF",
+      "workflowId": "42c051a6-d035-4427-9b69-4fe7a4548447",
+      "dimensions": [
+        "sequential",
+        "parameter-expansion",
+        "streaming"
+      ]
+    },
+    {
+      "id": "feat031-e8-entry-field-branch",
+      "file": "corpus/feat031_e8_entry_field_branch_ir.json",
+      "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2 real export; branch condition reads entry custom field). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e8-ir.py",
+      "sha256": "6EE1E980AF2E489F172DD1BD8809668F47227270150E1C47339FAAD3346382AC",
+      "workflowId": "feat031-entry-field-branch-0001",
+      "dimensions": [
+        "sequential",
+        "branch",
+        "parallel"
+      ]
+    },
+    {
+      "id": "feat031-e9-query-condition-branch",
+      "file": "corpus/feat031_e9_query_cond_branch_ir.json",
+      "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2/E8; branch condition reads systemFields.query). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e9-ir.py",
+      "sha256": "14D48351A740D229649DE57D0CECA8DA79AD3862BDBD947046A0952214328F71",
+      "workflowId": "feat031-query-condition-branch-0001",
+      "dimensions": [
+        "sequential",
+        "branch",
+        "parallel"
+      ]
+    },
+    {
+      "id": "feat031-e10-upstream-field-branch",
+      "file": "corpus/feat031_e10_upstream_field_branch_ir.json",
+      "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2/E8; branch condition reads an upstream node's output field). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e10-ir.py",
+      "sha256": "2D0AEAD7AEDF9B6BD5DCA9C41B79821D6F5A440E50017C27CD1712BBD874C586",
+      "workflowId": "feat031-upstream-field-branch-0001",
+      "dimensions": [
+        "sequential",
+        "branch",
+        "parallel"
+      ]
+    }
+  ],
+  "representativeDimensions": [
+    "sequential",
+    "branch",
+    "parallel",
+    "loop",
+    "subworkflow",
+    "user-interaction",
+    "external-call",
+    "exception"
+  ],
+  "executionState": "NOT_RUN"
+}

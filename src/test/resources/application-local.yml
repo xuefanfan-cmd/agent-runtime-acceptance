@@ -33,6 +33,25 @@ sut:
       image: redis:7-alpine
       port: 6379
   agents:
+    # FEAT-031 Studio DSL SIT 夹具（宿主源码：agent-solution common/example/studio-dsl-ir-sit-demo，
+    # 需先 mvn install 出 com.openjiuwen.example:studio-dsl-ir-sit-demo:0.1.1）。
+    # Redis 由用例经 SutStack.serviceBinding 注入：PR707 起 studio-dsl 宿主未安装 RuntimeRedisClient 即 fail-fast。
+    studio-dsl-ir-sit:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-ir-sit-demo
+      version: 0.1.1
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
+    # ISSUE399 负例专用别名：同一制品，但不注入 RuntimeRedisClient
+    # （无 service-bindings、不开启 checkpointer.type=redis），用于验证「未配置 Redis → fail-fast 且不连 :6379」。
+    studio-dsl-ir-sit-noredis:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-ir-sit-demo
+      version: 0.1.1
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
     mainplan:
       group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a

@@ -1,0 +1,25 @@
+{
+  "workflowId": "wf-model",
+  "schemaVersion": "0.6.0",
+  "components": [
+    {"id": "node_start", "type": "jiuwen.start", "configs": {}},
+    {
+      "id": "node_llm",
+      "type": "jiuwen.LLMComponent",
+      "configs": {
+        "model": {"modelName": "model-a", "modelType": "openai"}
+      }
+    },
+    {"id": "node_end", "type": "jiuwen.end", "configs": {}}
+  ],
+  "connections": [
+    {
+      "source": {"componentId": "node_start"},
+      "target": {"componentId": "node_llm"}
+    },
+    {
+      "source": {"componentId": "node_llm"},
+      "target": {"componentId": "node_end"}
+    }
+  ]
+}

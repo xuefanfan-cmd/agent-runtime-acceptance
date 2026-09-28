@@ -99,6 +99,14 @@ sut:
   # are for code analysis only and are never used at runtime.
   # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
+    # FEAT-031 Studio DSL SIT 夹具（与 application-local.yml 的同名 agent 一致）。
+    studio-dsl-ir-sit:
+      group: com.openjiuwen.example
+      artifact: studio-dsl-ir-sit-demo
+      version: 0.1.1
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
     # FEAT-054：DA 宿主（deepanalyze-java）——本特性的被测 SUT。
     deepanalyze:
       group: com.openjiuwen

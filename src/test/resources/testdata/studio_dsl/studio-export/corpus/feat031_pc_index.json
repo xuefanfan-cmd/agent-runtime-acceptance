@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "purpose": "FEAT-031 P1：生成式长链（随机前缀 + 判断读链尾产出）的语料登记。",
+  "invariants": [
+    "每个被调用节点的产出值在本用例窗口可见（值级）",
+    "链尾产出必须被判断节点看到并按 `!= ''` 判成 IF",
+    "任务终态 COMPLETED 且 node_end 响应文本非空",
+    "窗口内不出现 ERROR"
+  ],
+  "whitelist": "v1 只含确定性执行器 jiuwen.code / jiuwen.aggregation；plugin/mcp/模型类由矩阵类按执行器维度覆盖",
+  "seeds": [
+    101,
+    202,
+    303,
+    404,
+    505
+  ],
+  "chains": [
+    {
+      "seed": 101,
+      "shape": "chain",
+      "prefix_node_ids": [
+        "node_pc_code_0",
+        "node_pc_code_1",
+        "node_pc_code_2",
+        "node_pc_code_3"
+      ],
+      "prefix_canaries": [
+        "PC-1-C0",
+        "PC-1-C1",
+        "PC-1-C2",
+        "PC-1-C3"
+      ],
+      "upstream_node_id": "node_pc_code_3",
+      "expected_edge": "node_pc_if_sentinel",
+      "forbidden_edges": [
+        "node_pc_default_sentinel"
+      ],
+      "value_field": "raw_output",
+      "file": "corpus/feat031_pc_chain1_ir.json",
+      "sha256": "1A744A3233C2CE41494121508FAD56522BA0271CABC9E9B81D5A54D8DCBF2817"
+    },
+    {
+      "seed": 202,
+      "shape": "chain",
+      "prefix_node_ids": [
+        "node_pc_code_0",
+        "node_pc_code_1",
+        "node_pc_code_2",
+        "node_pc_code_3",
+        "node_pc_code_4",
+        "node_pc_code_5"
+      ],
+      "prefix_canaries": [
+        "PC-2-C0",
+        "PC-2-C1",
+        "PC-2-C2",
+        "PC-2-C3",
+        "PC-2-C4",
+        "PC-2-C5"
+      ],
+      "upstream_node_id": "node_pc_code_5",
+      "expected_edge": "node_pc_if_sentinel",
+      "forbidden_edges": [
+        "node_pc_default_sentinel"
+      ],
+      "value_field": "raw_output",
+      "file": "corpus/feat031_pc_chain2_ir.json",
+      "sha256": "D9F5737F3548F8CAC39D7327D97CCED1DC4BC24F5E323E157117777F83C53D0B"
+    },
+    {
+      "seed": 303,
+      "shape": "fanin",
+      "prefix_node_ids": [
+        "node_pc_lane_a",
+        "node_pc_lane_b",
+        "node_pc_agg"
+      ],
+      "prefix_canaries": [
+        "PC-3-A",
+        "PC-3-B"
+      ],
+      "upstream_node_id": "node_pc_agg",
+      "expected_edge": "node_pc_if_sentinel",
+      "forbidden_edges": [
+        "node_pc_default_sentinel"
+      ],
+      "value_field": "group1",
+      "file": "corpus/feat031_pc_chain3_ir.json",
+      "sha256": "AEBCCC808EC63DD71F83864AD1229FB75D7ED4E5762357425B5A7F1F26D68D94"
+    },
+    {
+      "seed": 404,
+      "shape": "fanin",
+      "prefix_node_ids": [
+        "node_pc_lane_a",
+        "node_pc_lane_b",
+        "node_pc_agg"
+      ],
+      "prefix_canaries": [
+        "PC-4-A",
+        "PC-4-B"
+      ],
+      "upstream_node_id": "node_pc_agg",
+      "expected_edge": "node_pc_if_sentinel",
+      "forbidden_edges": [
+        "node_pc_default_sentinel"
+      ],
+      "value_field": "group1",
+      "file": "corpus/feat031_pc_chain4_ir.json",
+      "sha256": "E2B7B7DD93A6D794C7DB9BA17BD886097C71A9A66EADBC3D1B3BC0952A436989"
+    },
+    {
+      "seed": 505,
+      "shape": "fanin",
+      "prefix_node_ids": [
+        "node_pc_lane_a",
+        "node_pc_lane_b",
+        "node_pc_agg"
+      ],
+      "prefix_canaries": [
+        "PC-5-A",
+        "PC-5-B"
+      ],
+      "upstream_node_id": "node_pc_agg",
+      "expected_edge": "node_pc_if_sentinel",
+      "forbidden_edges": [
+        "node_pc_default_sentinel"
+      ],
+      "value_field": "group1",
+      "file": "corpus/feat031_pc_chain5_ir.json",
+      "sha256": "86596486C84C15C9F9CF4F6D337453FB8614A8D6F844788276A82A068A488C9F"
+    }
+  ]
+}

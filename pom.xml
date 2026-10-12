@@ -34,8 +34,9 @@
              AgentFailureDescriptor/AgentExecutionException, which only exist in 0.1.2+ (locally
              installed from D:\code\test\agent-runtime-java, see build-logs/rtj-build-20260914-r2.log);
              mirror-published 0.1.1 lacks both classes and fails test-compile. -->
-        <agent-runtime-java.version>0.1.2</agent-runtime-java.version>
+        <agent-runtime-java.version>0.1.3</agent-runtime-java.version>
         <agent-runtime-ext-java.version>0.1.1</agent-runtime-ext-java.version>
+        <agent-runtime-ext-agentcore.version>0.1.2</agent-runtime-ext-agentcore.version>
         <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>
         <rocketmq-client.version>5.1.4</rocketmq-client.version>
@@ -180,6 +181,13 @@
             <groupId>com.openjiuwen</groupId>
             <artifactId>agent-service-adapters-agentcore</artifactId>
             <version>${agent-runtime-java.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-056 AgentInstanceCustomizer contract under test. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-service-adapters-agentcore-ext</artifactId>
+            <version>${agent-runtime-ext-agentcore.version}</version>
             <scope>test</scope>
         </dependency>
         <!-- FEAT-022 Custom REST ingress SPI. The SUT process loads this same artifact externally. -->

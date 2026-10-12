@@ -47,3 +47,4 @@ reports/runtime/
 .work/
 work-src/
 .claude/
+.codecheckcli

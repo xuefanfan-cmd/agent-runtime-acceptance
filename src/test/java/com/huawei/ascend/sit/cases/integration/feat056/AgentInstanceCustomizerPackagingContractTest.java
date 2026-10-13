@@ -113,6 +113,49 @@ class AgentInstanceCustomizerPackagingContractTest {
         }
     }
 
+    @Test
+    @Story("FEAT-056-C31: 被执行的主 Library、宿主与扩展可追溯到官方示例源码")
+    void officialExampleProvenanceMatchesTheExecutedArtifacts() throws Exception {
+        Path library = EXAMPLE_DIR.resolve("deepagent-a-library/target/" + LIBRARY_JAR_NAME);
+        Path appA = EXAMPLE_DIR.resolve("customer-agent-runtime/target/customer-agent-runtime-exec.jar");
+        Path librarySource = EXAMPLE_DIR.resolve("deepagent-a-library/src/main/java/com/openjiuwen/example/"
+                + "secondary/library/AgentAConfiguration.java");
+        Path extensionSource = EXAMPLE_DIR.resolve("customer-agent-runtime/src/main/java/com/openjiuwen/example/"
+                + "secondary/customer/CustomerExtensions.java");
+        Path entrySource = EXAMPLE_DIR.resolve("customer-agent-runtime/src/main/java/com/openjiuwen/example/"
+                + "secondary/customer/CustomerRuntimeApplication.java");
+        Assumptions.assumeTrue(Files.isRegularFile(library) && Files.isRegularFile(appA)
+                && Files.isRegularFile(librarySource) && Files.isRegularFile(extensionSource)
+                && Files.isRegularFile(entrySource), "official example sources/artifacts incomplete");
+
+        // 执行用的库必须就是这份官方示例源码构建出来的普通库（同 C02 的哈希口径）。
+        assertThat(embeddedEntryHash(appA, EMBEDDED_LIBRARY_ENTRY))
+                .as("宿主包内原库必须等于官方示例源码构建的库")
+                .isEqualTo(sha256(library));
+
+        // 宿主入口与扩展必须来自官方示例源码，而不是测试侧另写的替代实现。
+        try (ZipFile jar = new ZipFile(appA.toFile())) {
+            assertThat(jar.getEntry("META-INF/MANIFEST.MF")).isNotNull();
+            try (InputStream manifest = jar.getInputStream(jar.getEntry("META-INF/MANIFEST.MF"))) {
+                String text = new String(manifest.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                // MANIFEST 的长值按规范每 72 字节折行（换行 + 一个空格续行），断言前先解折行。
+                String unfolded = text.replace("\r\n", "\n").replaceAll("\n ", "");
+                assertThat(unfolded)
+                        .as("可执行包入口必须是官方示例的宿主启动类")
+                        .contains("com.openjiuwen.example.secondary.customer.CustomerRuntimeApplication");
+            }
+            assertThat(names(jar))
+                    .as("扩展类必须编进宿主包")
+                    .anyMatch(name -> name.endsWith(
+                            "com/openjiuwen/example/secondary/customer/CustomerExtensions.class"));
+        }
+        assertThat(Files.readString(extensionSource))
+                .as("官方示例扩展源码必须注册 AgentInstanceCustomizer 并新增 Rail/Tool")
+                .contains("AgentInstanceCustomizer")
+                .contains("registerRail")
+                .contains("registerHarnessTool");
+    }
+
     private static java.util.Set<String> names(ZipFile jar) {
         return jar.stream().map(ZipEntry::getName).collect(java.util.stream.Collectors.toSet());
     }

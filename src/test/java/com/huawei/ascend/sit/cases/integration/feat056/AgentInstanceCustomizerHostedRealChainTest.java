@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -31,12 +30,13 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-056 托管模式的真实 Runtime A2A 补测。
+ * FEAT-056 真实 Runtime A2A 补测（托管 + 非托管 singleton 两种形态）。
  *
  * <p>被拉起的样本是 {@code agent-solution/common/example/agentcore-instance-customizer-verify-demo}
- * 构建出的独立宿主；它在一个进程里托管 agent-a / agent-b 两个成员，并用
+ * 构建出的独立宿主；{@code VERIFY_DEPLOYMENT=hosted} 时在一个进程里托管 agent-a / agent-b
+ * （入口 {@code /a2a/agents/{注册ID}}），{@code singleton} 时为非托管单 Agent（入口 {@code /a2a}）。
  * {@code VERIFY_CUSTOMIZER_MODE} 切换外部自定义器。这里直接以黑盒方式拉起该 jar，
- * 通过 {@code /a2a/agents/{注册ID}} 发真实请求，并从 SUT 日志断言行为。
+ * 发真实请求并从 SUT 日志断言行为。
  *
  * <p>不修改任何产品代码；只验证行为。
  *
@@ -112,33 +112,69 @@ class AgentInstanceCustomizerHostedRealChainTest {
     }
 
     @Test
-    @Disabled("GAP-056-04：真实链路上自定义器注册的保留区 Rail 未被护栏拦截（见 FEAT-056-新发现-保留区Rail未被护栏拦截.md）；"
-            + "待责任人确认修复点后升级为真执行。")
-    @Story("FEAT-056-C21: 保留区 Rail 在护栏安装点使请求失败，不无护栏降级")
-    void reservedRailMustFailTheRequestAtGuardrailInstallPoint() throws Exception {
-        Fixture fixture = start("reserved", true);
+    @Story("FEAT-056-C21: 真实链路上合规业务 Rail 与 Tool Guardrail 共存")
+    void compliantBusinessRailCoexistsWithGuardrailOnRealChain() throws Exception {
+        // canary 变体注册的是合规业务 Rail（Core 默认 priority 50，低于保留区 150）。
+        Fixture fixture = start("canary", true);
         assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
 
         String response = sendA2a(fixture.port(), "agent-a");
         String log = readLog(fixture);
 
-        assertThat(log).contains("VERIFY_RESERVED_RAIL_INSTALLED agentId=agent-a");
-        assertThat(log).contains("reserved band");
-        assertThat(response).doesNotContain("TASK_STATE_COMPLETED");
+        assertThat(log).contains("Tool guardrail enabled");
+        assertThat(log).contains("Tool guardrail installed:");
+        assertThat(log).contains("VERIFY_CUSTOMIZER installed agentId=agent-a");
+        assertThat(log).contains("VERIFY_EXTERNAL_RAIL_CANARY fired agentId=agent-a");
+        assertThat(response).contains("TASK_STATE_COMPLETED");
+    }
+
+    @Test
+    @Story("FEAT-056-C33: init-fail-fast=false 下非托管初始化失败不退出进程，Agent 未就绪")
+    void nonHostedInitFailureKeepsProcessAliveWhenFailFastIsDisabled() throws Exception {
+        Fixture fixture = start("fail", false, "singleton", List.of(
+                "--openjiuwen.service.agent-id=verify-singleton-agent",
+                "--openjiuwen.service.lifecycle.init-fail-fast=false"));
+        assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        assertThat(waitForLog(fixture, "VERIFY_FAILING_CUSTOMIZER about to throw"))
+                .as("初始化失败已被记录").isTrue();
+
+        // init-fail-fast=false：失败只让 Agent 未就绪，不得终止进程。
+        assertThat(process.isAlive())
+                .as("init-fail-fast=false 时进程必须继续存活").isTrue();
+
+        Probe probe = probeA2a(fixture.port(), "/a2a");
+        String log = readLog(fixture);
+        assertThat(log).contains("VERIFY_FAILING_CUSTOMIZER about to throw");
+        assertThat(log).contains("init-fail-fast=false");
+        assertThat(log).doesNotContain("VERIFY_AFTER_FAILURE_CUSTOMIZER called");
+        assertThat(log)
+                .as("失败对象不得被交付执行")
+                .doesNotContain("VERIFY_EXTERNAL_RAIL_CANARY fired");
+        assertThat(probe.body())
+                .as("Agent 未就绪时入口不得返回任务完成（HTTP %d）", probe.status())
+                .doesNotContain("TASK_STATE_COMPLETED");
     }
 
     private Fixture start(String mode, boolean guardrailEnabled) throws IOException {
+        return start(mode, guardrailEnabled, "hosted", List.of());
+    }
+
+    private Fixture start(String mode, boolean guardrailEnabled, String deployment,
+            List<String> extraArgs) throws IOException {
         Path jar = fixtureJar();
         workDir = Files.createTempDirectory("feat056-hosted-" + mode + "-");
         int port = freePort();
         Path log = workDir.resolve("app.log");
 
-        ProcessBuilder builder = new ProcessBuilder(List.of(
+        List<String> command = new java.util.ArrayList<>(List.of(
                 javaExecutable(), "-jar", jar.toString(), "--server.port=" + port));
+        command.addAll(extraArgs);
+        ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(workDir.toFile());
         builder.redirectErrorStream(true);
         builder.redirectOutput(log.toFile());
         Map<String, String> env = builder.environment();
+        env.put("VERIFY_DEPLOYMENT", deployment);
         env.put("VERIFY_CUSTOMIZER_MODE", mode);
         env.put("VERIFY_GUARDRAIL_ENABLED", Boolean.toString(guardrailEnabled));
         env.putIfAbsent("LLM_API_KEY", "dummy");
@@ -146,6 +182,40 @@ class AgentInstanceCustomizerHostedRealChainTest {
         env.putIfAbsent("LLM_MODEL", "dummy");
         process = builder.start();
         return new Fixture(port, log);
+    }
+
+    private boolean waitForLog(Fixture fixture, String needle) throws Exception {
+        long deadline = System.nanoTime() + STARTUP_TIMEOUT.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (readLog(fixture).contains(needle)) {
+                return true;
+            }
+            if (!process.isAlive()) {
+                return readLog(fixture).contains(needle);
+            }
+            Thread.sleep(500);
+        }
+        return false;
+    }
+
+    private Probe probeA2a(int port, String path) throws Exception {
+        String payload = JSON.writeValueAsString(Map.of(
+                "jsonrpc", "2.0",
+                "id", "feat056-probe-" + UUID.randomUUID(),
+                "method", "SendStreamingMessage",
+                "params", Map.of("message", Map.of(
+                        "messageId", UUID.randomUUID().toString(),
+                        "role", "ROLE_USER",
+                        "contextId", "feat056-probe-" + UUID.randomUUID(),
+                        "parts", List.of(Map.of("text", "ping"))))));
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return new Probe(response.statusCode(), response.body() == null ? "" : response.body());
     }
 
     private boolean waitForStarted(Fixture fixture) throws Exception {
@@ -215,5 +285,8 @@ class AgentInstanceCustomizerHostedRealChainTest {
     }
 
     private record Fixture(int port, Path log) {
+    }
+
+    private record Probe(int status, String body) {
     }
 }

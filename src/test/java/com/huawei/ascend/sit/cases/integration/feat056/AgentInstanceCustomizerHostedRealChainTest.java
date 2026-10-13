@@ -130,20 +130,13 @@ class AgentInstanceCustomizerHostedRealChainTest {
     }
 
     @Test
-    @Disabled("测试侧缺陷：同一配置用脚本已证（见 evidence/runs/feat056-round2 系列与 probe-singleton-not-ready.sh），"
-            + "JUnit 形式在 45s 内取不到启动期失败日志，原因未定位（首次失败的临时目录已被系统清理）。"
-            + "升级触发条件：补齐可控的日志读取/就绪判据后重新启用并复跑。")
     @Story("FEAT-056-C33: init-fail-fast=false 下非托管初始化失败不退出进程，Agent 未就绪")
     void nonHostedInitFailureKeepsProcessAliveWhenFailFastIsDisabled() throws Exception {
         Fixture fixture = start("fail", false, "singleton", List.of(
                 "--openjiuwen.service.agent-id=verify-singleton-agent",
-                "--openjiuwen.service.lifecycle.init-fail-fast=false"),
-                Map.of("VERIFY_AGENT_MANAGER", "true", "VERIFY_FACTORY_DESTROY_THROWS", "true"));
+                "--openjiuwen.service.lifecycle.init-fail-fast=false"));
         assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
-        // 必须等 init phase 跑完再发请求：start() 之前 customizationReady 仍为 false，
-        // 过早请求会命中 "Instance customization is not ready" 而绕过被测的按任务失败路径。
-        assertThat(waitForLog(fixture, "Agent init phase completed for application", Duration.ofSeconds(90)))
-                .as("init phase 已完成，可以发请求（日志目录：%s）", fixture.log().getParent()).isTrue();
+        // 该形态没有 per-task manager，自定义器在 init phase 就会抛错，因此等的是"失败已被记录"。
         assertThat(waitForLog(fixture, "VERIFY_FAILING_CUSTOMIZER about to throw"))
                 .as("初始化失败已被记录（日志目录：%s）", fixture.log().getParent()).isTrue();
 
@@ -186,17 +179,17 @@ class AgentInstanceCustomizerHostedRealChainTest {
     }
 
     @Test
-    @Disabled("未定位（第 2 次卡在同一差异）：已确认 'Agent init phase completed' 之后才发请求，"
-            + "但响应仍是 'Instance customization is not ready for agent ...'，"
-            + "而同一配置用脚本（probe-pertask-destroy-failure.sh）能走通按任务失败路径并看到 suppressed 清理错误。"
-            + "差异未定位，可能是产品侧（按任务 initializer 未生效）也可能是测试侧（就绪判据不足）；"
-            + "定位前不得据此判 PASS/FAIL。升级触发条件：定位该差异并给出可复现的最小判据。")
     @Story("FEAT-056-C35: 按任务初始化失败且工厂 destroy 也失败——原错误不被掩盖、清理失败可诊断、占位被清掉")
     void perTaskInitFailureWithFailingDestroyKeepsPrimaryErrorAndFreesPlaceholder() throws Exception {
         Fixture fixture = start("fail", false, "singleton", List.of(
                 "--openjiuwen.service.agent-id=verify-singleton-agent",
-                "--openjiuwen.service.lifecycle.init-fail-fast=false"));
+                "--openjiuwen.service.lifecycle.init-fail-fast=false"),
+                Map.of("VERIFY_AGENT_MANAGER", "true", "VERIFY_FACTORY_DESTROY_THROWS", "true"));
         assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        // 有 per-task manager 时初始化发生在请求里；但 initializer 必须等 start()（init phase）执行完才就绪，
+        // 因此先等 init phase 完成，否则请求会命中 "Instance customization is not ready"。
+        assertThat(waitForLog(fixture, "Agent init phase completed for application", Duration.ofSeconds(90)))
+                .as("init phase 已完成，initializer 已就绪（日志目录：%s）", fixture.log().getParent()).isTrue();
         Probe first = probeA2a(fixture.port(), "/a2a", "feat056-c35-conv-a");
         // 同一个 conversation 再发一次：若占位没被清掉，这里会得到 conversation busy。
         Probe second = probeA2a(fixture.port(), "/a2a", "feat056-c35-conv-a");
@@ -231,7 +224,9 @@ class AgentInstanceCustomizerHostedRealChainTest {
     private Fixture start(String mode, boolean guardrailEnabled, String deployment,
             List<String> extraArgs, Map<String, String> extraEnv) throws IOException {
         Path jar = fixtureJar();
-        workDir = Files.createTempDirectory("feat056-hosted-" + mode + "-");
+        // 放在模块 target/ 下而不是 /tmp：临时目录会被系统清理，导致失败后无法回溯现场。
+        workDir = Path.of("target", "feat056-fixture", mode + "-" + System.nanoTime());
+        Files.createDirectories(workDir);
         int port = freePort();
         Path log = workDir.resolve("app.log");
 

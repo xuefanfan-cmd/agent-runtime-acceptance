@@ -150,8 +150,12 @@ class AgentInstanceCustomizerHostedRealChainTest {
         assertThat(log)
                 .as("失败对象不得被交付执行")
                 .doesNotContain("VERIFY_EXTERNAL_RAIL_CANARY fired");
+        // 收紧断言：入口必须明确失败，而不是"没有返回成功"就算过。
         assertThat(probe.body())
-                .as("Agent 未就绪时入口不得返回任务完成（HTTP %d）", probe.status())
+                .as("Agent 未就绪时入口必须明确失败（HTTP %d）", probe.status())
+                .contains("TASK_STATE_FAILED")
+                .contains("AGENT_EXECUTION_FAILED")
+                .contains("Instance customization is not ready")
                 .doesNotContain("TASK_STATE_COMPLETED");
     }
 

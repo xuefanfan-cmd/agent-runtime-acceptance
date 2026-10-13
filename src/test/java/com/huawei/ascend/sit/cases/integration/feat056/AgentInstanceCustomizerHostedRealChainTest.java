@@ -216,6 +216,126 @@ class AgentInstanceCustomizerHostedRealChainTest {
         return start(mode, guardrailEnabled, "hosted", List.of());
     }
 
+    @Test
+    @Story("FEAT-056-C36: 零自定义器时真实链路原行为不变，且不要求业务 ID")
+    void zeroCustomizersKeepsOriginalBehaviourAndRequiresNoBusinessId() throws Exception {
+        // 不注册任何自定义器，也不提供 --openjiuwen.service.agent-id：应用必须能正常起来。
+        Fixture fixture = start("none", false, "singleton", List.of());
+        assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        assertThat(waitForLog(fixture, "Agent init phase completed for application", Duration.ofSeconds(90)))
+                .as("init phase 已完成（日志目录：%s）", fixture.log().getParent()).isTrue();
+
+        Probe probe = probeA2a(fixture.port(), "/a2a", "feat056-c36-conv");
+        String log = readLog(fixture);
+
+        assertThat(probe.body())
+                .as("零自定义器时不得因缺少自定义器或业务 ID 而失败")
+                .doesNotContain("Instance customization is not ready")
+                .doesNotContain("requires a non-blank business agent ID");
+        assertThat(log).doesNotContain("VERIFY_CUSTOMIZER installed");
+        assertThat(log).doesNotContain("VERIFY_FAILING_CUSTOMIZER");
+        assertThat(log).doesNotContain("Instance customization requires a non-blank business agent ID");
+    }
+
+    @Test
+    @Story("FEAT-056-C37: 真实链路上对象类型不支持时在业务回调前失败")
+    void unsupportedTaskAgentTypeFailsBeforeAnyCustomizerRuns() throws Exception {
+        Fixture fixture = start("canary", false, "singleton", List.of(
+                "--openjiuwen.service.agent-id=verify-singleton-agent"),
+                Map.of("VERIFY_AGENT_MANAGER", "true", "VERIFY_FACTORY_AGENT_TYPE", "plain"));
+        assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        assertThat(waitForLog(fixture, "Agent init phase completed for application", Duration.ofSeconds(90)))
+                .as("init phase 已完成（日志目录：%s）", fixture.log().getParent()).isTrue();
+
+        Probe probe = probeA2a(fixture.port(), "/a2a", "feat056-c37-conv");
+        String log = readLog(fixture);
+
+        assertThat(probe.body()).as("任务必须明确失败").contains("TASK_STATE_FAILED");
+        assertThat(log)
+                .as("必须在业务回调前失败")
+                .contains("requires BaseAgent or DeepAgent");
+        assertThat(countMarkers(fixture, "VERIFY_CUSTOMIZER installed"))
+                .as("不支持类型时自定义器调用次数必须为 0")
+                .isZero();
+    }
+
+    @Test
+    @Story("FEAT-056-C38: 真实链路上按任务对象各自扩展，释放一个不影响另一个")
+    void perTaskObjectsGetSeparateExtensionsAndReleaseIsolation() throws Exception {
+        Fixture fixture = start("canary", false, "singleton", List.of(
+                "--openjiuwen.service.agent-id=verify-singleton-agent"),
+                Map.of("VERIFY_AGENT_MANAGER", "true"));
+        assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        assertThat(waitForLog(fixture, "Agent init phase completed for application", Duration.ofSeconds(90)))
+                .as("init phase 已完成（日志目录：%s）", fixture.log().getParent()).isTrue();
+
+        Probe first = probeA2a(fixture.port(), "/a2a", "feat056-c38-a");
+        Probe second = probeA2a(fixture.port(), "/a2a", "feat056-c38-b");
+        String log = readLog(fixture);
+
+        assertThat(first.body()).contains("TASK_STATE_COMPLETED");
+        assertThat(second.body()).contains("TASK_STATE_COMPLETED");
+        assertThat(countMarkers(fixture, "VERIFY_CUSTOMIZER installed"))
+                .as("两个任务对象必须各自扩展一次（日志目录：%s）", fixture.log().getParent())
+                .isEqualTo(2);
+        List<String> instances = installedInstances(structuredLog(fixture));
+        assertThat(instances).as("两个任务对象必须是不同实例").hasSize(2).doesNotHaveDuplicates();
+        assertThat(countMarkers(fixture, "VERIFY_EXTERNAL_RAIL_CANARY fired"))
+                .as("两个任务对象的 Rail 都必须各自触发")
+                .isEqualTo(2);
+    }
+
+    @Test
+    @Story("FEAT-056-C39: 托管默认 Agent 的按任务扩展（显式配对工厂）在真实链路上生效")
+    void hostedDefaultAgentPerTaskCustomizationOnRealChain() throws Exception {
+        Fixture fixture = start("canary", false, "hosted", List.of(),
+                Map.of("VERIFY_AGENT_MANAGER", "true", "VERIFY_DEFAULT_AGENT", "agent-a"));
+        assertThat(waitForStarted(fixture)).as("fixture started").isTrue();
+        // 托管模式不经过 InitPhaseExecutor，完成标志是最后一个托管成员启动成功。
+        assertThat(waitForLog(fixture, "Hosted agent agentId=agent-b operation=start result=success",
+                Duration.ofSeconds(90)))
+                .as("托管成员已就绪（日志目录：%s）", fixture.log().getParent()).isTrue();
+
+        Probe first = probeA2a(fixture.port(), "/a2a", "feat056-c39-a");
+        Probe second = probeA2a(fixture.port(), "/a2a", "feat056-c39-b");
+        String log = readLog(fixture);
+
+        assertThat(first.body()).contains("TASK_STATE_COMPLETED");
+        assertThat(second.body()).contains("TASK_STATE_COMPLETED");
+        assertThat(countMarkers(fixture, "VERIFY_CUSTOMIZER installed agentId=agent-a"))
+                .as("默认 Agent 的每个任务对象都要各自扩展（日志目录：%s）", fixture.log().getParent())
+                .isEqualTo(2);
+        assertThat(installedInstances(structuredLog(fixture), "verify-task-"))
+                .as("默认 Agent 的每个任务对象必须是不同实例")
+                .hasSize(2).doesNotHaveDuplicates();
+    }
+
+    private static List<String> installedInstances(String log) {
+        return installedInstances(log, "");
+    }
+
+    private static List<String> installedInstances(String log, String requiredSubstring) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("VERIFY_CUSTOMIZER installed agentId=[^ ]+ instance=([^\\s]+)")
+                .matcher(log);
+        List<String> instances = new java.util.ArrayList<>();
+        while (matcher.find()) {
+            if (requiredSubstring.isEmpty() || matcher.group(1).contains(requiredSubstring)) {
+                instances.add(matcher.group(1));
+            }
+        }
+        return instances;
+    }
+
+    /** 只读 logs/run/run.log，避免 stdout 与文件日志重复计入。 */
+    private static String structuredLog(Fixture fixture) throws IOException {
+        Path runLog = fixture.log().getParent().resolve("logs/run/run.log");
+        if (Files.exists(runLog)) {
+            return Files.readString(runLog);
+        }
+        return Files.exists(fixture.log()) ? Files.readString(fixture.log()) : "";
+    }
+
     private Fixture start(String mode, boolean guardrailEnabled, String deployment,
             List<String> extraArgs) throws IOException {
         return start(mode, guardrailEnabled, deployment, extraArgs, Map.of());
@@ -299,6 +419,17 @@ class AgentInstanceCustomizerHostedRealChainTest {
             index = text.indexOf(needle, index + needle.length());
         }
         return count;
+    }
+
+    /**
+     * 只数运行日志文件：stdout 与 logs/run/run.log 的 logger 名一个是缩写一个是全名，
+     * 同一事件在两份文件里行内容不同，按行去重无效，容易把 2 次事件数成 4 次。
+     */
+    private static int countMarkers(Fixture fixture, String needle) throws IOException {
+        Path runLog = fixture.log().getParent().resolve("logs/run/run.log");
+        String text = Files.exists(runLog) ? Files.readString(runLog)
+                : (Files.exists(fixture.log()) ? Files.readString(fixture.log()) : "");
+        return countOccurrences(text, needle);
     }
 
     private boolean waitForStarted(Fixture fixture) throws Exception {

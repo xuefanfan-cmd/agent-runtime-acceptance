@@ -77,7 +77,6 @@ class AgentInstanceCustomizerOfficialExampleTest {
                     process.destroyForcibly();
                 }
             } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
                 process.destroyForcibly();
             }
         }
@@ -223,7 +222,6 @@ class AgentInstanceCustomizerOfficialExampleTest {
                 }
             } catch (IOException | InterruptedException ignored) {
                 if (ignored instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
                     return false;
                 }
             }

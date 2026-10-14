@@ -62,7 +62,6 @@ class AgentInstanceCustomizerMoaAnchorTest {
                     process.destroyForcibly();
                 }
             } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
                 process.destroyForcibly();
             }
         }

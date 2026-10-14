@@ -356,7 +356,6 @@ class AgentInstanceCustomizerContractTest {
                 try {
                     releaseInitializer.await(5, TimeUnit.SECONDS);
                 } catch (InterruptedException interruption) {
-                    Thread.currentThread().interrupt();
                     throw new IllegalStateException(interruption);
                 }
             }
@@ -396,7 +395,6 @@ class AgentInstanceCustomizerContractTest {
                     try {
                         Thread.sleep(50);
                     } catch (InterruptedException interruption) {
-                        Thread.currentThread().interrupt();
                         throw new IllegalStateException(interruption);
                     }
                     return new CanaryAgent("serialized-agent-" + System.nanoTime());

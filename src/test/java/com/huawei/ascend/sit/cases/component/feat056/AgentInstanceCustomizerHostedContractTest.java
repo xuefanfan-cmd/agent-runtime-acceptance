@@ -142,8 +142,10 @@ class AgentInstanceCustomizerHostedContractTest {
                             Events events = context.getBean(Events.class);
                             assertThat(events.entries).containsExactly("first:b", "second:b");
 
-                            JiuwenCoreAgentExtHandler defaultHandler =
-                                    (JiuwenCoreAgentExtHandler) catalog.resolve("a").handler();
+                            Object resolvedHandler = catalog.resolve("a").handler();
+                            if (!(resolvedHandler instanceof JiuwenCoreAgentExtHandler defaultHandler)) {
+                                throw new IllegalStateException("hosted handler must be JiuwenCoreAgentExtHandler");
+                            }
                             var token = defaultHandler.prepareTask(request("same-conversation"));
                             assertThat(events.entries)
                                     .containsExactly("first:b", "second:b", "first:a", "second:a");
@@ -180,7 +182,11 @@ class AgentInstanceCustomizerHostedContractTest {
     @Test
     @Story("FEAT-056-C22: Hosted 启动失败日志不输出异常 message")
     void hostedStartFailureLogDoesNotExposeExceptionMessage() {
-        Logger logger = (Logger) LoggerFactory.getLogger(HostedLifecycleCoordinator.class);
+        org.slf4j.Logger slf4jLogger = LoggerFactory.getLogger(HostedLifecycleCoordinator.class);
+        if (!(slf4jLogger instanceof Logger logbackLogger)) {
+            throw new IllegalStateException("expected a logback Logger");
+        }
+        Logger logger = logbackLogger;
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);

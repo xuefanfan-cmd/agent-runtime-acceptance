@@ -8,9 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -26,19 +26,21 @@ import com.openjiuwen.service.adapters.agentcore.ext.concurrency.AgentInstanceMa
 import com.openjiuwen.service.adapters.agentcore.ext.extension.AgentInstanceCustomizer;
 import com.openjiuwen.service.adapters.agentcore.ext.external.ClientToolRail;
 import com.openjiuwen.service.spec.dto.ServeRequest;
+
 import io.qameta.allure.Feature;
 import io.qameta.allure.Stories;
 import io.qameta.allure.Story;
+
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * FEAT-056 private/shared tool ownership and release isolation.

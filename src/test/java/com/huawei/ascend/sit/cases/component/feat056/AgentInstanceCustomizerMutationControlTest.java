@@ -4,8 +4,11 @@
 
 package com.huawei.ascend.sit.cases.component.feat056;
 
-import com.openjiuwen.core.foundation.tool.ToolCard;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -27,19 +30,17 @@ import com.openjiuwen.service.spec.spi.AgentHandler;
 
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * FEAT-056 反证控制（mutation controls）：逐行为族证明"撤掉目标行为后主断言必须失败"。

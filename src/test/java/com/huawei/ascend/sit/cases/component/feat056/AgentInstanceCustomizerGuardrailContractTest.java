@@ -7,10 +7,10 @@ package com.huawei.ascend.sit.cases.component.feat056;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.openjiuwen.agents.toolguardrail.config.ToolGuardrailConfig;
 import com.openjiuwen.agents.toolguardrail.ToolGuardrail;
 import com.openjiuwen.agents.toolguardrail.ToolGuardrailOptions;
 import com.openjiuwen.agents.toolguardrail.ToolGuardrailPriorities;
-import com.openjiuwen.agents.toolguardrail.config.ToolGuardrailConfig;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -20,13 +20,14 @@ import com.openjiuwen.harness.workspace.Workspace;
 
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Map;
 
 /**
  * FEAT-056 业务 Rail 与 Tool Guardrail 的共存与优先级口径。

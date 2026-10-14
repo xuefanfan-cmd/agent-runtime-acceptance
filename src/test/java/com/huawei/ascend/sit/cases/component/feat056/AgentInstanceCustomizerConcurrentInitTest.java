@@ -4,6 +4,9 @@
 
 package com.huawei.ascend.sit.cases.component.feat056;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -13,21 +16,19 @@ import com.openjiuwen.service.adapters.agentcore.ext.concurrency.AgentInstanceMa
 
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 /**
  * FEAT-056：按任务对象的初始化并发口径。

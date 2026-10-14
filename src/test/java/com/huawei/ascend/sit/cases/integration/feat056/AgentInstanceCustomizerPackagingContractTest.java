@@ -4,14 +4,17 @@
 
 package com.huawei.ascend.sit.cases.integration.feat056;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.io.InputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -19,8 +22,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * FEAT-056 交付形态的包级校验（C01/C02/C23）。

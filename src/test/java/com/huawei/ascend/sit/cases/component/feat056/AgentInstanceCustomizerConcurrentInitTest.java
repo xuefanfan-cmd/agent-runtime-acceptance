@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /**
  * FEAT-056：按任务对象的初始化并发口径。
@@ -77,7 +78,11 @@ class AgentInstanceCustomizerConcurrentInitTest {
 
         AgentInstanceManager manager = new AgentInstanceManager(factory);
         List<String> customized = Collections.synchronizedList(new ArrayList<>());
-        manager.setAgentInitializer(agent -> customized.add(((ProbeAgent) agent).id()));
+        manager.setAgentInitializer(agent -> {
+            if (agent instanceof ProbeAgent probe) {
+                customized.add(probe.id());
+            }
+        });
 
         ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
                 java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>());
@@ -93,7 +98,9 @@ class AgentInstanceCustomizerConcurrentInitTest {
                     .isEqualTo(2);
             assertThat(agentA).isNotSameAs(agentB);
             assertThat(customized).hasSize(2);
-            assertThat(customized).contains(((ProbeAgent) agentA).id(), ((ProbeAgent) agentB).id());
+            ProbeAgent probeA = assertInstanceOf(ProbeAgent.class, agentA);
+            ProbeAgent probeB = assertInstanceOf(ProbeAgent.class, agentB);
+            assertThat(customized).contains(probeA.id(), probeB.id());
 
             manager.release("feat056-concurrent-conv-a", agentA);
             manager.release("feat056-concurrent-conv-b", agentB);

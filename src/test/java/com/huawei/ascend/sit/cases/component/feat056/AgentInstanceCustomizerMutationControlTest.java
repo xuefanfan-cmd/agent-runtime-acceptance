@@ -116,7 +116,7 @@ class AgentInstanceCustomizerMutationControlTest {
         RecordingHandler handler = new RecordingHandler(agent);
         handler.configureInstanceCustomization("feat056-agent", List.of((agentId, actual) -> {
             if (registerRail) {
-                ((BaseAgent) actual).registerRail(new AgentRail() {
+                registerRailIfSupported(actual, new AgentRail() {
                     @Override
                     public void beforeInvoke(AgentCallbackContext ctx) {
                         railHits.incrementAndGet();
@@ -223,6 +223,12 @@ class AgentInstanceCustomizerMutationControlTest {
         return request;
     }
 
+    /** 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。 */
+    private static void registerRailIfSupported(Object actual, AgentRail rail) {
+        if (actual instanceof BaseAgent baseAgent) {
+            baseAgent.registerRail(rail);
+        }
+    }
     private static final class ProbeAgent extends BaseAgent {
         private ProbeAgent(String id) {
             super(AgentCard.builder().id(id).name(id).description("FEAT-056 mutation probe").build());

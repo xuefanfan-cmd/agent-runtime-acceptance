@@ -5,6 +5,7 @@
 package com.huawei.ascend.sit.cases.component.feat056;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.session.Session;
@@ -65,7 +66,7 @@ class AgentInstanceCustomizerContractTest {
             customizerCalls.incrementAndGet();
             assertThat(agentId).isEqualTo("feat056-agent");
             assertThat(actualAgent).isSameAs(agent);
-            ((BaseAgent) actualAgent).registerRail(canaryRail(railHits));
+            registerRailIfSupported(actualAgent, canaryRail(railHits));
         }));
 
         handler.start();
@@ -206,7 +207,7 @@ class AgentInstanceCustomizerContractTest {
             @Override
             public void destroy(Object agent) {
                 destroys.incrementAndGet();
-                CanaryAgent canaryAgent = (CanaryAgent) agent;
+                CanaryAgent canaryAgent = assertInstanceOf(CanaryAgent.class, agent);
                 canaryAgent.getAgentCallbackManager().unregisterAllRails(canaryAgent);
             }
         };
@@ -214,7 +215,7 @@ class AgentInstanceCustomizerContractTest {
         RecordingHandler handler = new RecordingHandler(new CanaryAgent("initial-agent"));
         handler.setAgentManager(manager);
         handler.configureInstanceCustomization("feat056-agent", List.of(
-                (agentId, actualAgent) -> ((BaseAgent) actualAgent).registerRail(canaryRail(partialRailHits)),
+                (agentId, actualAgent) -> registerRailIfSupported(actualAgent, canaryRail(partialRailHits)),
                 (agentId, actualAgent) -> {
                     throw new IllegalArgumentException("second customizer failed");
                 }));
@@ -435,7 +436,7 @@ class AgentInstanceCustomizerContractTest {
         handler.configureInstanceCustomization("feat056-agent", List.of((agentId, actualAgent) -> {
             customizerCalls.incrementAndGet();
             if (registerRail) {
-                ((BaseAgent) actualAgent).registerRail(canaryRail(railHits));
+                registerRailIfSupported(actualAgent, canaryRail(railHits));
             }
         }));
 
@@ -493,6 +494,12 @@ class AgentInstanceCustomizerContractTest {
         }
     }
 
+    /** 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。 */
+    private static void registerRailIfSupported(Object actual, AgentRail rail) {
+        if (actual instanceof BaseAgent baseAgent) {
+            baseAgent.registerRail(rail);
+        }
+    }
     private static final class CanaryAgent extends BaseAgent {
         private CanaryAgent(String id) {
             super(AgentCard.builder().id(id).name(id).description("FEAT-056 contract agent").build());
@@ -567,7 +574,7 @@ class AgentInstanceCustomizerContractTest {
         AgentInstanceCustomizer firstOrderedCustomizer(OrderProbe probe) {
             return (agentId, actualAgent) -> {
                 probe.calls().add("first");
-                ((BaseAgent) actualAgent).registerRail(canaryRail(probe.railHits()));
+                registerRailIfSupported(actualAgent, canaryRail(probe.railHits()));
             };
         }
 

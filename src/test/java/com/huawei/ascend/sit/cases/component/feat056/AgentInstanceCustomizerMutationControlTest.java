@@ -26,7 +26,6 @@ import com.openjiuwen.service.spec.hosting.HostedAgentDefinitions;
 import com.openjiuwen.service.spec.spi.AgentHandler;
 
 import io.qameta.allure.Feature;
-import io.qameta.allure.Stories;
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

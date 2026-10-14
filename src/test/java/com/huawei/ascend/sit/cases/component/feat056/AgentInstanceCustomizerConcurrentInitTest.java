@@ -79,7 +79,8 @@ class AgentInstanceCustomizerConcurrentInitTest {
         List<String> customized = Collections.synchronizedList(new ArrayList<>());
         manager.setAgentInitializer(agent -> customized.add(((ProbeAgent) agent).id()));
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
+                java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>());
         try {
             var firstAcquire = executor.submit(() -> manager.acquire("feat056-concurrent-conv-a"));
             var secondAcquire = executor.submit(() -> manager.acquire("feat056-concurrent-conv-b"));

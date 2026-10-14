@@ -113,7 +113,8 @@ class AgentInstanceCustomizerOfficialExampleTest {
         assertThat(waitForCard(port, Duration.ofSeconds(120)))
                 .as("官方示例宿主已就绪（日志目录：%s）", workDir).isTrue();
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
+                java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>());
         try {
             List<Callable<String>> tasks = List.of(
                     () -> sendQuote(port, "feat056-c12-c13-a"),

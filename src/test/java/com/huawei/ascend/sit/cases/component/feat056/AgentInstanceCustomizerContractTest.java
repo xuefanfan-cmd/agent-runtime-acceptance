@@ -414,7 +414,8 @@ class AgentInstanceCustomizerContractTest {
         AgentInstanceManager manager = new AgentInstanceManager(factory);
         manager.setAgentInitializer(agent -> {
         });
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
+                java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>());
         try {
             var first = executor.submit(() -> manager.acquire("serialized-a"));
             var second = executor.submit(() -> manager.acquire("serialized-b"));

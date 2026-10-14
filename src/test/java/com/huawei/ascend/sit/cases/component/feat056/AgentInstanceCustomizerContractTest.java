@@ -37,7 +37,6 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -255,7 +254,8 @@ class AgentInstanceCustomizerContractTest {
                 List.of((agentId, actualAgent) -> observedId.set(agentId)));
 
         ServeRequest request = request("metadata-task");
-        request.setMetadata(Map.of("agentId", "request-supplied-id", "conversationId", "request-supplied-conversation"));
+        request.setMetadata(Map.of("agentId", "request-supplied-id",
+                "conversationId", "request-supplied-conversation"));
         handler.start();
         handler.query(request);
         handler.stop();

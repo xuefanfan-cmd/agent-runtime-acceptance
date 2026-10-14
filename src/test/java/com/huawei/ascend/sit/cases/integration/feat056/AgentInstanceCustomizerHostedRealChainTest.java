@@ -434,7 +434,9 @@ class AgentInstanceCustomizerHostedRealChainTest {
     private boolean waitForStarted(Fixture fixture) throws Exception {
         long deadline = System.nanoTime() + STARTUP_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (Files.exists(fixture.log()) && Files.readString(fixture.log()).contains("Started CustomizerVerifyApplication")) {
+            boolean started = Files.exists(fixture.log()) && Files.readString(fixture.log())
+                    .contains("Started CustomizerVerifyApplication");
+            if (started) {
                 return true;
             }
             if (!process.isAlive()) {

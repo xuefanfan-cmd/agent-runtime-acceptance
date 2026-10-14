@@ -180,7 +180,7 @@ class AgentInstanceCustomizerMutationControlTest {
         handler.start();
         try {
             manager.acquire("feat056-c44");
-        } catch (RuntimeException expected) {
+        } catch (IllegalStateException expected) {
             // 预期失败；本用例只关心清理是否被调用。
         }
         return destroys.get();

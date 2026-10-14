@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -60,7 +59,8 @@ class AgentInstanceCustomizerConcurrentInitTest {
                 try {
                     // 两个不同任务对象的 create() 必须能同时在工厂里；否则说明存在跨对象串行锁。
                     bothCreatesInsideFactory.await(15, TimeUnit.SECONDS);
-                } catch (Exception failure) {
+                } catch (InterruptedException | java.util.concurrent.BrokenBarrierException
+                        | java.util.concurrent.TimeoutException failure) {
                     throw new IllegalStateException(
                             "create() was serialized across different task objects", failure);
                 } finally {

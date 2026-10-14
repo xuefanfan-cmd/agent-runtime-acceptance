@@ -92,8 +92,9 @@ class AgentInstanceCustomizerHostedContractTest {
                             "openjiuwen.service.agent-id=global-id")
                     .run(context -> {
                         assertThat(context).hasFailed();
-                        assertThat(context.getStartupFailure())
-                                .hasRootCauseMessage("openjiuwen.service.agent-id conflicts with HostedAgentDefinitions");
+                        String expectedConflict = "openjiuwen.service.agent-id conflicts with "
+                                + "HostedAgentDefinitions";
+                        assertThat(context.getStartupFailure()).hasRootCauseMessage(expectedConflict);
                     });
         }
     }

@@ -63,7 +63,8 @@ class AgentInstanceCustomizerPackagingContractTest {
                     .noneMatch(name -> name.startsWith("org/springframework/boot/loader/"));
             assertThat(names(jar))
                     .as("必须包含业务库配置类")
-                    .anyMatch(name -> name.endsWith("com/openjiuwen/example/secondary/library/AgentAConfiguration.class"));
+                    .anyMatch(name -> name.endsWith(
+                            "com/openjiuwen/example/secondary/library/AgentAConfiguration.class"));
             assertThat(jar.getEntry("META-INF/MANIFEST.MF")).as("普通库仍应有 manifest").isNotNull();
         }
     }

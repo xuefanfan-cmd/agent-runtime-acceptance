@@ -93,20 +93,25 @@ class AgentInstanceCustomizerConcurrentInitTest {
             Object agentA = firstAcquire.get(30, TimeUnit.SECONDS);
             Object agentB = secondAcquire.get(30, TimeUnit.SECONDS);
 
-            assertThat(maxActiveCreates.get())
-                    .as("两个不同任务对象必须能同时创建，证明未引入跨对象串行锁")
-                    .isEqualTo(2);
-            assertThat(agentA).isNotSameAs(agentB);
-            assertThat(customized).hasSize(2);
-            ProbeAgent probeA = assertInstanceOf(ProbeAgent.class, agentA);
-            ProbeAgent probeB = assertInstanceOf(ProbeAgent.class, agentB);
-            assertThat(customized).contains(probeA.id(), probeB.id());
+            assertConcurrentCreationResults(maxActiveCreates, agentA, agentB, customized);
 
             manager.release("feat056-concurrent-conv-a", agentA);
             manager.release("feat056-concurrent-conv-b", agentB);
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private static void assertConcurrentCreationResults(AtomicInteger maxActiveCreates, Object agentA,
+            Object agentB, List<String> customized) {
+        assertThat(maxActiveCreates.get())
+                .as("两个不同任务对象必须能同时创建，证明未引入跨对象串行锁")
+                .isEqualTo(2);
+        assertThat(agentA).isNotSameAs(agentB);
+        assertThat(customized).hasSize(2);
+        ProbeAgent probeA = assertInstanceOf(ProbeAgent.class, agentA);
+        ProbeAgent probeB = assertInstanceOf(ProbeAgent.class, agentB);
+        assertThat(customized).contains(probeA.id(), probeB.id());
     }
 
     private static final class ProbeAgent extends BaseAgent {

@@ -193,7 +193,7 @@ class AgentInstanceCustomizerContractTest {
 
     @Test
     @Story("FEAT-056-C27: per-task 部分注册失败后调用原 destroy 并清除 Rail")
-    void failedPerTaskCustomizationDestroysTheObjectAndRemovesThePartialRail() {
+    void failedPerTaskCustomizationDestroysObjectAndRemovesPartialRail() {
         AtomicInteger creates = new AtomicInteger();
         AtomicInteger destroys = new AtomicInteger();
         AtomicInteger partialRailHits = new AtomicInteger();
@@ -388,30 +388,7 @@ class AgentInstanceCustomizerContractTest {
         AtomicInteger activeCreates = new AtomicInteger();
         AtomicInteger maxActiveCreates = new AtomicInteger();
         ReentrantLock creationLock = new ReentrantLock();
-        AgentFactory factory = new AgentFactory() {
-            @Override
-            public Object create() {
-                creationLock.lock();
-                try {
-                    int active = activeCreates.incrementAndGet();
-                    maxActiveCreates.accumulateAndGet(active, Math::max);
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException interruption) {
-                        throw new IllegalStateException(interruption);
-                    }
-                    return new CanaryAgent("serialized-agent-" + System.nanoTime());
-                } finally {
-                    activeCreates.decrementAndGet();
-                    creationLock.unlock();
-                }
-            }
-
-            @Override
-            public void destroy(Object agent) {
-                // No resources in this probe.
-            }
-        };
+        AgentFactory factory = serializedFactory(activeCreates, maxActiveCreates, creationLock);
         AgentInstanceManager manager = new AgentInstanceManager(factory);
         manager.setAgentInitializer(agent -> {
         });
@@ -427,6 +404,38 @@ class AgentInstanceCustomizerContractTest {
             manager.release("serialized-b", secondAgent);
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    private static AgentFactory serializedFactory(AtomicInteger activeCreates, AtomicInteger maxActiveCreates,
+            ReentrantLock creationLock) {
+        return new AgentFactory() {
+            @Override
+            public Object create() {
+                creationLock.lock();
+                try {
+                    int active = activeCreates.incrementAndGet();
+                    maxActiveCreates.accumulateAndGet(active, Math::max);
+                    pauseSerializedFactoryProbe();
+                    return new CanaryAgent("serialized-agent-" + System.nanoTime());
+                } finally {
+                    activeCreates.decrementAndGet();
+                    creationLock.unlock();
+                }
+            }
+
+            @Override
+            public void destroy(Object agent) {
+                // No resources in this probe.
+            }
+        };
+    }
+
+    private static void pauseSerializedFactoryProbe() {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException interruption) {
+            throw new IllegalStateException(interruption);
         }
     }
 
@@ -498,6 +507,9 @@ class AgentInstanceCustomizerContractTest {
 
     /**
      * 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。
+     *
+     * @param actual 自定义器收到的实际对象
+     * @param rail 需要注册到对象上的 Rail
      */
     private static void registerRailIfSupported(Object actual, AgentRail rail) {
         if (actual instanceof BaseAgent baseAgent) {

@@ -226,6 +226,9 @@ class AgentInstanceCustomizerMutationControlTest {
 
     /**
      * 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。
+     *
+     * @param actual 自定义器收到的实际对象
+     * @param rail 需要注册到对象上的 Rail
      */
     private static void registerRailIfSupported(Object actual, AgentRail rail) {
         if (actual instanceof BaseAgent baseAgent) {

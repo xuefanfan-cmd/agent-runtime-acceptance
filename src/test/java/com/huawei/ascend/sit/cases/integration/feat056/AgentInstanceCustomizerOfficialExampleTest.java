@@ -99,6 +99,21 @@ class AgentInstanceCustomizerOfficialExampleTest {
         Files.createDirectories(workDir);
         int port = freePort();
 
+        startOfficialExample(jar, workDir, port, llm);
+
+        // 该示例的 logback root=WARN，框架 init 日志不落盘，因此用 HTTP 就绪探针而不是日志判据。
+        assertThat(waitForCard(port, Duration.ofSeconds(120)))
+                .as("官方示例宿主已就绪（日志目录：%s）", workDir).isTrue();
+
+        assertOfficialQuoteResponses(quoteResponses(port));
+
+        String log = readLogs(workDir);
+        assertOfficialExampleRailCoexistence(log);
+        assertOfficialPrivateToolIsolation(log);
+    }
+
+    private void startOfficialExample(Path jar, Path workDir, int port, Map<String, String> llm)
+            throws IOException {
         ProcessBuilder builder = new ProcessBuilder(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-jar", jar.toString(), "--server.port=" + port));
@@ -107,11 +122,9 @@ class AgentInstanceCustomizerOfficialExampleTest {
         builder.redirectOutput(workDir.resolve("app.log").toFile());
         builder.environment().putAll(llm);
         process = builder.start();
+    }
 
-        // 该示例的 logback root=WARN，框架 init 日志不落盘，因此用 HTTP 就绪探针而不是日志判据。
-        assertThat(waitForCard(port, Duration.ofSeconds(120)))
-                .as("官方示例宿主已就绪（日志目录：%s）", workDir).isTrue();
-
+    private static List<String> quoteResponses(int port) throws Exception {
         ExecutorService executor = new java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
                 java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>());
         try {
@@ -123,20 +136,24 @@ class AgentInstanceCustomizerOfficialExampleTest {
             for (Future<String> future : futures) {
                 responses.add(future.get());
             }
-            assertThat(responses).hasSize(2);
-            for (String response : responses) {
-                assertThat(response).as("两个任务都应完成").contains("TASK_STATE_COMPLETED");
-                assertThat(response)
-                        .as("技能最终报价必须由新增 Tool 真算出来")
-                        .contains("QUOTE_OK")
-                        .containsPattern("final_price=96(\\.0+)?(?![0-9])");
-            }
+            return responses;
         } finally {
             executor.shutdownNow();
         }
+    }
 
-        String log = readLogs(workDir);
+    private static void assertOfficialQuoteResponses(List<String> responses) {
+        assertThat(responses).hasSize(2);
+        for (String response : responses) {
+            assertThat(response).as("两个任务都应完成").contains("TASK_STATE_COMPLETED");
+            assertThat(response)
+                    .as("技能最终报价必须由新增 Tool 真算出来")
+                    .contains("QUOTE_OK")
+                    .containsPattern("final_price=96(\\.0+)?(?![0-9])");
+        }
+    }
 
+    private static void assertOfficialExampleRailCoexistence(String log) {
         // C12：原 Rail 与新增 Rail 都进入执行链，且各自按工具名筛选出正确事件。
         assertThat(log).contains(
                 "DEMO event=customized",
@@ -155,7 +172,9 @@ class AgentInstanceCustomizerOfficialExampleTest {
         assertThat(linesContaining(log, "DEMO event=base-rail ", "tool=apply_customer_discount"))
                 .as("原 Rail 按工具名筛选，不得命中新增 Tool")
                 .isEmpty();
+    }
 
+    private static void assertOfficialPrivateToolIsolation(String log) {
         // C13：两个任务各自独立实例，私有 Tool 资源不串用。
         Set<String> instances = instancesHaving(log, "DEMO event=customized");
         assertThat(instances).as("两次任务必须各自获得独立实例").hasSize(2);
@@ -188,6 +207,8 @@ class AgentInstanceCustomizerOfficialExampleTest {
 
     /**
      * 只做变量映射，不打印任何值。
+     *
+     * @return 传给官方示例宿主进程的模型环境变量；输入不完整时为空映射
      */
     private static Map<String, String> llmEnvironmentForExample() {
         Map<String, String> env = System.getenv();

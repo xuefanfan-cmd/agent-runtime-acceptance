@@ -179,7 +179,7 @@ class AgentInstanceCustomizerHostedRealChainTest {
 
     @Test
     @Story("FEAT-056-C35: 按任务初始化失败且工厂 destroy 也失败——原错误不被掩盖、清理失败可诊断、占位被清掉")
-    void perTaskInitFailureWithFailingDestroyKeepsPrimaryErrorAndFreesPlaceholder() throws Exception {
+    void perTaskInitAndDestroyFailureKeepsPrimaryErrorFreesPlaceholder() throws Exception {
         Fixture fixture = start("fail", false, "singleton", List.of(
                 "--openjiuwen.service.agent-id=verify-singleton-agent",
                 "--openjiuwen.service.lifecycle.init-fail-fast=false"),
@@ -328,6 +328,10 @@ class AgentInstanceCustomizerHostedRealChainTest {
 
     /**
      * 只读 logs/run/run.log，避免 stdout 与文件日志重复计入。
+     *
+     * @param fixture 当前用例启动的 SUT
+     * @return 结构化运行日志；文件不存在时为空字符串
+     * @throws IOException 读取日志失败
      */
     private static String structuredLog(Fixture fixture) throws IOException {
         Path runLog = fixture.log().getParent().resolve("logs/run/run.log");

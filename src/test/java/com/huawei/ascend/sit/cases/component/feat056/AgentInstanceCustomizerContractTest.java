@@ -496,7 +496,9 @@ class AgentInstanceCustomizerContractTest {
         }
     }
 
-    /** 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。 */
+    /**
+     * 只在对象确实是 BaseAgent 时注册 Rail，避免未经 instanceof 的向下转型。
+     */
     private static void registerRailIfSupported(Object actual, AgentRail rail) {
         if (actual instanceof BaseAgent baseAgent) {
             baseAgent.registerRail(rail);

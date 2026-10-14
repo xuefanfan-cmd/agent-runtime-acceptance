@@ -326,7 +326,9 @@ class AgentInstanceCustomizerHostedRealChainTest {
         return instances;
     }
 
-    /** 只读 logs/run/run.log，避免 stdout 与文件日志重复计入。 */
+    /**
+     * 只读 logs/run/run.log，避免 stdout 与文件日志重复计入。
+     */
     private static String structuredLog(Fixture fixture) throws IOException {
         Path runLog = fixture.log().getParent().resolve("logs/run/run.log");
         if (Files.exists(runLog)) {
@@ -423,6 +425,11 @@ class AgentInstanceCustomizerHostedRealChainTest {
     /**
      * 只数运行日志文件：stdout 与 logs/run/run.log 的 logger 名一个是缩写一个是全名，
      * 同一事件在两份文件里行内容不同，按行去重无效，容易把 2 次事件数成 4 次。
+     *
+     * @param fixture 夹具实例（含工作目录与 stdout 日志路径）
+     * @param needle 要统计的日志片段
+     * @return 命中的行数
+     * @throws IOException 读取日志文件失败
      */
     private static int countMarkers(Fixture fixture, String needle) throws IOException {
         Path runLog = fixture.log().getParent().resolve("logs/run/run.log");

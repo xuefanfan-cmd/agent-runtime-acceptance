@@ -44,7 +44,6 @@ import java.util.Map;
 @Tag("feat-056")
 @Feature("FEAT-056: 业务 Agent（Lib JAR）二次开发扩展点")
 class AgentInstanceCustomizerConcurrentInitTest {
-
     @Test
     @Story("FEAT-056-C32: 不同 conversation 的任务对象可并发初始化，不加跨对象串行锁")
     void differentConversationsCreateAndInitializeConcurrently() throws Exception {

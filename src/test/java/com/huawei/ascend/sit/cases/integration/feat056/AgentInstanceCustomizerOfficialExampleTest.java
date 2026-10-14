@@ -186,7 +186,9 @@ class AgentInstanceCustomizerOfficialExampleTest {
         return response.body() == null ? "" : response.body();
     }
 
-    /** 只做变量映射，不打印任何值。 */
+    /**
+     * 只做变量映射，不打印任何值。
+     */
     private static Map<String, String> llmEnvironmentForExample() {
         Map<String, String> env = System.getenv();
         String key = env.get("LLM_API_KEY");

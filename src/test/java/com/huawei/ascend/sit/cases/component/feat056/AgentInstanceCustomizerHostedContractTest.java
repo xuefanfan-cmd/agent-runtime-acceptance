@@ -32,6 +32,7 @@ import com.openjiuwen.service.spec.spi.ServeOrchestrator;
 
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -182,35 +183,118 @@ class AgentInstanceCustomizerHostedContractTest {
     }
 
     @Test
-    @Story("FEAT-056-C22: Hosted 启动失败日志不输出异常 message")
-    void hostedStartFailureLogDoesNotExposeExceptionMessage() {
+    @Story("FEAT-056-C22: Hosted 启停日志字段完整、回滚可识别且不泄露敏感信息")
+    void hostedLifecycleLogsExposeRequiredFieldsAndHideSensitiveMessage() {
         org.slf4j.Logger slf4jLogger = LoggerFactory.getLogger(HostedLifecycleCoordinator.class);
         if (!(slf4jLogger instanceof Logger logbackLogger)) {
             throw new IllegalStateException("expected a logback Logger");
         }
         Logger logger = logbackLogger;
+        Level originalLevel = logger.getLevel();
+        logger.setLevel(Level.INFO);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         logger.addAppender(appender);
         try {
-            new ApplicationContextRunner()
-                    .withConfiguration(AutoConfigurations.of(HostedRuntimeAutoConfiguration.class,
-                            A2AAutoConfiguration.class, AgentCoreExtAutoConfiguration.class))
-                    .withUserConfiguration(FailingHostedHandlers.class)
-                    .withPropertyValues("spring.application.name=instance-customization")
-                    .run(context -> assertThatThrownBy(() -> context.getBean(HostedLifecycleCoordinator.class)
-                            .runInitPhase()).isInstanceOf(IllegalStateException.class));
-
-            String logs = appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .reduce("", (left, right) -> left + "\n" + right);
-            assertThat(logs)
-                    .contains("agentId=b")
-                    .contains("type=IllegalStateException")
-                    .doesNotContain(SENSITIVE_LOG_CANARY);
+            assertNormalHostedLifecycleLogs(appender);
+            assertStartFailureHostedLifecycleLogs(appender);
+            assertRollbackStopFailureHostedLifecycleLogs(appender);
         } finally {
             logger.detachAppender(appender);
+            appender.stop();
+            logger.setLevel(originalLevel);
         }
+    }
+
+    private static void assertNormalHostedLifecycleLogs(ListAppender<ILoggingEvent> appender) {
+        appender.list.clear();
+        hostedRunner(DualHostedHandlers.class).run(context -> {
+            HostedLifecycleCoordinator lifecycle = context.getBean(HostedLifecycleCoordinator.class);
+            lifecycle.runInitPhase();
+            lifecycle.runShutdownPhase();
+        });
+
+        List<ILoggingEvent> events = lifecycleEvents(appender);
+        assertThat(messagesAtLevel(events, Level.INFO)).containsExactly(
+                "Hosted agent agentId=a operation=start result=begin",
+                "Hosted agent agentId=a operation=start result=success",
+                "Hosted agent agentId=b operation=start result=begin",
+                "Hosted agent agentId=b operation=start result=success",
+                "Hosted agent agentId=b operation=stop result=begin rollback=false",
+                "Hosted agent agentId=b operation=stop result=success rollback=false",
+                "Hosted agent agentId=a operation=stop result=begin rollback=false",
+                "Hosted agent agentId=a operation=stop result=success rollback=false");
+        assertThat(messagesAtLevel(events, Level.ERROR)).isEmpty();
+        assertNoSensitiveLogEvidence(events);
+    }
+
+    private static void assertStartFailureHostedLifecycleLogs(ListAppender<ILoggingEvent> appender) {
+        appender.list.clear();
+        hostedRunner(FailingHostedHandlers.class).run(context ->
+                assertThatThrownBy(() -> context.getBean(HostedLifecycleCoordinator.class).runInitPhase())
+                        .isInstanceOf(IllegalStateException.class));
+
+        List<ILoggingEvent> events = lifecycleEvents(appender);
+        assertThat(messagesAtLevel(events, Level.INFO)).containsExactly(
+                "Hosted agent agentId=a operation=start result=begin",
+                "Hosted agent agentId=a operation=start result=success",
+                "Hosted agent agentId=b operation=start result=begin",
+                "Hosted agent agentId=b operation=stop result=begin rollback=true",
+                "Hosted agent agentId=b operation=stop result=success rollback=true",
+                "Hosted agent agentId=a operation=stop result=begin rollback=true",
+                "Hosted agent agentId=a operation=stop result=success rollback=true");
+        assertThat(messagesAtLevel(events, Level.ERROR)).containsExactly(
+                "Hosted agent agentId=b operation=start result=failure type=IllegalStateException");
+        assertNoSensitiveLogEvidence(events);
+    }
+
+    private static void assertRollbackStopFailureHostedLifecycleLogs(ListAppender<ILoggingEvent> appender) {
+        appender.list.clear();
+        hostedRunner(RollbackStopFailureHostedHandlers.class).run(context ->
+                assertThatThrownBy(() -> context.getBean(HostedLifecycleCoordinator.class).runInitPhase())
+                        .isInstanceOf(IllegalStateException.class));
+
+        List<ILoggingEvent> events = lifecycleEvents(appender);
+        assertThat(messagesAtLevel(events, Level.INFO)).containsExactly(
+                "Hosted agent agentId=a operation=start result=begin",
+                "Hosted agent agentId=a operation=start result=success",
+                "Hosted agent agentId=b operation=start result=begin",
+                "Hosted agent agentId=b operation=stop result=begin rollback=true",
+                "Hosted agent agentId=b operation=stop result=success rollback=true",
+                "Hosted agent agentId=a operation=stop result=begin rollback=true");
+        assertThat(messagesAtLevel(events, Level.ERROR)).containsExactly(
+                "Hosted agent agentId=b operation=start result=failure type=IllegalStateException",
+                "Hosted agent agentId=a operation=stop result=failure rollback=true type=IllegalStateException");
+        assertNoSensitiveLogEvidence(events);
+    }
+
+    private static ApplicationContextRunner hostedRunner(Class<?> handlersConfiguration) {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(HostedRuntimeAutoConfiguration.class,
+                        A2AAutoConfiguration.class, AgentCoreExtAutoConfiguration.class))
+                .withUserConfiguration(handlersConfiguration)
+                .withPropertyValues("spring.application.name=instance-customization");
+    }
+
+    private static List<ILoggingEvent> lifecycleEvents(ListAppender<ILoggingEvent> appender) {
+        return appender.list.stream()
+                .filter(event -> HostedLifecycleCoordinator.class.getName().equals(event.getLoggerName()))
+                .filter(event -> event.getFormattedMessage().startsWith("Hosted agent "))
+                .toList();
+    }
+
+    private static List<String> messagesAtLevel(List<ILoggingEvent> events, Level level) {
+        return events.stream()
+                .filter(event -> event.getLevel() == level)
+                .map(ILoggingEvent::getFormattedMessage)
+                .toList();
+    }
+
+    private static void assertNoSensitiveLogEvidence(List<ILoggingEvent> events) {
+        assertThat(events).allSatisfy(event -> {
+            assertThat(event.getFormattedMessage()).doesNotContain(SENSITIVE_LOG_CANARY);
+            assertThat(event.getThrowableProxy()).isNull();
+        });
     }
 
     private static ServeRequest request(String conversationId) {
@@ -340,14 +424,47 @@ class AgentInstanceCustomizerHostedContractTest {
         }
     }
 
+    @Configuration(proxyBeanMethods = false)
+    static class RollbackStopFailureHostedHandlers extends HostedSupport {
+        @Bean
+        Events events() {
+            return new Events();
+        }
+
+        @Bean
+        AgentInstanceCustomizer failingB(Events events) {
+            return (id, agent) -> {
+                events.entries.add("customize:" + id);
+                if ("b".equals(id)) {
+                    throw new IllegalStateException("hosted start b " + SENSITIVE_LOG_CANARY);
+                }
+            };
+        }
+
+        @Bean
+        HostedAgentDefinitions definitions(Events events) {
+            return HostedAgentDefinitions.builder()
+                    .add("a", new LifecycleRecordingHandler("a", events, List.of(), true))
+                    .add("b", new LifecycleRecordingHandler("b", events, List.of(), false))
+                    .build();
+        }
+    }
+
     static final class LifecycleRecordingHandler extends JiuwenCoreAgentExtHandler {
         private final String id;
         private final Events events;
+        private final boolean failStop;
 
         private LifecycleRecordingHandler(String id, Events events, List<AgentInstanceCustomizer> customizers) {
+            this(id, events, customizers, false);
+        }
+
+        private LifecycleRecordingHandler(String id, Events events, List<AgentInstanceCustomizer> customizers,
+                boolean failStop) {
             super(mock(BaseAgent.class));
             this.id = id;
             this.events = events;
+            this.failStop = failStop;
             configureInstanceCustomization(id, customizers);
         }
 
@@ -360,6 +477,9 @@ class AgentInstanceCustomizerHostedContractTest {
         @Override
         public void stop() {
             events.entries.add("stop:" + id);
+            if (failStop) {
+                throw new IllegalStateException("hosted stop " + id + " " + SENSITIVE_LOG_CANARY);
+            }
             super.stop();
         }
     }

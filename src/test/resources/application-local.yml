@@ -57,7 +57,7 @@ sut:
     controller-ir-demo:
       group: com.openjiuwen.example
       artifact: agentcore-ext-studio-dsl-controller-ir-demo
-      version: 0.1.2-pr789-host
+      version: 0.1.3
       java:
         system-properties:
           studio.dsl.outbound.allowPrivate: "true"

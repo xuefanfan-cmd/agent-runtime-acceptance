@@ -86,3 +86,4 @@ envs:
       - { source: agent-solution, module: common/example/multi_react_travel_hosted_demo }
       - { source: agent-solution, module: common/example/multi_deep_research_hosted_demo }
       - { source: agent-solution, module: common/example/versatile-orchestration-demo }
+      - { source: agent-solution, module: common/agent-core-ext-java/agent-core-ext-studio-dsl/example/agentcore-ext-studio-dsl-controller-ir-demo }

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /** OpenAI-compatible endpoint that records the product's real HTTP requests. */
@@ -29,6 +30,7 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
     private volatile String responseCanary = "studio-model-canary";
     private volatile String responseContentOverride = null;
     private volatile boolean stallResponses = false;
+    private final Map<String, String> conditionalResponses = new ConcurrentHashMap<>();
 
     public RecordingOpenAiEndpointFixture() throws IOException {
         server.setDispatcher(new ModelDispatcher());
@@ -51,6 +53,24 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
      */
     public void responseContent(String jsonOrText) {
         this.responseContentOverride = jsonOrText;
+    }
+
+    /**
+     * Return a specific model response when the request body contains {@code token}. This keeps
+     * multi-step workflows deterministic when a test must distinguish the questioner extraction
+     * call from the workflow's own model calls.
+     */
+    public void responseContentWhenBodyContains(String token, String jsonOrText) {
+        if (token == null || token.isBlank() || jsonOrText == null) {
+            throw new IllegalArgumentException("conditional token and response are required");
+        }
+        conditionalResponses.put(token, jsonOrText);
+    }
+
+    public void removeConditionalResponse(String token) {
+        if (token != null) {
+            conditionalResponses.remove(token);
+        }
     }
 
     /**
@@ -117,9 +137,9 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
                     response = new MockResponse()
                             .setResponseCode(200)
                             .setHeader("Content-Type", "text/event-stream")
-                            .setBody(streamBody(contentToReturn()));
+                            .setBody(streamBody(contentToReturn(body)));
                 } else {
-                    response = json(200, completionBody(contentToReturn()));
+                    response = json(200, completionBody(contentToReturn(body)));
                 }
                 return response;
             } catch (Exception exception) {
@@ -128,7 +148,13 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
         }
     }
 
-    private String contentToReturn() {
+    private String contentToReturn(JsonNode body) {
+        String bodyText = body.toString();
+        for (Map.Entry<String, String> entry : conditionalResponses.entrySet()) {
+            if (bodyText.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
         String override = responseContentOverride;
         return override == null ? responseCanary : override;
     }

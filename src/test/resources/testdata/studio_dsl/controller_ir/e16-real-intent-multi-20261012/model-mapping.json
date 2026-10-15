@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1",
+  "models": {
+    "1788a9e4-c729-40db-8dd8-7cc20b3e6b7d": {
+      "endpoint": "",
+      "apiKey": ""
+    },
+    "43ac4024-66e7-4f0d-bd38-70b337b3726d": {
+      "endpoint": "",
+      "apiKey": ""
+    },
+    "43ac4024-66e7-4f0d-bd38-70b337b3726d|43ac4024-66e7-4f0d-bd38-70b337b3726d": {
+      "endpoint": "",
+      "apiKey": ""
+    },
+    "bb594c2c-f06f-43f0-87ea-a22187bfcc2f": {
+      "endpoint": "",
+      "apiKey": ""
+    }
+  }
+}

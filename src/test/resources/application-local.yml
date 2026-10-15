@@ -52,6 +52,19 @@ sut:
       java:
         system-properties:
           studio.dsl.outbound.allowPrivate: "true"
+    # FEAT-031 §7 controller IR real-export bundles. The test can override the
+    # artifact version with -Dsut-agents-controller-ir-demo-version=...
+    controller-ir-demo:
+      group: com.openjiuwen.example
+      artifact: agentcore-ext-studio-dsl-controller-ir-demo
+      version: 0.1.2-pr789-host
+      java:
+        system-properties:
+          studio.dsl.outbound.allowPrivate: "true"
+    multi-agent-group-sit:
+      group: com.openjiuwen.example
+      artifact: multi-agent-group-sit-demo
+      version: 0.1.1
     mainplan:
       group: com.huawei.ascend.examples
       artifact: agent-travel-mainplan-a2a

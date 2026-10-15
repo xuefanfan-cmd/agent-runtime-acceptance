@@ -1,0 +1,12 @@
+{
+  "release": false,
+  "rowCount": 5,
+  "irPathToLocal": {
+    "workflow/ir/62e729c3-70b3-42eb-a47b-d35bfa7e75ce/62e729c3-70b3-42eb-a47b-d35bfa7e75ce_1789891922710.json": "ir/62e729c3-70b3-42eb-a47b-d35bfa7e75ce.json",
+    "workflow/ir/13208a1d-45c9-401f-b24f-0f9cc37f9a35/13208a1d-45c9-401f-b24f-0f9cc37f9a35_1789890257349.json": "ir/13208a1d-45c9-401f-b24f-0f9cc37f9a35.json",
+    "workflow/ir/bf54eb96-d433-4ddd-bfc6-d33b490d3b74/bf54eb96-d433-4ddd-bfc6-d33b490d3b74_1789890422073.json": "ir/bf54eb96-d433-4ddd-bfc6-d33b490d3b74.json",
+    "workflow/ir/8513a1b2-b053-488d-87f6-1fab954a9001/8513a1b2-b053-488d-87f6-1fab954a9001_1789889739987.json": "ir/8513a1b2-b053-488d-87f6-1fab954a9001.json",
+    "agent/ir/71abe847-30b8-4bd2-a150-b52c006e93f9/71abe847-30b8-4bd2-a150-b52c006e93f9_1789891929354.json": "ir/71abe847-30b8-4bd2-a150-b52c006e93f9.json"
+  },
+  "modelMapping": "model-mapping.json"
+}

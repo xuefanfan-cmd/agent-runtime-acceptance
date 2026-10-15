@@ -1,0 +1,13 @@
+{
+  "release": false,
+  "rowCount": 6,
+  "irPathToLocal": {
+    "agent/ir/605ed2da-4a2f-4ebf-a611-0d22632aeafc/605ed2da-4a2f-4ebf-a611-0d22632aeafc.json": "ir/605ed2da-4a2f-4ebf-a611-0d22632aeafc.json",
+    "workflow/ir/377afcf1-1d05-4fd3-8ebd-4b4fb05c6713/377afcf1-1d05-4fd3-8ebd-4b4fb05c6713_1789713664481.json": "ir/377afcf1-1d05-4fd3-8ebd-4b4fb05c6713_1789713664481.json",
+    "workflow/ir/62e729c3-70b3-42eb-a47b-d35bfa7e75ce/62e729c3-70b3-42eb-a47b-d35bfa7e75ce_1789891922710.json": "ir/62e729c3-70b3-42eb-a47b-d35bfa7e75ce_1789891922710.json",
+    "workflow/ir/bd2031b4-dfcc-4691-9056-8fac2f50650f/bd2031b4-dfcc-4691-9056-8fac2f50650f_1789119636747.json": "ir/bd2031b4-dfcc-4691-9056-8fac2f50650f_1789119636747.json",
+    "workflow/ir/c8875472-af66-49d2-9042-2c317cb962c5/c8875472-af66-49d2-9042-2c317cb962c5_1789713662497.json": "ir/c8875472-af66-49d2-9042-2c317cb962c5_1789713662497.json",
+    "workflow/ir/cc883479-a6d7-49e4-8a88-2a2e263007fd/cc883479-a6d7-49e4-8a88-2a2e263007fd_1789195839868.json": "ir/cc883479-a6d7-49e4-8a88-2a2e263007fd_1789195839868.json"
+  },
+  "modelMapping": "model-mapping.json"
+}

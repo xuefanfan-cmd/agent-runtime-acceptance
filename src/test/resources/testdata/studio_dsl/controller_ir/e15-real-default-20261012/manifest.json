@@ -1,0 +1,9 @@
+{
+  "release": false,
+  "rowCount": 2,
+  "irPathToLocal": {
+    "agent/ir/d0e274a8-1ff9-4f15-a47b-b47f01b4f328/d0e274a8-1ff9-4f15-a47b-b47f01b4f328.json": "ir/d0e274a8-1ff9-4f15-a47b-b47f01b4f328.json",
+    "workflow/ir/bd2031b4-dfcc-4691-9056-8fac2f50650f/bd2031b4-dfcc-4691-9056-8fac2f50650f_1789119636747.json": "ir/bd2031b4-dfcc-4691-9056-8fac2f50650f_1789119636747.json"
+  },
+  "modelMapping": "model-mapping.json"
+}

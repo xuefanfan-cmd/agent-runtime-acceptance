@@ -167,6 +167,12 @@ sut:
           gateway.test-credential.token: acceptance-token
           gateway.test-credential.principalId: acceptance-principal
           gateway.test-credential.tenantId: tenant-a
+    # FEAT-050/051 model-selection SUT — deepagent-a (agentcore-ext handler, 0.1.4 runtime)
+    deepagent-a:
+      group: com.openjiuwen.example
+      artifact: deepagent-remote-a2a-agent-a
+      version: 0.1.2
+      port: 8201
     # react scenario
     mainplan:
       group: com.openjiuwen.example

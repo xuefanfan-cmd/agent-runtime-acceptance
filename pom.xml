@@ -33,10 +33,15 @@
              0.1.1 → 0.1.2 (2026-09-16): FEAT-036 edpa cases (WhitelistEchoAgent) require
              AgentFailureDescriptor/AgentExecutionException, which only exist in 0.1.2+ (locally
              installed from D:\code\test\agent-runtime-java, see build-logs/rtj-build-20260914-r2.log);
-             mirror-published 0.1.1 lacks both classes and fails test-compile. -->
+             mirror-published 0.1.1 lacks both classes and fails test-compile.
+             0.1.3 -> 0.1.4 (2026-10-16): agent-runtime-java 0.1.4 pulls agent-core-java 0.1.17
+             (agent-core develop), which the FEAT-056 verification demo already targets; both sides
+             of FEAT-056 must describe one product revision. 0.1.17 removed
+             com.openjiuwen.core.session.Session (BaseAgent.invoke/stream now take AgentSessionApi)
+             and the ToolCallInputs builder, so the white-box probes were migrated with the bump. -->
         <agent-runtime-java.version>0.1.4</agent-runtime-java.version>
         <agent-runtime-ext-java.version>0.1.1</agent-runtime-ext-java.version>
-        <agent-runtime-ext-agentcore.version>0.1.2</agent-runtime-ext-agentcore.version>
+        <agent-runtime-ext-agentcore.version>0.1.3</agent-runtime-ext-agentcore.version>
         <registry-discovery-center.version>0.1.1</registry-discovery-center.version>
         <agent-client.version>0.1.1</agent-client.version>
         <rocketmq-client.version>5.1.4</rocketmq-client.version>

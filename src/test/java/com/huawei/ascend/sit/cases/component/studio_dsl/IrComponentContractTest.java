@@ -9,6 +9,7 @@ import com.huawei.ascend.sit.fixtures.studio_dsl.StudioDslTestResources;
 import com.huawei.ascend.sit.fixtures.studio_dsl.WorkflowAssemblyProbe;
 import com.huawei.ascend.sit.fixtures.studio_dsl.RecordingPluginMcpEndpointFixture;
 import com.huawei.ascend.sit.fixtures.studio_dsl.TokenEndpointStubFixture;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.studio.dsl.adapter.AbstractStudioNode;
 import com.openjiuwen.studio.dsl.ir.IrAssembleContext;
@@ -109,11 +110,11 @@ class IrComponentContractTest extends StudioDslContractTestBase {
             FlowMcpNode mcp = (FlowMcpNode) IrComponentFactory.createSimple(
                     "node_mcp", "jiuwen.flowMcp", mcpConfig, CONTEXT);
             int pluginBaseline = endpoint.requestCount();
-            plugin.invoke(Map.of("userFields", Map.of("city", "Shenzhen")), null, null);
+            invokeWithoutNodeSession(plugin, Map.of("userFields", Map.of("city", "Shenzhen")));
             List<RecordingPluginMcpEndpointFixture.RequestRecord> pluginRequests =
                     endpoint.requestsSince(pluginBaseline);
             int mcpBaseline = endpoint.requestCount();
-            mcp.invoke(Map.of("userFields", Map.of("query", "rt-031-04-23-canary")), null, null);
+            invokeWithoutNodeSession(mcp, Map.of("userFields", Map.of("query", "rt-031-04-23-canary")));
             List<RecordingPluginMcpEndpointFixture.RequestRecord> mcpRequests =
                     endpoint.requestsSince(mcpBaseline);
 
@@ -169,7 +170,7 @@ class IrComponentContractTest extends StudioDslContractTestBase {
             FlowPluginNode plugin = (FlowPluginNode) IrComponentFactory.createSimple(
                     "node_plugin", "jiuwen.flowApi", pluginConfig, CONTEXT);
             int baseline = endpoint.requestCount();
-            plugin.invoke(Map.of("userFields", Map.of("city", "Shenzhen")), null, null);
+            invokeWithoutNodeSession(plugin, Map.of("userFields", Map.of("city", "Shenzhen")));
             List<RecordingPluginMcpEndpointFixture.RequestRecord> pluginRequests =
                     endpoint.requestsSince(baseline);
 
@@ -316,6 +317,20 @@ class IrComponentContractTest extends StudioDslContractTestBase {
         component.put("inputs", Map.of());
         component.put("outputs", Map.of());
         return component;
+    }
+
+    /**
+     * 触发一次节点组装的公开入口。core 0.1.17 在 ComponentExecutable 上新增了
+     * invoke(I, BaseSession, ModelContext) 重载，裸 null 会二义；带类型的 null 变量
+     * 选中 AbstractStudioNode 的节点会话入口，且组装类用例本来就不携带节点会话。
+     *
+     * @param node  组装出的 Studio 节点
+     * @param input 节点入参
+     * @return 节点输出
+     */
+    private static Object invokeWithoutNodeSession(AbstractStudioNode node, Map<String, Object> input) {
+        NodeSessionApi nodeSession = null;
+        return node.invoke(input, nodeSession, null);
     }
 
     private static Map<String, Object> edge(String source, String target) {

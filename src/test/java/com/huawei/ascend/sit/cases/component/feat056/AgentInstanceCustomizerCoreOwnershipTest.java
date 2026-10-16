@@ -221,12 +221,17 @@ class AgentInstanceCustomizerCoreOwnershipTest {
     }
 
     private static String callbackName(DeepAgent agent) {
-        return agent.getAgent().getCard().getId() + "_" + AgentCallbackEvent.BEFORE_TOOL_CALL.getValue();
+        // core 0.1.17 keys the callback registry through AgentCallbackManager
+        // ("<agentId>_AgentCallbackEvent.<EVENT>"); the old "<cardId>_<eventValue>" literal
+        // matches nothing, so the lookup must go through the manager.
+        return agent.getAgent().getAgentCallbackManager().getAgentEvent(AgentCallbackEvent.BEFORE_TOOL_CALL);
     }
 
     private static void fire(DeepAgent agent, String name) {
+        ToolCallInputs inputs = new ToolCallInputs();
+        inputs.setToolName(name);
         AgentCallbackContext.builder().agent(agent.getAgent())
-                .inputs(ToolCallInputs.builder().toolName(name).build()).build()
+                .inputs(inputs).build()
                 .fire(AgentCallbackEvent.BEFORE_TOOL_CALL);
     }
 

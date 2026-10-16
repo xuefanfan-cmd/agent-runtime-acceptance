@@ -109,6 +109,8 @@ class FailedCallbackErrorCodeTest {
 
         searchStack = SutStack.builder(config)
                 .agent(SEARCH, a -> a
+                        .env("TAVILY_API_KEY", "sit-placeholder-tavily-key")
+                        .env("SEARCH_AGENT_PUSH_NOTIFICATIONS", "true")
                         .property("openjiuwen.demo.search-agent.api-key", INVALID_API_KEY))
                 .start();
         LOG.info("[failed-code] search-agent ready at " + searchStack.baseUrl(SEARCH)

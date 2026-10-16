@@ -63,7 +63,12 @@ class JsonRpcInvalidParamsTest extends BaseManagedStackTest {
 
     @Override
     protected SutStack.Builder buildStack(TestConfig config) {
-        return SutStack.builder(config).agent(DEEP_RESEARCH);
+        // SUT jar 0.1.0 声明了 remote-agents[search-agent, verify-agent]，startup 会校验二者 URL 非空；
+        // 本用例不打真实 sub-agent 链路，占位 URL 让 Spring bind 通过即可。
+        return SutStack.builder(config)
+                .agent(DEEP_RESEARCH, a -> a
+                        .env("SEARCH_AGENT_URL", "http://127.0.0.1:1")
+                        .env("VERIFY_AGENT_URL", "http://127.0.0.1:1"));
     }
 
     @Test
@@ -94,6 +99,76 @@ class JsonRpcInvalidParamsTest extends BaseManagedStackTest {
         assertThat(body.path("id").asText())
                 .as("id should be preserved as '9' (FEAT-001.jsonrpc-id-preserved)\nbody: %s", response.body())
                 .isEqualTo("9");
+    }
+
+    /**
+     * L2 §1.3 明确列为「当前实现缺口」:params 是<b>结构性合法的对象</b>,但内部字段缺项/类型
+     * 不匹配时,当前实现仍会走 -32603 internal error 兜底,预期应为 -32602 invalid params。
+     *
+     * <p>本组 3 个断言分别覆盖 3 类子场景:
+     * <ol>
+     *   <li>params={} —— 缺必填 {@code message};</li>
+     *   <li>params.message.parts 类型错(应为数组给字符串);</li>
+     *   <li>params.message.role 枚举错(给未定义的 {@code "OWNER"})。</li>
+     * </ol>
+     *
+     * <p>SUT 补齐 params validation 前此断言 red 属 spec-gap 而非 bug —— 若返 -32603
+     * 输出 stderr 诊断行,便于回 L2 §1.3 追踪补齐进度。
+     */
+    @Test
+    @DisplayName("FEAT-001.jsonrpc-invalid-params: 结构合法但字段缺项/类型错(L2 §1.3 gap red-first)")
+    void structuredParamsWithBadFieldsReturnInvalidParams() throws Exception {
+        assertInvalidParams(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"ip-a\","
+                        + "\"method\":\"SendMessage\",\"params\":{}}",
+                "params={} 缺 message");
+
+        assertInvalidParams(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"ip-b\","
+                        + "\"method\":\"SendMessage\",\"params\":{"
+                        + "\"message\":{"
+                        + "\"role\":\"ROLE_USER\","
+                        + "\"messageId\":\"m1\","
+                        + "\"contextId\":\"c1\","
+                        + "\"parts\":\"not-an-array\""
+                        + "}}}",
+                "params.message.parts 非数组");
+
+        assertInvalidParams(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"ip-c\","
+                        + "\"method\":\"SendMessage\",\"params\":{"
+                        + "\"message\":{"
+                        + "\"role\":\"OWNER\","
+                        + "\"messageId\":\"m1\","
+                        + "\"contextId\":\"c1\","
+                        + "\"parts\":[{\"text\":\"hi\"}]"
+                        + "}}}",
+                "params.message.role 非法枚举");
+    }
+
+    private void assertInvalidParams(String bodyText, String label) throws Exception {
+        HttpResponse<String> response = post("/a2a", bodyText);
+        assertThat(response.statusCode())
+                .as("[%s] HTTP status 应为 200\nbody=%s", label, response.body())
+                .isEqualTo(200);
+
+        JsonNode node = mapper.readTree(response.body());
+        assertThat(node.has("error"))
+                .as("[%s] body 应含 error\nbody=%s", label, response.body())
+                .isTrue();
+
+        int code = node.path("error").path("code").asInt();
+        // -32603 = L2 §1.3 明确记录的实现现状缺口。仍严格断 -32602(补齐后自然通过)。
+        if (code == -32603) {
+            System.err.println("[FEAT-001.jsonrpc-invalid-params][" + label
+                    + "] SUT 返 -32603 internal error → L2 §1.3 记录的实现缺口(params validation 未细分),"
+                    + "预期 -32602 invalid params。resp=" + response.body());
+        }
+        assertThat(code)
+                .as("[%s] error.code 应为 -32602 invalid params(spec:L2 §2.3.1;"
+                                + "若为 -32603,系 L2 §1.3 记录的实现缺口 red-first)\nbody=%s",
+                        label, response.body())
+                .isEqualTo(JSON_RPC_INVALID_PARAMS);
     }
 
     private HttpResponse<String> post(String path, String body) throws Exception {

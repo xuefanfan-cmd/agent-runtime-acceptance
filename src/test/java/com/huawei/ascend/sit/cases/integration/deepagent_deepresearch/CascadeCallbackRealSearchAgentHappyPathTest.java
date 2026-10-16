@@ -184,6 +184,7 @@ class CascadeCallbackRealSearchAgentHappyPathTest {
                 .agent(DEEP, a -> a
                         // SEARCH_AGENT_URL 指向 proxy 而不是 real search-agent,让 outbound HTTP
                         // 请求先落 proxy 抓完 wire 再透传给 real search-agent.
+                        .env("SPRING_PROFILES_ACTIVE", "callback-auth")
                         .env("SEARCH_AGENT_URL", searchUrlForDeep)
                         .env("VERIFY_AGENT_URL", "http://127.0.0.1:1")
                         .env("DEEP_RESEARCH_PUSH_NOTIFICATIONS", "true")

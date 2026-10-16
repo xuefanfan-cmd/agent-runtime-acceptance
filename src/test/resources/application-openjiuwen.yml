@@ -294,6 +294,11 @@ sut:
       artifact: agent-deep-research
       version: 0.1.0
       llm-api-key-property: openjiuwen.demo.deep-research.api-key
+      remote-agents-prefix: openjiuwen.service.a2a.remote-agents
+      spring:
+        properties:
+          openjiuwen.service.a2a.remote-agents[0].name: "search-agent"
+          openjiuwen.service.a2a.remote-agents[0].url: "http://127.0.0.1:12345/a2a/"
     search:
       group: com.openjiuwen.example
       artifact: agent-search
@@ -808,6 +813,11 @@ sut:
         envexplorer:
           url-key: openjiuwen.service.versatile.url-template
           url-template: "http://{{url}}/v1/mock_project_id/agents/fb723468-c8ca-424b-a95f-a3e74b37e090/conversations/{conversation_id}"
+    # EDPAgent (FEAT-028) — same as application-local.yml. governance yaml at /tmp/edpa-scenario-min.
+    edp-agent:
+      group: com.openjiuwen.example
+      artifact: edp-agent-engine
+      version: 0.1.0
     # multi-workflow 变体：同 jar，激活 application-multi-workflow.yml（按 intent 路由到 workflow 端点）。
     # 两条 workflow URL 占位符（VERSATILE_BALANCE_WORKFLOW_URL / VERSATILE_TRANSFER_WORKFLOW_URL）由
     # MultiWorkflowDirectStreamingTest 编程式 serviceBinding 注入（同一 envexplorer，多绑定）。

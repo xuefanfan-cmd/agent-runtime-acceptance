@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Default {@link SutLauncher}: runs an agent as a black-box {@code java -jar}
@@ -152,6 +154,19 @@ public final class ProcessLauncher implements SutLauncher {
         Map<String, String> mergedJvm = withLogHome(
                 mergeJvmSystemProperties(jvmSystemProperties, config.jvmSystemProperties()),
                 logFile.getParent());
+        // Let non-empty shell env win over YAML defaults for LLM_* config keys — the YAML ships
+        // an aliyun default (qwen3.8-max) but developers often source ~/.llmrc with a different
+        // model+key subscription. Without this, the child JVM boots with YAML's model against the
+        // shell's key → HTTP 401 from the LLM endpoint.
+        for (String key : new String[]{"LLM_API_BASE", "LLM_MODEL", "LLM_PROVIDER", "LLM_SSL_VERIFY"}) {
+            String envValue = System.getenv(key);
+            if (envValue != null && !envValue.isBlank()) {
+                mergedJvm.put(key, envValue);
+            }
+        }
+        // Inherit corporate proxy from shell env (Python httpx honors HTTP(S)_PROXY natively;
+        // the JDK HTTP clients do not). YAML wins over env for these slots.
+        mergedJvm = withProxyFromEnv(mergedJvm, System.getenv());
         mergedJvm.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.add("-jar");
         command.add(jar.toString());
@@ -320,6 +335,70 @@ public final class ProcessLauncher implements SutLauncher {
         Map<String, String> copy = new LinkedHashMap<>(mergedJvm);
         copy.put("LOG_HOME", agentDir.toString());
         return copy;
+    }
+
+    // Matches http://[user[:pass]@]host[:port][/...]; captures host and port. Robust to
+    // password specials (e.g. '!') that URI parsing sometimes rejects.
+    private static final Pattern PROXY_URL_PATTERN =
+            Pattern.compile("^[a-zA-Z]+://(?:[^@]+@)?([^:/\\s]+)(?::(\\d+))?");
+
+    /**
+     * Auto-populate JVM proxy system properties from shell env vars — mirrors what Python httpx
+     * does natively but the JDK HTTP clients do NOT honor {@code HTTP(S)_PROXY} / {@code NO_PROXY}
+     * out of the box. Parses {@code HTTP_PROXY} / {@code HTTPS_PROXY} URLs (e.g.
+     * {@code http://user:pass@host:port/}) into {@code http.proxyHost/Port} and
+     * {@code https.proxyHost/Port}; converts {@code NO_PROXY}'s comma-separated hosts into
+     * {@code http.nonProxyHosts}'s pipe-separated syntax.
+     *
+     * <p>YAML wins: any {@code http.proxyHost} / {@code https.proxyHost} / {@code http.nonProxyHosts}
+     * already set via {@code sut.java.system-properties} is left untouched — the YAML ships those as
+     * opt-in override slots for a specific run.
+     *
+     * <p>Package-private static for unit testability without launching a process.
+     */
+    static Map<String, String> withProxyFromEnv(Map<String, String> mergedJvm, Map<String, String> env) {
+        Map<String, String> out = new LinkedHashMap<>(mergedJvm);
+        applyProxy(out, firstNonBlank(env.get("HTTP_PROXY"), env.get("http_proxy")), "http");
+        applyProxy(out, firstNonBlank(env.get("HTTPS_PROXY"), env.get("https_proxy")), "https");
+        if (!out.containsKey("http.nonProxyHosts")) {
+            String noProxy = firstNonBlank(env.get("NO_PROXY"), env.get("no_proxy"));
+            if (noProxy != null) {
+                // Java's http.nonProxyHosts uses '|' separator; Python's NO_PROXY uses ','.
+                String hosts = noProxy.replaceAll("\\s+", "").replace(",", "|");
+                if (!hosts.isEmpty()) {
+                    out.put("http.nonProxyHosts", hosts);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static void applyProxy(Map<String, String> jvmProps, String proxyUrl, String scheme) {
+        if (proxyUrl == null || proxyUrl.isBlank()) {
+            return;
+        }
+        if (jvmProps.containsKey(scheme + ".proxyHost")) {
+            return; // YAML wins
+        }
+        Matcher m = PROXY_URL_PATTERN.matcher(proxyUrl.trim());
+        if (!m.find()) {
+            return;
+        }
+        jvmProps.put(scheme + ".proxyHost", m.group(1));
+        String port = m.group(2);
+        if (port != null && !jvmProps.containsKey(scheme + ".proxyPort")) {
+            jvmProps.put(scheme + ".proxyPort", port);
+        }
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) {
+            return a;
+        }
+        if (b != null && !b.isBlank()) {
+            return b;
+        }
+        return null;
     }
 
     /**

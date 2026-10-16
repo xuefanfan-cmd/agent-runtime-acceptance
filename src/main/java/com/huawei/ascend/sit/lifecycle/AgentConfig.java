@@ -56,6 +56,14 @@ public final class AgentConfig {
     private final Map<String, String> downstreamPropertyKeys = new LinkedHashMap<>();
 
     /**
+     * Per-downstream env-var name that receives the downstream's resolved base URL — the Python
+     * counterpart of {@link #downstreamPropertyKeys}. Python demo modules read downstream URLs
+     * from env (e.g. {@code SEARCH_AGENT_URL}, {@code VERIFY_AGENT_URL}), not from Spring properties.
+     * Seeded by {@code SutStack.AgentBuilder.downstreamEnv(name, envVarName)}.
+     */
+    private final Map<String, String> downstreamEnvKeys = new LinkedHashMap<>();
+
+    /**
      * Programmatic service-bindings declared via {@code SutStack.AgentBuilder.serviceBinding(...)},
      * merged with YAML {@code service-bindings} at injection time. Allows multiple bindings to the
      * SAME backing service (different url-key + url-template each) — the YAML map form is 1:1 because
@@ -226,6 +234,26 @@ public final class AgentConfig {
      */
     public String downstreamPropertyKey(String downstream) {
         return downstreamPropertyKeys.get(downstream);
+    }
+
+    /**
+     * Register a per-downstream env-var name that receives the downstream's resolved base URL —
+     * the Python counterpart of {@link #downstreamPropertyKey(String, String)}. Package-private —
+     * seeded only by {@code SutStack.AgentBuilder.downstreamEnv(name, envVarName)}.
+     */
+    AgentConfig downstreamEnvKey(String downstream, String envVarName) {
+        downstreamEnvKeys.put(downstream, envVarName);
+        return this;
+    }
+
+    /**
+     * The env-var name registered for a named downstream, or {@code null} when the downstream should
+     * fall back to the default positional slot. Read by {@code SutStack.start()}; env-var-key wins
+     * over property-key when both are set for the same downstream (Python agents rarely also want
+     * a Spring property).
+     */
+    public String downstreamEnvKey(String downstream) {
+        return downstreamEnvKeys.get(downstream);
     }
 
     /**

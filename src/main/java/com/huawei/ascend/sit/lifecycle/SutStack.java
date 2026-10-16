@@ -150,14 +150,18 @@ public final class SutStack implements AutoCloseable {
                 if (entry.agent.isRemote()) {
                     instances.put(name, new RemoteSutInstance(name, entry.agent.remoteUrl()));
                 } else {
-                    // Inject each downstream's resolved base URL. A custom-key downstream
-                    // (downstream(name, propertyKey)) goes to its agent-specific property and skips a
-                    // positional slot; the rest fill <remoteAgentsPrefix>[i].url contiguously.
+                    // Inject each downstream's resolved base URL. Priority: env-var key
+                    // (downstreamEnv, Python-style) > custom property key (downstream(name, key),
+                    // agent-specific Spring key) > default positional slot (<remoteAgentsPrefix>[i].url,
+                    // Java-runtime convention). env/property-key downstreams do NOT consume a slot.
                     int slot = 0;
                     for (String dsName : downstreams) {
                         String url = instances.get(dsName).baseUrl();
+                        String envKey = entry.config.downstreamEnvKey(dsName);
                         String customKey = entry.config.downstreamPropertyKey(dsName);
-                        if (customKey != null) {
+                        if (envKey != null) {
+                            entry.config.env(envKey, url);
+                        } else if (customKey != null) {
                             entry.config.property(customKey, url);
                         } else {
                             entry.config.downstreamUrl(slot, url);
@@ -545,7 +549,9 @@ public final class SutStack implements AutoCloseable {
         /** Launch the declared agents and return the started stack. */
         public SutStack start() {
             if (launcher == null) {
-                launcher = new ProcessLauncher(config);
+                // Composite by default so a mixed-runtime stack (Java jars + Python demos) just
+                // works. Tests that need a specific backend can install one via .launcher(...).
+                launcher = new CompositeLauncher(new ProcessLauncher(config), new PythonProcessLauncher(config));
             }
             Set<String> referenced = collectReferencedServices();
             BackingServices owned = null;
@@ -672,6 +678,26 @@ public final class SutStack implements AutoCloseable {
         }
 
         /**
+         * Wire a single downstream and inject its resolved base URL into an env var of the upstream
+         * child process — the Python counterpart of {@link #downstream(String, String)}. Use when the
+         * downstream's address must land in an env var (e.g. Python demo modules read
+         * {@code SEARCH_AGENT_URL} / {@code VERIFY_AGENT_URL} from env, not from Spring properties).
+         * The downstream name is still registered for readiness; an env-key downstream consumes no
+         * positional slot.
+         *
+         * <pre>{@code
+         * .agent("deep-research", a -> a
+         *      .downstreamEnv("search-agent", "SEARCH_AGENT_URL")
+         *      .downstreamEnv("verify-agent", "VERIFY_AGENT_URL"))
+         * }</pre>
+         */
+        public AgentBuilder downstreamEnv(String downstream, String envVarName) {
+            this.downstreams.add(downstream);
+            this.configOverrides.downstreamEnvKey(downstream, envVarName);
+            return this;
+        }
+
+        /**
          * Wire one or more downstream agents. Each becomes its own indexed slot
          * ({@code agent-runtime.remote-agents[i].url}, in the given order), so a fan-out agent
          * dispatches to several downstreams.
@@ -766,6 +792,14 @@ public final class SutStack implements AutoCloseable {
             if (remote) {
                 return remoteEntry(remoteUrl);
             }
+            // Python mode wins over Java mode when a python.module is configured. The YAML
+            // schema mirrors the Java one: sut.agents.<name>.python.{module, cwd, pythonpath,
+            // port-env-key, python-bin, env}. A managed Python agent is otherwise the same as a
+            // managed Java agent — downstreams, profile overrides, etc. all apply symmetrically.
+            String pythonModule = config.getString("sut.agents." + name + ".python.module", "");
+            if (!pythonModule.isBlank()) {
+                return pythonEntry(pythonModule);
+            }
             MavenArtifact resolvedArtifact = defaultArtifact();
             if (configOverrides.profile() == null || configOverrides.profile().isBlank()) {
                 String defaultProfile = config.getString("sut.agents." + name + ".profile", "");
@@ -805,12 +839,20 @@ public final class SutStack implements AutoCloseable {
                         config.getStringMap("sut.java.system-properties"),
                         config.getStringMap("sut.agents." + name + ".java.system-properties"))
                         .get("LLM_API_KEY");
+                // Fallback to the shell env when the YAML value is blank — avoids committing secrets
+                // to tracked application-*.yml just to make llm-api-key-property injection fire.
+                if (llmApiKey == null || llmApiKey.isBlank()) {
+                    String envKey = System.getenv("LLM_API_KEY");
+                    if (envKey != null && !envKey.isBlank()) {
+                        llmApiKey = envKey;
+                    }
+                }
                 if (llmApiKey != null && !llmApiKey.isBlank()) {
                     configOverrides.property(apiKeyProperty, llmApiKey);
                 } else {
                     LOG.warning("Agent '" + name + "' declares llm-api-key-property '" + apiKeyProperty
-                            + "' but LLM_API_KEY is not set in sut.java.system-properties; "
-                            + "skipping injection.");
+                            + "' but LLM_API_KEY is not set in sut.java.system-properties "
+                            + "nor in the shell env; skipping injection.");
                 }
             }
             SutAgent agent = new SutAgent(name, resolvedArtifact, downstreams);
@@ -820,6 +862,54 @@ public final class SutStack implements AutoCloseable {
         /** Build a remote (address-only) entry — no artifact/profile/port resolution. */
         private Entry remoteEntry(String url) {
             SutAgent agent = new SutAgent(name, null, url, downstreams);
+            return new Entry(agent, configOverrides);
+        }
+
+        /**
+         * Build a managed Python entry from {@code sut.agents.<name>.python.*}. Requires:
+         * {@code module} (already read by the caller), {@code cwd} (absolute cwd for the child),
+         * {@code port-env-key} (env var the module reads for its bind port). Optional:
+         * {@code pythonpath} (comma-separated extra entries prepended to PYTHONPATH),
+         * {@code python-bin} (executable, default {@code python}), and a nested {@code env} map
+         * ({@link AgentConfig#env(String, String)} entries applied at launch).
+         */
+        private Entry pythonEntry(String module) {
+            String cwd = config.getString("sut.agents." + name + ".python.cwd", "");
+            if (cwd.isBlank()) {
+                throw new IllegalStateException("Python agent '" + name
+                        + "' is missing sut.agents." + name + ".python.cwd (absolute working "
+                        + "directory of the demo module).");
+            }
+            String portEnvKey = config.getString("sut.agents." + name + ".python.port-env-key", "");
+            if (portEnvKey.isBlank()) {
+                throw new IllegalStateException("Python agent '" + name
+                        + "' is missing sut.agents." + name + ".python.port-env-key (the env var "
+                        + "name the demo module reads for its bind port, e.g. DEEP_RESEARCH_PORT).");
+            }
+            String pythonBin = config.getString("sut.agents." + name + ".python.python-bin", "");
+            String pythonpathRaw = config.getString("sut.agents." + name + ".python.pythonpath", "");
+            List<String> pythonpath = new ArrayList<>();
+            if (!pythonpathRaw.isBlank()) {
+                for (String p : pythonpathRaw.split("[,;" + java.io.File.pathSeparator + "]")) {
+                    String trimmed = p.trim();
+                    if (!trimmed.isEmpty()) {
+                        pythonpath.add(EnvPlaceholders.resolve(trimmed));
+                    }
+                }
+            }
+            PythonRuntime runtime = new PythonRuntime(
+                    module,
+                    java.nio.file.Path.of(EnvPlaceholders.resolve(cwd)),
+                    pythonpath,
+                    portEnvKey,
+                    pythonBin.isBlank() ? null : pythonBin);
+            config.getStringMap("sut.agents." + name + ".python.env")
+                    .forEach(configOverrides::env);
+            int yamlPort = config.getInt("sut.agents." + name + ".port", 0);
+            if (yamlPort > 0) {
+                configOverrides.port(yamlPort);
+            }
+            SutAgent agent = new SutAgent(name, runtime, downstreams);
             return new Entry(agent, configOverrides);
         }
 

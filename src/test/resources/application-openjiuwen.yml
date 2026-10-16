@@ -315,6 +315,33 @@ sut:
       artifact: agent-verify
       version: 0.1.0
       llm-api-key-property: openjiuwen.demo.verify-agent.api-key
+    # ── FEAT-019 Python multi-deep-research demo — framework-owned lifecycle ──
+    # These three entries mirror what scripts/smoke_real_llm.py used to spawn manually.
+    # SUT tests declare them via .agent(...) and the framework does the whole spawn /
+    # wait-ready / teardown dance — nothing to start by hand. Requires:
+    #   • RUNTIME_ROOT env / ${RUNTIME_ROOT} set to the ext-python checkout root
+    #   • DEMO_ROOT env / ${DEMO_ROOT} set to the multi-deep-research-demo-python root
+    #     (both can be set from shell rc; defaults below match the current dev tree layout)
+    verify-agent-python:
+      python:
+        module: verify_agent.service.application
+        cwd: ${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-verify
+        pythonpath: "${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-verify/src,${RUNTIME_ROOT:D:/openjiuwen-java/2012/agent-solution/common/agent-runtime-ext-python}"
+        port-env-key: VERIFY_AGENT_PORT
+    search-agent-python:
+      python:
+        module: search_agent.service.application
+        cwd: ${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-search
+        pythonpath: "${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-search/src,${RUNTIME_ROOT:D:/openjiuwen-java/2012/agent-solution/common/agent-runtime-ext-python}"
+        port-env-key: SEARCH_AGENT_PORT
+        env:
+          SEARCH_PROVIDER: stub
+    deep-research-python:
+      python:
+        module: deep_research.service.application
+        cwd: ${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-deep-research
+        pythonpath: "${DEMO_ROOT:D:/openjiuwen-java/2012/agent-solution/common/example/multi-deep-research-demo-python}/agent-deep-research/src,${RUNTIME_ROOT:D:/openjiuwen-java/2012/agent-solution/common/agent-runtime-ext-python}"
+        port-env-key: DEEP_RESEARCH_PORT
     # FEAT-031 Studio DSL demo — start→input→setVariable→message→card→code→llm→streamTransform→end
     studio-dsl-demo:
       group: com.openjiuwen.example

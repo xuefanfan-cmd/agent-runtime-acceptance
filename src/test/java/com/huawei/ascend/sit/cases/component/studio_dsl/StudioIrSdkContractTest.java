@@ -119,7 +119,7 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
                         .isEqualTo("FEAT-031 direct SDK contract input");
                 softly.assertThat(workflow.getCard().getVersion())
                         .as(entry + " workflowVersion")
-                        .isEqualTo("1");
+                        .isEqualTo("0.6.0");
 
                 WorkflowAssemblyProbe.Snapshot snapshot = WorkflowAssemblyProbe.inspect(workflow);
                 softly.assertThat(snapshot.nodes().keySet())
@@ -603,6 +603,7 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
                     ((List<?>) ir.get("components")).get(1)).get("configs");
             llmConfigs.put("templateContent", List.of(Map.of("role", "user", "content", "{{query}}")));
             llmConfigs.put("responseFormat", Map.of("type", "text"));
+            llmConfigs.put("deployMode", "cloud");
             llmConfigs.put("enableHistory", false);
             llmConfigs.put("userFields", Map.of(
                     "inputs", List.of(Map.of("id", "query", "type", "string")),
@@ -752,6 +753,7 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
         ir.put("workflowId", "wf-topology-matrix");
         ir.put("workflowName", "topology matrix");
         ir.put("schemaVersion", "0.6.0");
+        ir.put("workflowVersion", "0.6.0");
         List<Map<String, Object>> components = new ArrayList<>();
         components.add(component("node_start", "jiuwen.start", Map.of()));
         components.add(component("node_branch", "jiuwen.branch", Map.of("branches", List.of(

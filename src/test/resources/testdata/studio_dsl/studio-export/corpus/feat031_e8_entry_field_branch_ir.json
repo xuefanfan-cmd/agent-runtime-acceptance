@@ -452,7 +452,7 @@
   "schemaVersion": "0.6.0",
   "description": "test-side synthesized 2026-09-20: branch condition reads an entry custom field (${node_start.userFields.loginFlag}); modeled on the customer real workflow shape, downstream uses jiuwen.LLMComponent to stay executable",
   "workflowName": "FEAT031_EntryFieldBranch_TestSide",
-  "workflowVersion": "0.0.1",
+  "workflowVersion": "0.6.0",
   "workflowId": "feat031-entry-field-branch-0001",
   "connections": [
     {

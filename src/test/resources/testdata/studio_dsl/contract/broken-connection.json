@@ -1,6 +1,7 @@
 {
   "workflowId": "wf-broken-connection",
   "schemaVersion": "0.6.0",
+  "workflowVersion": "0.6.0",
   "components": [
     {"id": "node_start", "type": "jiuwen.start", "configs": {}},
     {"id": "node_end", "type": "jiuwen.end", "configs": {}}

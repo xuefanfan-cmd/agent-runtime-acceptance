@@ -1,6 +1,7 @@
 {
   "workflowId": "feat031-marked-mixed-lane-0001",
   "schemaVersion": "0.6.0",
+  "workflowVersion": "0.6.0",
   "workflowName": "feat031-marked-mixed-lane",
   "description": "FEAT-031 混泳道 sentinel 装配契约语料：start 带 parallelBranchId 扇出两条泳道，泳道 left 内同时挂流式起点 llm 与非流式终点 code，均汇入 end；来源=产品仓 ir_fixtures/test_mixed_lane_stream_ir.json",
   "components": [

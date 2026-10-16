@@ -2,7 +2,7 @@
   "schemaVersion": "0.6.0",
   "workflowId": "wf-issue399-session-var",
   "workflowName": "issue399-session-var",
-  "workflowVersion": "0.0.1",
+  "workflowVersion": "0.6.0",
   "configs": {
     "ioLogLevel": "INFO",
     "stream": true

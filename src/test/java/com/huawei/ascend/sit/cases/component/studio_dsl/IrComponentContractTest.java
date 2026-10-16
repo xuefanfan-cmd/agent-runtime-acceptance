@@ -241,6 +241,9 @@ class IrComponentContractTest extends StudioDslContractTestBase {
         return switch (type) {
             case "jiuwen.aggregate" -> Map.of("groups", Map.of());
             case "jiuwen.message" -> Map.of("template", "component-contract");
+            case "jiuwen.card" -> Map.of("template", "component-contract");
+            case "jiuwen.intentDetection" -> Map.of(
+                    "branches", List.of(Map.of("id", "intent-contract", "catalog", "contract")));
             case "EI.ComplexIntentDetection" -> Map.of(
                     "branches", List.of(Map.of("id", "intent-contract", "catalog", "contract")),
                     "groups", Map.of("result", List.of("${intent-contract.result}")));
@@ -294,6 +297,7 @@ class IrComponentContractTest extends StudioDslContractTestBase {
         Map<String, Object> ir = new LinkedHashMap<>();
         ir.put("workflowId", "wf-loop-contract");
         ir.put("schemaVersion", "0.6.0");
+        ir.put("workflowVersion", "0.6.0");
         ir.put("components", List.of(
                 component("node_start", "jiuwen.start", Map.of()),
                 component("node_loop", "jiuwen.loop", Map.of(

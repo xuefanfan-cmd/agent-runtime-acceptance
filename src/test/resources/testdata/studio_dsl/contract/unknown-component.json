@@ -1,6 +1,7 @@
 {
   "workflowId": "wf-unknown-component",
   "schemaVersion": "0.6.0",
+  "workflowVersion": "0.6.0",
   "components": [
     {"id": "node_start", "type": "jiuwen.start", "configs": {}},
     {"id": "node_unknown", "type": "jiuwen.notRegistered", "configs": {}},

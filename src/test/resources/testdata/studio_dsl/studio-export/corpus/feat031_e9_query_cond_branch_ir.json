@@ -452,7 +452,7 @@
   "schemaVersion": "0.6.0",
   "description": "test-side synthesized 2026-09-20: branch condition reads systemFields.query ((length(${node_start.systemFields.query}) > 1)); same downstreams as E8",
   "workflowName": "FEAT031_QueryConditionBranch_TestSide",
-  "workflowVersion": "0.0.1",
+  "workflowVersion": "0.6.0",
   "workflowId": "feat031-query-condition-branch-0001",
   "connections": [
     {

@@ -521,7 +521,7 @@
   "schemaVersion": "0.6.0",
   "description": "test-side synthesized 2026-09-20: branch condition reads an upstream node's output ((${node_up.userFields.raw_output} != 'UPSTREAM_CANARY'))",
   "workflowName": "FEAT031_UpstreamFieldBranch_TestSide",
-  "workflowVersion": "0.0.1",
+  "workflowVersion": "0.6.0",
   "workflowId": "feat031-upstream-field-branch-0001",
   "connections": [
     {

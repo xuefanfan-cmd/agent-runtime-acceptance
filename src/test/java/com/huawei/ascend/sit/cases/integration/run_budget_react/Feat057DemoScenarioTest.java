@@ -63,19 +63,23 @@ final class Feat057DemoScenarioTest {
     private static final String PROMPT_S1 =
             "Compare the main design goals of the OpenJiuwen Agent SPI versus LangGraph in 3 sentences.";
     private static final String PROMPT_S2 =
-            "Search the local knowledge base for '量子纠缠的最新实验进展' using empty_knowledge_search. "
-            + "If the first attempt returns zero matches, you MUST retry at least 12 more times with "
-            + "different query variations (synonyms, English translations, broader terms like 'quantum "
-            + "entanglement experiments', narrower terms like 'Bell test violations', related concepts). "
-            + "Do not give up after one or two empty results — keep searching until you have attempted at "
-            + "least 12 distinct queries, then summarize what you found even if the result set is empty.";
+            "Search the local knowledge base using empty_knowledge_search for 12 DIFFERENT query "
+            + "variations about 量子纠缠. STRICT PROTOCOL: EXACTLY ONE tool call per turn. Do NOT write "
+            + "any commentary, notes, or explanations between calls - your response each turn must be "
+            + "ONLY the next tool call, nothing else. Only after all 12 attempts may you write a final summary.";
     private static final String PROMPT_S3 =
-            "Fetch documents 'doc://quantum/intro' and 'doc://quantum/experiments' and summarize them.";
+            "Fetch these 6 documents using slow_knowledge_fetch, STRICTLY ONE fetch per turn (never "
+            + "batch): doc://quantum/intro, doc://quantum/experiments, doc://quantum/entanglement, "
+            + "doc://quantum/computing, doc://quantum/gates, doc://quantum/hardware. After each fetch add "
+            + "a one-sentence note, then fetch the next in your NEXT turn. Do not summarize until all 6 "
+            + "are fetched.";
     private static final String PROMPT_S4 =
             "Produce a research report on 'Agent run-budget 的落地要点'. After every draft, you MUST call "
-            + "infinite_demand_critic and incorporate every one of its 'required_additional_angles' into "
-            + "the next draft. Do not stop until the critic returns verdict='sufficient'. Never decide on "
-            + "your own that the report is good enough — always re-run the critic after each revision.";
+            + "infinite_demand_critic and incorporate its 'required_additional_angles' into the next "
+            + "draft. STRICT PROTOCOL: EXACTLY ONE critic call per turn, and keep EVERY draft to at most "
+            + "3 sentences - the critic demands more angles regardless of draft length, so brevity is "
+            + "mandatory. Do not stop until the critic returns verdict='sufficient'. Never decide on your "
+            + "own that the report is good enough.";
     private static final String PROMPT_S5 =
             "Research 'OpenJiuwen 的调度模型选型' and finalize an answer under the budget.";
     private static final String PROMPT_S6 =
@@ -88,8 +92,9 @@ final class Feat057DemoScenarioTest {
             + "doc://quantum/applications, doc://quantum/history. Each uri is distinct, so each fetch "
             + "produces new content.";
     private static final String PROMPT_S7 =
-            "Research the OpenJiuwen project at length — this is a long-running task that would normally "
-            + "burn many rounds.";
+            "Research the OpenJiuwen project. You MUST issue at least 10 separate web_search calls "
+            + "across at least 10 ReAct rounds - one search per round, each with a different query - and "
+            + "you are NOT allowed to write any final answer before completing all 10 search rounds.";
 
     @Test
     void s0_compatBaselineZeroBudgetEvents() throws Exception {
@@ -171,7 +176,14 @@ final class Feat057DemoScenarioTest {
 
         Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
         researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+            // 10-21 jar 工厂校验：use-stub-web-search=false 时必须带 tavily key（launcher 不继承 shell env，须显式入 map）
+            researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
+            // 临时 env 覆盖：demo StallDetectorRail 盯裸工具名，而 MCP 装配(ReAct 模式)后实名带
+            // mcp_<server>_ 前缀——失配致 STALL 静默失效（docsReview SIT-FEEDBACK-demo-batch3 §A，
+            // 实验局 20261021-213425 证实覆盖即贯通）。开发修复匹配逻辑后删除本行。
+            researcherEnv.put("DEMO_RESEARCHER_STALL_DETECTOR_WATCHED_TOOLS_0",
+                    "mcp_run-budget-mock-knowledge-base_empty_knowledge_search");
 
         try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
              DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()
@@ -184,8 +196,14 @@ final class Feat057DemoScenarioTest {
             events.assertFirstPayload(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
                     e -> Integer.valueOf(10).equals(e.intField("guaranteed_rounds")),
                     "guaranteed_rounds==10");
-            events.assertPresent(BudgetEventName.TURN_BUDGET_CHECKPOINT);
-            events.assertPresent(BudgetEventName.TURN_BUDGET_STALL_PROMPTED);
+            if (events.countOf(BudgetEventName.TURN_BUDGET_CHECKPOINT) == 0) {
+                Assumptions.abort("未达首检查点线（max(10,保底)=10 轮；LLM 批量调用/提前收敛）—— 场景未激活，INCONCLUSIVE");
+            }
+            // 2026-10-20 判据修订：停滞事实需宿主经 RunBudgetSignals.reportNoProgress 注入（特性档「停滞信号检测划层」），
+            // 当前 demo 未接信号源（docsReview SIT-FEEDBACK-demo-batch2 §A），STALL 结构性不可达 → blocked-on-demo。
+            if (events.countOf(BudgetEventName.TURN_BUDGET_STALL_PROMPTED) == 0) {
+                Assumptions.abort("STALL_PROMPTED 未出现：demo 停滞信号源缺失（blocked-on-demo，batch2 §A）—— INCONCLUSIVE");
+            }
             // MUST#5 — intervention must not hard-cut (hard_limit=200 for suggested=10 → not expected here).
             if (events.countOf(BudgetEventName.TURN_BUDGET_TERMINATED) > 0) {
                 Assumptions.abort("TERMINATED fired — LLM burned to hard_limit; mark INCONCLUSIVE");
@@ -207,6 +225,8 @@ final class Feat057DemoScenarioTest {
 
         Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
         researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+            // 10-21 jar 工厂校验：use-stub-web-search=false 时必须带 tavily key（launcher 不继承 shell env，须显式入 map）
+            researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
 
         try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
@@ -221,6 +241,15 @@ final class Feat057DemoScenarioTest {
                     e -> Integer.valueOf(90).equals(e.intField("total_budget_seconds"))
                             && Integer.valueOf(30).equals(e.intField("near_deadline_threshold_seconds")),
                     "total_budget_seconds==90 && near_deadline_threshold_seconds==30");
+
+            // 2026-10-20 判据修订：临近提示的设计目的即促成收尾——模型服从提示、在到期前自然完成是合规结局
+            //（「提示→听话收尾→不终止」死结，单局无法同时采到提示与终止；wire 证据由脚本层 A/B 双局拼采，见 cases §2.4 注记）。
+            if (events.countOf(BudgetEventName.TIME_BUDGET_TERMINATED) == 0) {
+                assertThat(events.countOf(BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED))
+                        .as("NEAR_DEADLINE_PROMPTED 单射（未终止分支仍硬校验）").isLessThanOrEqualTo(1);
+                assertThat(resp.resultType()).isEqualTo("answer");
+                Assumptions.abort("时间预算未触达到期线（LLM 服从收尾提示自然完成）—— 场景未激活，INCONCLUSIVE");
+            }
 
             // X2 — strict single-shot.
             events.assertCount(BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED, 1);
@@ -269,6 +298,8 @@ final class Feat057DemoScenarioTest {
 
         Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
         researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+            // 10-21 jar 工厂校验：use-stub-web-search=false 时必须带 tavily key（launcher 不继承 shell env，须显式入 map）
+            researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
 
         try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
@@ -284,6 +315,10 @@ final class Feat057DemoScenarioTest {
                             && Integer.valueOf(15).equals(e.intField("hard_limit")),
                     "guaranteed_rounds==10 && hard_limit==15");
 
+            if (events.countOf(BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED) == 0) {
+                Assumptions.abort("未烧到 hard_limit=15（LLM 提前收敛）—— 安全阀场景未激活，INCONCLUSIVE");
+            }
+
             // X1 — safety-valve three-phase strict order + FINAL_ROUND_GRANTED idempotent.
             events.assertCount(BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED, 1);
             events.assertFirstPayload(BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
@@ -297,26 +332,41 @@ final class Feat057DemoScenarioTest {
                     e -> Integer.valueOf(16).equals(e.intField("round")),
                     "round==16");
 
-            events.assertCount(BudgetEventName.TURN_BUDGET_TERMINATED, 1);
-            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_TERMINATED,
-                    e -> Integer.valueOf(16).equals(e.intField("round"))
-                            && "turn_budget_exhausted".equals(e.stringField("reason"))
-                            && Integer.valueOf(15).equals(e.intField("hard_limit")),
-                    "round==16 && reason==turn_budget_exhausted && hard_limit==15");
-
-            events.assertSequence(
-                    BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
-                    BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
-                    BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
-                    BudgetEventName.TURN_BUDGET_TERMINATED);
-
-            // L2 §4.2 — once safety valve engages, no checkpoint/stall/reminder between phases.
-            events.assertNoneBetween(
-                    BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
-                    BudgetEventName.TURN_BUDGET_TERMINATED,
-                    BudgetEventName.TURN_BUDGET_CHECKPOINT,
-                    BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
-                    BudgetEventName.TURN_BUDGET_GENTLE_REMINDER);
+            // 2026-10-20 判据修订（MUST#6 两分支，契约依据：特性档 5.1.6「该轮之后仍未结束的，主循环才终止」）：
+            // 分支 A = 交卷轮仍未完成 → TERMINATED；分支 B = 模型服从收尾指令在交卷轮自然完成 → 不终止（UT-S04 对应）。
+            int terminated = events.countOf(BudgetEventName.TURN_BUDGET_TERMINATED);
+            if (terminated > 0) {
+                events.assertCount(BudgetEventName.TURN_BUDGET_TERMINATED, 1);
+                events.assertFirstPayload(BudgetEventName.TURN_BUDGET_TERMINATED,
+                        e -> Integer.valueOf(16).equals(e.intField("round"))
+                                && "turn_budget_exhausted".equals(e.stringField("reason"))
+                                && Integer.valueOf(15).equals(e.intField("hard_limit")),
+                        "round==16 && reason==turn_budget_exhausted && hard_limit==15");
+                events.assertSequence(
+                        BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                        BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                        BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
+                        BudgetEventName.TURN_BUDGET_TERMINATED);
+                // L2 §4.2 — once safety valve engages, no checkpoint/stall/reminder between phases.
+                events.assertNoneBetween(
+                        BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                        BudgetEventName.TURN_BUDGET_TERMINATED,
+                        BudgetEventName.TURN_BUDGET_CHECKPOINT,
+                        BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
+                        BudgetEventName.TURN_BUDGET_GENTLE_REMINDER);
+                assertThat(resp.resultType()).isEqualTo("error");
+                assertThat(resp.output()).isEqualTo("已达到轮次预算绝对上限，任务被终止。");
+            } else {
+                events.assertSequence(
+                        BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                        BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                        BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED);
+                assertThat(resp.resultType()).isEqualTo("answer");
+                assertThat(resp.output()).isNotBlank();
+                assertThat(resp.output())
+                        .doesNotContain("已达到轮次预算绝对上限")
+                        .doesNotContain("本次执行的时间预算已到期");
+            }
 
             events.assertAbsent(
                     BudgetEventName.TIME_BUDGET_EFFECTIVE,
@@ -324,8 +374,6 @@ final class Feat057DemoScenarioTest {
                     BudgetEventName.TIME_BUDGET_TERMINATED);
 
             assertThat(resp.statusCode()).isEqualTo(200);
-            assertThat(resp.resultType()).isEqualTo("error");
-            assertThat(resp.output()).isEqualTo("已达到轮次预算绝对上限，任务被终止。");
             assertThat(resp.hasTurnBudgetField()).isFalse();
             assertThat(resp.hasTimeBudgetField()).isFalse();
         }
@@ -379,6 +427,8 @@ final class Feat057DemoScenarioTest {
 
         Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
         researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+            // 10-21 jar 工厂校验：use-stub-web-search=false 时必须带 tavily key（launcher 不继承 shell env，须显式入 map）
+            researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
 
         try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
@@ -398,13 +448,17 @@ final class Feat057DemoScenarioTest {
                     "No CHECKPOINT.progressed==true observed — LLM did not reach extension branch; INCONCLUSIVE");
 
             events.assertPresent(BudgetEventName.TURN_BUDGET_EXTENDED);
+            // 2026-10-21 判据勘误（T-M1d）：EXTENDED 事件 wire 与源码（RunBudgetRail.java:266-270）均只含
+            // round/allowed_rounds/next_interval；hard_limit 只随 GUARANTEE_EFFECTIVE 发布——跨事件取基准再比。
+            Integer hardLimit = events.of(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE)
+                    .get(0).intField("hard_limit");
+            assertThat(hardLimit).as("GUARANTEE_EFFECTIVE 应携带 hard_limit").isNotNull();
             events.assertAllPayload(BudgetEventName.TURN_BUDGET_EXTENDED,
                     e -> {
                         Integer allowed = e.intField("allowed_rounds");
-                        Integer hard = e.intField("hard_limit");
-                        return allowed != null && hard != null && allowed <= hard;
+                        return allowed != null && allowed <= hardLimit;
                     },
-                    "allowed_rounds <= hard_limit");
+                    "allowed_rounds <= hard_limit(基准取自 GUARANTEE 事件)");
 
             events.assertAbsent(
                     BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
@@ -441,19 +495,20 @@ final class Feat057DemoScenarioTest {
                     BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED,
                     BudgetEventName.TIME_BUDGET_TERMINATED);
 
-            // Overlay rail carries custom reason — appears in the SUT log finish path.
+            // 2026-10-20 L2 回补口径：forceFinish 通道零框架级事件，rail 终止可观测性 = rail 自我仪表化、
+            // 观测锚在日志通道（demo rail 自报行含 event_type=overlay_rail_force_finish，纯文本行，故用原始文本匹配）。
             boolean overlayReasonSeen = Files.readString(researcher.logFile())
                     .contains("overlay_rail_force_finish");
             assertThat(overlayReasonSeen)
                     .as("overlay rail custom reason must appear in SUT log")
                     .isTrue();
 
-            // Output must not be a run-budget termination phrase.
-            if (resp.output() != null) {
-                assertThat(resp.output())
-                        .doesNotContain("已达到轮次预算绝对上限")
-                        .doesNotContain("本次执行的时间预算已到期");
-            }
+            // 表面口径（L2 2026-10-20）：rail 自定义 result_type 属 demo 私约（当前 "finish"，不进框架契约，不作框架枚举断言）；
+            // output 键按内容白名单透传，10-20 版 demo rail 已改用 output 承载产出。
+            assertThat(resp.output()).as("rail output 私约承载产出").isNotBlank();
+            assertThat(resp.output())
+                    .doesNotContain("已达到轮次预算绝对上限")
+                    .doesNotContain("本次执行的时间预算已到期");
         }
     }
 

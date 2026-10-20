@@ -3,8 +3,8 @@ feature_id: FEAT-057
 feature_title: 主循环运行预算与进度跟踪
 sut: run-budget-elastic-research-demo 的 researcher-agent（ReActAgent，openjiuwen 范式，fat jar 独立运行；端口 18092 + mock-knowledge-base 端口 18093）
 scope: 本档覆盖 FEAT-057 SIT 侧黑盒可观察（`POST /v1/query` body + SUT 结构化日志的 `turn_budget_*` / `time_budget_*` 事件，event_type 字段小写 snake_case）；UT 侧由 dev team 已交付 8 测试类 33 项（UT-C/B/S/R/T），本档不复制；MUST#18 overlay rail 优先级由 demo S7 构造 + SIT 独立 asserter 旁证，不再 scope out。
-status: pending-implementation
-status_note: 测试方案与子用例骨架已沉淀；fixture 代码（DemoFatJarLauncher / MockKbLauncher / ReactAgentHttpClient / SutLogTailer / RunBudgetEventAsserter）与用例类未落地；fat jar 已由开发侧 2026-10-19 15:39 重打完成（researcher 183MB / mock-kb 22MB），本地构建已验证可用。
+status: first-round-executed
+status_note: fixture 与用例类已落地（b5ae95a）并经 2026-10-20 ECS 首轮执行修订（见下方「首轮实测勘误与判据修订」节）；S0/S1 Maven 正式 PASS；fat jar 为开发侧 2026-10-20 刷新版（MCP 装配 ReAct 模式 + rail 自我仪表化）。
 owner: TBD
 tags: [integration, reactagent, feat-057, run-budget, elastic-budget]
 depends_on:
@@ -35,6 +35,20 @@ related_docs:
 > - **deferred**：产品侧未就绪或 scope out（当前 FEAT-057 内无此类项）
 
 ---
+
+## 0′. 2026-10-20 首轮实测：勘误与判据修订（先读本节再读后文）
+
+证据底座：ECS 首轮全场景执行（脚本层证据总账 feat057-jars/FEAT-057-脚本层证据总账-2026-10-20.md）+ L2 回补（updated 2026-10-20，forceFinish 可观测性边界）。本节是后文 G/W/T 的覆盖性修订，冲突处以本节为准。
+
+1. **接口勘误（Q1 更新）**：`/v1/query` body 必填 `conversation_id`；响应为 SSE 流。fixture 已适配。
+2. **泄漏断言口径更严**：「`turn_budget`/`time_budget` 子对象不穿透 body」在 SSE 形态下的忠实口径 = **扫描流内每一个事件的 payload**（原「响应顶层键」检查的超集）；S0/S1 已按新口径复核通过（历史结论不受影响：两局在新口径下同为零命中）。
+3. **S7 判据锚替换（L2 2026-10-20 回补为契约依据）**：forceFinish 通道零框架级事件；rail 终止可观测性 = rail 自我仪表化，观测锚 = rail 自报日志行（`event_type=overlay_rail_force_finish`，纯文本行，用例以原始文本匹配）；`result_type` 框架取值集 = answer/error/interrupt/external_tool_call_required，rail 自定义值（demo 当前为 "finish"）属 rail 私约、不作框架枚举断言；output 键经内容白名单透传、断言非空。原「RuntimeContext.endInvoke finish 行」锚作废。
+4. **S4 判据补全（MUST#6 两分支）**：契约原文「该轮之后仍未结束的才终止」——交卷轮内自然 answer（实测 2026-10-20：valve@5→final@6→第 6 轮 stop+answer，UT-S04 对应）与 TERMINATED 均为合法结局，用例按两分支判 PASS；未烧到 hard_limit 判 INCONCLUSIVE（未激活）。
+5. **S3 判据分类修订（「提示→听话收尾→不终止」死结）**：临近提示的设计目的即促成收尾，模型服从提示自然完成为合规结局；单局无法同时采到「提示+终止」。用例：到期未触达 → INCONCLUSIVE（非 FAIL），提示单射仍硬校验。wire 证据采用**双局拼证**（A 局 35/15 采提示单射 remaining=8.19s；B 局 18/5 采终止 terminated_at=tool_dispatch + 时限钳制 14541.5ms），已归档。
+6. **S2 blocked-on-demo**：停滞事实需宿主经 `RunBudgetSignals.reportNoProgress` 注入（特性档划层；core 默认启发式不做工具语义判定——对照实验：12 连空结果+零评论仍 progressed=true）；demo 未接信号源（docsReview SIT-FEEDBACK-demo-batch2 §A），STALL 结构性不可达，用例判 INCONCLUSIVE 并注明 blocked-on-demo。
+7. **场景激活依赖模型个性（执行建议）**：flash 系批量并行调用且服从收尾（次数≠轮次、提前收敛），v4-pro 照章串行——轮次维场景（s2/s4/s6）建议以 `LLM_MODEL=deepseek-v4-pro-0813` 执行；并行批发问题详见 batch2 §C.3。
+8′.（2026-10-21 增）**EXTENDED 事件 schema 勘误**：payload 仅 round/allowed_rounds/next_interval，无 hard_limit（源码 RunBudgetRail.java:266-270 + wire 实证）；原"allowed_rounds≤hard_limit"断言改为跨事件取 GUARANTEE 的 hard_limit 作基准。另：CHECKPOINT 事件新增 host_stall_reported 字段（10-21 jar，StallDetectorRail 配套）。
+8. **s5 维持 blocked**：等待 core 侧 first-checkpoint 下限裁定（docsReview SIT-CLARIFY-core-first-checkpoint-floor.md，A1/A2 二选一）。
 
 ## 0. 执行前置快速清单
 
@@ -375,7 +389,7 @@ related_docs:
 
 ### 5.1 已反馈（可直接落地）
 
-- **Q1（已反馈 2026-10-19）**：researcher-agent 的 HTTP 入口是 **`POST /v1/query`**，body shape 为 **`{"message":"<prompt>"}`**（demo README §运行 + HANDOFF.md + run-scenarios.sh 中 curl 构造一致）。`ReactAgentHttpClient` fixture 按此 shape 构造。
+- **Q1（已反馈 2026-10-19）**：researcher-agent 的 HTTP 入口是 **`POST /v1/query`**，body shape 为 **`{"message":"<prompt>"}`**（demo README §运行 + HANDOFF.md + run-scenarios.sh 中 curl 构造一致）。**2026-10-20 勘误**：10-19 重打 jar 起 body 必填 `conversation_id`（缺则 `{"error":"conversation_id is required"}`）；且响应为 **SSE 流**（`data: {...}` 行）而非一次性 JSON。`ReactAgentHttpClient` fixture 已按实测适配（conversation_id + SSE 解析锚最后 answer 事件）。
 - **Q2（已反馈 2026-10-19）**：SUT 日志结构化事件由 `DefaultLogger.logEvent` 发射为 JSON 行，字段 `"event_type"` 的值 = `LogEventType` 枚举 value 的**小写 snake_case**字符串（如 `turn_budget_guarantee_effective` / `time_budget_terminated`），由 `BaseLogEvent.toMap:81` 的序列化约定规定。SIT asserter 的 API 入口以大写 SNAKE_CASE 枚举名暴露（契约可读），内部做小写转写与日志行匹配。
 - **Q3（已反馈 2026-10-19）**：LLM `temperature=0.2` 默认由 demo README env 清单固定；S2/S4 的死循环/停滞场景由 **prompt 工程硬塞**构造 —— `run-scenarios.sh` 中 S2 prompt 显式写 "MUST retry at least 12 more times..."；S4 prompt 显式写 "MUST call `infinite_demand_critic`...never decide on your own..."。SIT 侧沿用 demo 的 prompt 组合，LLM 吞吐导致的"一轮答完"仍判 INCONCLUSIVE。
 
@@ -396,24 +410,24 @@ related_docs:
 
 | 用例 ID | 状态 | 最近执行时间 | 执行环境 | PASS/FAIL/INCONCLUSIVE | 证据 | 备注 |
 |---|---|---|---|---|---|---|
-| FEAT-057.legacy-max-iterations-compat | pending | — | — | — | — | — |
-| FEAT-057.unset-config-byte-equivalence | pending | — | — | — | — | — |
-| FEAT-057.config-additive-only | pending | — | — | — | — | — |
-| FEAT-057.turn-guarantee-configured | pending | — | — | — | — | — |
-| FEAT-057.turn-guarantee-no-interference | pending | — | — | — | — | — |
-| FEAT-057.turn-checkpoint-extension | pending | — | — | — | — | — |
-| FEAT-057.turn-stall-prompt-escalation | pending | — | — | — | — | — |
-| FEAT-057.turn-intervention-no-hard-cut | pending | — | — | — | — | — |
-| FEAT-057.turn-safety-valve-three-phase | pending | — | — | — | — | X1 二次断言 |
-| FEAT-057.time-per-invoke-isolated | pending | — | — | — | — | — |
-| FEAT-057.time-no-new-dispatch-after-exhaust | pending | — | — | — | — | — |
-| FEAT-057.time-timeout-clamping | pending | — | — | — | — | 弱层断言 |
-| FEAT-057.time-near-deadline-single-shot | pending | — | — | — | — | X2 严格单射 |
-| FEAT-057.time-termination-identifiable | pending | — | — | — | — | X3 reason 枚举 |
-| FEAT-057.time-dim-independent-enablement | pending | — | — | — | — | — |
-| FEAT-057.both-dims-coexistence | pending | — | — | — | — | S5 + X5 |
-| FEAT-057.events-contract-11-types | pending | — | — | — | — | 跨场景聚合断言 |
-| FEAT-057.overlay-rail-priority | pending | — | — | — | — | S7，demo 侧 ForceFinishAtRoundRail 构造 |
+| FEAT-057.legacy-max-iterations-compat | done | 2026-10-20 17:31 | ECS Maven | **PASS** | surefire s0（2/2 F0E0S0） | 自然完成分支；11 事件零出现（X4 口径） |
+| FEAT-057.unset-config-byte-equivalence | done | 2026-10-20 17:31 | ECS Maven | **PASS** | 同上 | 与 s0 同局 |
+| FEAT-057.config-additive-only | done | 2026-10-20 | ECS 脚本层旁证 | PASS（旁证） | 配置五校验链实测（s5 fail-fast + s4 覆盖组合过检） | SIT 不做源码检查 |
+| FEAT-057.turn-guarantee-configured | done | 2026-10-20 17:31 | ECS Maven | **PASS** | surefire s1：payload 20/configured/200 恰一次 | — |
+| FEAT-057.turn-guarantee-no-interference | done | 2026-10-20 17:31 | ECS Maven | **PASS** | 同上，其余十枚全零 | — |
+| FEAT-057.turn-checkpoint-extension | done | 2026-10-21 21:26 | ECS Maven | **PASS** | cp@10/13、EXTENDED×2、allowed≤hard(跨事件基准) | EXTENDED schema 勘误后首绿 |
+| FEAT-057.turn-stall-prompt-escalation | done | 2026-10-21 21:43 | ECS Maven | **PASS** | host_stall_reported=true→STALL_PROMPTED→consecutive_stalls=1 | 经临时 env 覆盖绕开检测器工具名失配（batch3 §A）；开发修复后删覆盖 |
+| FEAT-057.turn-intervention-no-hard-cut | done | 2026-10-20 | ECS 脚本层 | PASS（旁证） | 各局 forbidden leaks 全零 | — |
+| FEAT-057.turn-safety-valve-three-phase | evidence-ready | 2026-10-20 18:08 | ECS 脚本层 | 预判 PASS（交卷分支） | valve@5→final@6→自然 answer（log 180820）；x/16 工厂抬升 | TERMINATED 分支 UT-S03 承接；判据已补两分支 |
+| FEAT-057.time-per-invoke-isolated | partial | 2026-10-20 | ECS 脚本层 | 预判 PASS | A/B 两局独立计时 | — |
+| FEAT-057.time-no-new-dispatch-after-exhaust | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS | B 局：terminated_at=tool_dispatch、elapsed=18.0 | — |
+| FEAT-057.time-timeout-clamping | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS（硬证） | 20s 工具实跑 14541.5ms=剩余预算 | 原规划弱层，实测拿到硬证 |
+| FEAT-057.time-near-deadline-single-shot | evidence-ready | 2026-10-20 18:17 | ECS 脚本层 | 预判 PASS | A 局恰一次，remaining=8.19<15 | X2 口径 |
+| FEAT-057.time-termination-identifiable | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS | reason 字面+文案逐字+无泄漏 | X3 口径 |
+| FEAT-057.time-dim-independent-enablement | done | 2026-10-20 | ECS 脚本层 | PASS（旁证） | s1 仅轮次 / s3 仅时间交叉 | — |
+| FEAT-057.both-dims-coexistence | done | 2026-10-21 20:50 | ECS Maven | **PASS** | 双 EFFECTIVE 单射+零串扰零终止 | demo 删 first-checkpoint:5 解锁；#236 仍开（契约对齐独立推进） |
+| FEAT-057.events-contract-11-types | partial | 2026-10-20 | ECS 脚本层 | 8/11 类已见 | 证据总账 §一 MUST#17 行 | TURN_TERMINATED/STALL/GENTLE 随阻塞项解锁 |
+| FEAT-057.overlay-rail-priority | done | 2026-10-21 21:24 | ECS Maven | **PASS**（两连绿） | rail 自报行+output 非空+预算事件零越位 | 新锚首战即绿 |
 
 ---
 

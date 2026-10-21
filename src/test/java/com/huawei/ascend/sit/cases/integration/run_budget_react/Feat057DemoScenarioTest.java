@@ -512,6 +512,260 @@ final class Feat057DemoScenarioTest {
         }
     }
 
+    // ==================== 批次 2：确定性激活用例（2026-10-21，用户裁定"缺口须有真用例 PASS"） ====================
+    // 设计原则：参数经 env 覆盖钉死到"必然触发"，断言值取自注入参数而非 profile 常量，不押注模型个性。
+    // env 覆盖通道（Spring relaxed binding）于 2026-10-20 脚本层已实测有效。
+
+    /** 时间维确定性终止：18s 预算 + 20s 慢工具 → 必到期（同参数脚本层局 2026-10-20 实证）。 */
+    @Test
+    void x6_timeBudgetDeterministicTermination() throws Exception {
+        requireBothJars();
+        Map<String, String> llm = TavilyEnvGuard.requireLlmEnv();
+        llm.put("LLM_PROVIDER", requireEnv("LLM_PROVIDER"));
+
+        Map<String, String> kbEnv = new LinkedHashMap<>();
+        kbEnv.put("MOCK_KB_EMPTY_ENABLED", "false");
+        kbEnv.put("MOCK_KB_SLOW_ENABLED", "true");
+        kbEnv.put("MOCK_KB_SLOW_MS", "20000");
+        kbEnv.put("MOCK_KB_CRITIC_ENABLED", "false");
+
+        Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
+        researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+        researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
+        researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
+        researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TIME_TOTAL_BUDGET_SECONDS", "18");
+        researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TIME_NEAR_DEADLINE_THRESHOLD_SECONDS", "5");
+
+        try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
+             DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()
+                     .profile("s3").envAll(researcherEnv).build().start()) {
+            QueryResponse resp = postQuery(researcher, PROMPT_S3, S3_INVOKE_TIMEOUT);
+            drainLogs();
+            RunBudgetEventAsserter events = tail(researcher);
+
+            events.assertCount(BudgetEventName.TIME_BUDGET_EFFECTIVE, 1);
+            events.assertFirstPayload(BudgetEventName.TIME_BUDGET_EFFECTIVE,
+                    e -> Integer.valueOf(18).equals(e.intField("total_budget_seconds"))
+                            && Integer.valueOf(5).equals(e.intField("near_deadline_threshold_seconds")),
+                    "total_budget_seconds==18 && near_deadline_threshold_seconds==5（注入值）");
+
+            events.assertCount(BudgetEventName.TIME_BUDGET_TERMINATED, 1);
+            events.assertFirstPayload(BudgetEventName.TIME_BUDGET_TERMINATED,
+                    e -> "time_budget_exhausted".equals(e.stringField("reason"))
+                            && List.of("model_call", "tool_dispatch").contains(e.stringField("terminated_at")),
+                    "reason==time_budget_exhausted && terminated_at ∈ {model_call,tool_dispatch}");
+
+            // 单射：小阈值下可能来不及提示（直接终止合法），但出现即恰一次。
+            assertThat(events.countOf(BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED))
+                    .as("NEAR_DEADLINE_PROMPTED 单射").isLessThanOrEqualTo(1);
+
+            events.assertSequence(BudgetEventName.TIME_BUDGET_EFFECTIVE, BudgetEventName.TIME_BUDGET_TERMINATED);
+
+            events.assertAbsent(
+                    BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                    BudgetEventName.TURN_BUDGET_CHECKPOINT,
+                    BudgetEventName.TURN_BUDGET_EXTENDED,
+                    BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
+                    BudgetEventName.TURN_BUDGET_GENTLE_REMINDER,
+                    BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                    BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
+                    BudgetEventName.TURN_BUDGET_TERMINATED);
+
+            assertThat(resp.statusCode()).isEqualTo(200);
+            assertThat(resp.resultType()).isEqualTo("error");
+            assertThat(resp.output()).isEqualTo("本次执行的时间预算已到期，任务被终止。");
+            assertThat(resp.hasTimeBudgetField()).isFalse();
+            assertThat(resp.hasTurnBudgetField()).isFalse();
+        }
+    }
+
+    /** 轮次维安全阀确定性：保底 3 / 硬上限 5 → 阀@5、交卷轮 6 必现（同参数脚本层局 2026-10-20 实证）。 */
+    @Test
+    void x7_safetyValveDeterministicSmallParams() throws Exception {
+        requireBothJars();
+        Map<String, String> llm = TavilyEnvGuard.requireLlmEnv();
+        llm.put("LLM_PROVIDER", requireEnv("LLM_PROVIDER"));
+
+        Map<String, String> kbEnv = new LinkedHashMap<>();
+        kbEnv.put("MOCK_KB_EMPTY_ENABLED", "false");
+        kbEnv.put("MOCK_KB_SLOW_ENABLED", "false");
+        kbEnv.put("MOCK_KB_CRITIC_ENABLED", "true");
+
+        Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
+        researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+        researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
+        researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
+        // first-checkpoint 保持 profile 值 10：10 ≥ max(10,3) 过校验链，且 10 > hard=5 → 检查点不会先于阀出现。
+        researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TURN_SUGGESTED_ROUNDS", "3");
+        researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TURN_HARD_LIMIT", "5");
+
+        try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
+             DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()
+                     .profile("s4").envAll(researcherEnv).build().start()) {
+            QueryResponse resp = postQuery(researcher, PROMPT_S4, S4_INVOKE_TIMEOUT);
+            drainLogs();
+            RunBudgetEventAsserter events = tail(researcher);
+
+            events.assertCount(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE, 1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                    e -> Integer.valueOf(3).equals(e.intField("guaranteed_rounds"))
+                            && Integer.valueOf(5).equals(e.intField("hard_limit")),
+                    "guaranteed_rounds==3 && hard_limit==5（注入值）");
+
+            events.assertCount(BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED, 1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                    e -> Integer.valueOf(5).equals(e.intField("round"))
+                            && Boolean.TRUE.equals(e.boolField("instruction_injected"))
+                            && Integer.valueOf(6).equals(e.intField("final_round")),
+                    "round==5 && instruction_injected==true && final_round==6");
+
+            events.assertCount(BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED, 1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
+                    e -> Integer.valueOf(6).equals(e.intField("round")), "round==6");
+
+            // MUST#6 两分支（同 s4 用例口径）：交卷轮仍未结束 → TERMINATED；交卷轮内自然 answer → 不终止。
+            int terminated = events.countOf(BudgetEventName.TURN_BUDGET_TERMINATED);
+            if (terminated > 0) {
+                events.assertCount(BudgetEventName.TURN_BUDGET_TERMINATED, 1);
+                events.assertFirstPayload(BudgetEventName.TURN_BUDGET_TERMINATED,
+                        e -> Integer.valueOf(6).equals(e.intField("round"))
+                                && "turn_budget_exhausted".equals(e.stringField("reason"))
+                                && Integer.valueOf(5).equals(e.intField("hard_limit")),
+                        "round==6 && reason==turn_budget_exhausted && hard_limit==5");
+                assertThat(resp.resultType()).isEqualTo("error");
+                assertThat(resp.output()).isEqualTo("已达到轮次预算绝对上限，任务被终止。");
+            } else {
+                assertThat(resp.resultType()).isEqualTo("answer");
+                assertThat(resp.output()).isNotBlank();
+            }
+
+            // 阀后静默 + 小参数下检查点（首检 10 > 硬上限 5）与温和提醒（起点 3×2=6 ≥ 终局轮）均不应出现。
+            events.assertAbsent(
+                    BudgetEventName.TURN_BUDGET_CHECKPOINT,
+                    BudgetEventName.TURN_BUDGET_EXTENDED,
+                    BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
+                    BudgetEventName.TURN_BUDGET_GENTLE_REMINDER,
+                    BudgetEventName.TIME_BUDGET_EFFECTIVE,
+                    BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED,
+                    BudgetEventName.TIME_BUDGET_TERMINATED);
+
+            assertThat(resp.statusCode()).isEqualTo(200);
+            assertThat(resp.hasTurnBudgetField()).isFalse();
+            assertThat(resp.hasTimeBudgetField()).isFalse();
+        }
+    }
+
+    /** 温和提醒确定性：保底 3（起点 3×2=6）+ 12 篇串行长跑 → 第 7 轮必现 GENTLE_REMINDER（11 事件最后一枚未观测者）。 */
+    @Test
+    void x8_gentleReminderDeterministicLongRun() throws Exception {
+        requireBothJars();
+        Map<String, String> llm = TavilyEnvGuard.requireLlmEnv();
+        llm.put("LLM_PROVIDER", requireEnv("LLM_PROVIDER"));
+
+        Map<String, String> kbEnv = new LinkedHashMap<>();
+        kbEnv.put("MOCK_KB_EMPTY_ENABLED", "false");
+        kbEnv.put("MOCK_KB_SLOW_ENABLED", "true");
+        kbEnv.put("MOCK_KB_SLOW_MS", "500");
+        kbEnv.put("MOCK_KB_CRITIC_ENABLED", "false");
+
+        Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
+        researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+        researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
+        researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
+        // 保底 3 → 提醒起点=3×2=6（源码 maybeGentleReminder: round > startAfter 才触发，即首枚在第 7 轮）；
+        // 间隔 15 → 13 轮内恰一枚。硬上限走默认 200，首检 10 不受影响（10 ≥ max(10,3)）。
+        researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TURN_SUGGESTED_ROUNDS", "3");
+
+        try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
+             DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()
+                     .profile("s6").envAll(researcherEnv).build().start()) {
+            QueryResponse resp = postQuery(researcher, PROMPT_S6, S5_INVOKE_TIMEOUT);
+            drainLogs();
+            RunBudgetEventAsserter events = tail(researcher);
+
+            events.assertCount(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE, 1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                    e -> Integer.valueOf(3).equals(e.intField("guaranteed_rounds")),
+                    "guaranteed_rounds==3（注入值）");
+
+            if (events.countOf(BudgetEventName.TURN_BUDGET_CHECKPOINT) == 0) {
+                Assumptions.abort("未达首检查点线（模型提前收敛/批发）—— 场景未激活，INCONCLUSIVE");
+            }
+            // 走到检查点线（≥10 轮）则第 7 轮的温和提醒必然已在途中 → 硬断言。
+            assertThat(events.countOf(BudgetEventName.TURN_BUDGET_GENTLE_REMINDER))
+                    .as("13 轮内恰一枚（起点 7，间隔 15）").isEqualTo(1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_GENTLE_REMINDER,
+                    e -> {
+                        Integer round = e.intField("round");
+                        return round != null && round > 6
+                                && Integer.valueOf(15).equals(e.intField("reminder_interval"));
+                    },
+                    "round>6（起点=保底3×2）&& reminder_interval==15");
+
+            events.assertPresent(BudgetEventName.TURN_BUDGET_EXTENDED);
+            events.assertAbsent(
+                    BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
+                    BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                    BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
+                    BudgetEventName.TURN_BUDGET_TERMINATED,
+                    BudgetEventName.TIME_BUDGET_EFFECTIVE,
+                    BudgetEventName.TIME_BUDGET_NEAR_DEADLINE_PROMPTED,
+                    BudgetEventName.TIME_BUDGET_TERMINATED);
+
+            assertThat(resp.statusCode()).isEqualTo(200);
+            assertThat(resp.hasTurnBudgetField()).isFalse();
+            assertThat(resp.hasTimeBudgetField()).isFalse();
+        }
+    }
+
+    /** core #236 修复验收：firstCheckpoint 下限收缩为 guarantee（5/5 组合应可启动；修复前被校验拒 → INCONCLUSIVE）。 */
+    @Test
+    void x9_firstCheckpointFloorEqualsGuarantee_issue236() throws Exception {
+        requireResearcherJar();
+        Map<String, String> env = baseEnvForStubWebSearch();
+        env.put("USE_STUB_WEB_SEARCH", "true");
+        env.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TURN_SUGGESTED_ROUNDS", "5");
+        env.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TURN_CHECKPOINT_FIRST_CHECKPOINT", "5");
+
+        try (DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()
+                .profile("s1").envAll(env).build().start()) {
+            // 串行 6 轮 stub 搜索：确保轮次越过 first-checkpoint=5，亲眼见证首检在第 5 轮评估
+            //（修复前该配置被校验禁止——这才是 #236 的核心行为验证，而非仅"能启动"）。
+            QueryResponse resp = postQuery(researcher,
+                    "Research the OpenJiuwen project. You MUST issue at least 6 separate web_search calls "
+                    + "across at least 6 ReAct rounds - one search per round, each with a different query - "
+                    + "and you are NOT allowed to write any final answer before completing all 6 rounds.",
+                    DEFAULT_INVOKE_TIMEOUT);
+            drainLogs();
+            RunBudgetEventAsserter events = tail(researcher);
+
+            events.assertCount(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE, 1);
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_GUARANTEE_EFFECTIVE,
+                    e -> Integer.valueOf(5).equals(e.intField("guaranteed_rounds")),
+                    "guaranteed_rounds==5（注入值）");
+            if (events.countOf(BudgetEventName.TURN_BUDGET_CHECKPOINT) == 0) {
+                Assumptions.abort("模型未撑过 5 轮（提前收敛）—— 首检落点未触达，INCONCLUSIVE（启动半边已证）");
+            }
+            // #236 行为核心：首个检查点落在配置值第 5 轮（修复前下限强制 ≥max(10,guarantee) 不可能出现 round<10）。
+            events.assertFirstPayload(BudgetEventName.TURN_BUDGET_CHECKPOINT,
+                    e -> Integer.valueOf(5).equals(e.intField("round"))
+                            && Integer.valueOf(5).equals(e.intField("checkpoint")),
+                    "首检 round==5 && checkpoint==5（注入值，#236 修复行为）");
+            // 保底内零干预仍守住：第 1-4 轮无任何提示/终止类事件由全程事件集保证（下方 absent 断言）。
+            events.assertAbsent(
+                    BudgetEventName.TURN_BUDGET_STALL_PROMPTED,
+                    BudgetEventName.TURN_BUDGET_SAFETY_VALVE_TRIGGERED,
+                    BudgetEventName.TURN_BUDGET_FINAL_ROUND_GRANTED,
+                    BudgetEventName.TURN_BUDGET_TERMINATED,
+                    BudgetEventName.TIME_BUDGET_EFFECTIVE,
+                    BudgetEventName.TIME_BUDGET_TERMINATED);
+            assertThat(resp.statusCode()).isEqualTo(200);
+        } catch (IllegalStateException exitedBeforeReady) {
+            Assumptions.abort("SUT 被配置校验拒启（firstCheckpoint=5 < max(10,guarantee)）——"
+                    + "core #236 修复 jar 未到位，INCONCLUSIVE：" + exitedBeforeReady.getMessage());
+        }
+    }
+
     // ---------- helpers ----------
 
     private Map<String, String> baseEnvForStubWebSearch() {

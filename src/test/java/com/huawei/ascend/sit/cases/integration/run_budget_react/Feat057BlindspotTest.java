@@ -64,6 +64,8 @@ final class Feat057BlindspotTest {
 
         Map<String, String> researcherEnv = new LinkedHashMap<>(llm);
         researcherEnv.put("USE_STUB_WEB_SEARCH", "false");
+        // 10-21 jar 工厂校验：use-stub-web-search=false 须带 tavily key（launcher 清空环境不继承 shell）
+        researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
         // Overlay a short time budget on top of profile=s4 (turn.suggested=10, hard-limit=15).
         researcherEnv.put("OPENJIUWEN_SERVICE_RUN_BUDGET_TIME_TOTAL_BUDGET_SECONDS", "60");

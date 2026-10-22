@@ -179,11 +179,6 @@ final class Feat057DemoScenarioTest {
             // 10-21 jar 工厂校验：use-stub-web-search=false 时必须带 tavily key（launcher 不继承 shell env，须显式入 map）
             researcherEnv.put("TAVILY_API_KEY", requireEnv("TAVILY_API_KEY"));
         researcherEnv.put("MOCK_KB_URL", "http://127.0.0.1:18093/mcp");
-            // 临时 env 覆盖：demo StallDetectorRail 盯裸工具名，而 MCP 装配(ReAct 模式)后实名带
-            // mcp_<server>_ 前缀——失配致 STALL 静默失效（docsReview SIT-FEEDBACK-demo-batch3 §A，
-            // 实验局 20261021-213425 证实覆盖即贯通）。开发修复匹配逻辑后删除本行。
-            researcherEnv.put("DEMO_RESEARCHER_STALL_DETECTOR_WATCHED_TOOLS_0",
-                    "mcp_run-budget-mock-knowledge-base_empty_knowledge_search");
 
         try (DemoFatJarLauncher kb = DemoFatJarLauncher.mockKb().envAll(kbEnv).build().start();
              DemoFatJarLauncher researcher = DemoFatJarLauncher.researcher()

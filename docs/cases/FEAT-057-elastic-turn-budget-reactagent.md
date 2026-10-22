@@ -416,7 +416,7 @@ related_docs:
 | FEAT-057.turn-guarantee-configured | done | 2026-10-20 17:31 | ECS Maven | **PASS** | surefire s1：payload 20/configured/200 恰一次 | — |
 | FEAT-057.turn-guarantee-no-interference | done | 2026-10-20 17:31 | ECS Maven | **PASS** | 同上，其余十枚全零 | — |
 | FEAT-057.turn-checkpoint-extension | done | 2026-10-21 21:26 | ECS Maven | **PASS** | cp@10/13、EXTENDED×2、allowed≤hard(跨事件基准) | EXTENDED schema 勘误后首绿 |
-| FEAT-057.turn-stall-prompt-escalation | done | 2026-10-21 21:43 | ECS Maven | **PASS** | host_stall_reported=true→STALL_PROMPTED→consecutive_stalls=1 | 经临时 env 覆盖绕开检测器工具名失配（batch3 §A）；开发修复后删覆盖 |
+| FEAT-057.turn-stall-prompt-escalation | done | 2026-10-21 21:43 | ECS Maven | **PASS** | host_stall_reported=true→STALL_PROMPTED→consecutive_stalls=1 | 检测器前缀匹配已修（jar fa4a018e，等值或 _<name> 后缀）；**2026-10-22 09:21 无覆盖复验 PASS**，临时覆盖已删除；启动期 stall_detector_configured 自诊断上线 |
 | FEAT-057.turn-intervention-no-hard-cut | done | 2026-10-20 | ECS 脚本层 | PASS（旁证） | 各局 forbidden leaks 全零 | — |
 | FEAT-057.turn-safety-valve-three-phase | done | 2026-10-21/22 | ECS Maven | **PASS**（x7 确定性局：阀@5+交卷@6） | x7 22:02 局；s4 自然局 INCONCLUSIVE（模型提前收敛，合规） | TERMINATED 分支 UT-S03 承接 |
 | FEAT-057.time-per-invoke-isolated | done | 2026-10-21 | ECS Maven | **PASS** | s3 自然局 + x6 确定性局双证 | — |

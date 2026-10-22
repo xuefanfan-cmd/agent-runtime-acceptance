@@ -102,6 +102,9 @@ final class Feat058RunnablePathTest {
             assertThat(resp.resultType())
                     .as("result_type for s0 happy path")
                     .isEqualTo("answer");
+            assertThat(tailer.probeStarted())
+                    .as("SUT must have started successfully (REQUIRED per demo asserter s0)")
+                    .isTrue();
             assertThat(tailer.totalTimeoutCount())
                     .as("181008 lines must be absent on s0 happy path")
                     .isZero();
@@ -278,6 +281,9 @@ final class Feat058RunnablePathTest {
             Thread.sleep(2_000);
 
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
+            assertThat(tailer.probeStarted())
+                    .as("SUT must have started successfully (REQUIRED per demo asserter s6)")
+                    .isTrue();
             assertThat(tailer.hasNoTimeout())
                     .as("cancel must not emit [181008] in SUT log")
                     .isTrue();

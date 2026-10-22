@@ -104,6 +104,23 @@ public final class SutLogTailer {
     }
 
     /**
+     * Convenience: predicate for S0/S6 — demo asserter REQUIRES the
+     * Spring Boot startup banner line "Started TimeoutProbeAgent" so SIT
+     * aligns with that marker as the "probe-agent came up cleanly" witness.
+     */
+    public boolean probeStarted() throws IOException {
+        if (!Files.isRegularFile(logFile)) {
+            return false;
+        }
+        for (String line : Files.readAllLines(logFile)) {
+            if (line.contains("Started TimeoutProbeAgent")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Phase enumeration mirrors agent-core-java {@code TimeoutPhase}
      * (upper SNAKE_CASE). Used as the parsed-phase type for log records and
      * as the API input type for {@link ErrorEnvelopeAsserter}.

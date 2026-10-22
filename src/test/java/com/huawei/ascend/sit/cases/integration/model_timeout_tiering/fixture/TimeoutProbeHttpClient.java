@@ -79,7 +79,7 @@ public final class TimeoutProbeHttpClient {
         HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/query"))
                 .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
+                .header("Accept", "text/event-stream, application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
@@ -91,40 +91,113 @@ public final class TimeoutProbeHttpClient {
         }
     }
 
-    private QueryResponse parse(HttpResponse<String> resp) throws Exception {
+    private QueryResponse parse(HttpResponse<String> resp) {
         int status = resp.statusCode();
         String raw = resp.body();
+        if (raw == null || raw.isBlank()) {
+            return new QueryResponse(status, null, null, null, null, raw, null, false, null);
+        }
+        // 2026-10-22 实证勘误（T-M1d）：probe-agent 响应为 SSE 流（Content-Type: text/event-stream），
+        // 而非单 JSON；原 MAPPER.readTree(raw) 会直接抛，所有字段落空，S0 happy path 都读不到
+        // result_type。按 SSE 形态解析：锚最后一个 type=="answer" 事件取 output/result_type；
+        // 顺带扫描每个事件 payload 的 error/details 对象（预留 details 透传路径，开发裁定前此分支不触发）。
+        if (looksLikeSse(raw)) {
+            return parseSse(status, raw);
+        }
+        return parseSingleJson(status, raw);
+    }
+
+    private static boolean looksLikeSse(String raw) {
+        for (String line : raw.split("\n")) {
+            if (line.strip().startsWith("data:")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private QueryResponse parseSse(int status, String raw) {
         String output = null;
         String resultType = null;
         Integer errorStatusCode = null;
         Map<String, Object> errorDetails = null;
-        Map<String, Object> parsed = null;
-        if (raw != null && !raw.isBlank()) {
+        Map<String, Object> lastAnswerPayload = null;
+        for (String line : raw.split("\n")) {
+            String stripped = line.strip();
+            if (!stripped.startsWith("data:")) {
+                continue;
+            }
+            String payload = stripped.substring(5).strip();
+            if (payload.isEmpty()) {
+                continue;
+            }
+            JsonNode evt;
             try {
-                JsonNode root = MAPPER.readTree(raw);
-                if (root.has("output") && !root.get("output").isNull()) {
-                    output = root.get("output").asText();
-                }
-                if (root.has("result_type") && !root.get("result_type").isNull()) {
-                    resultType = root.get("result_type").asText();
-                }
-                JsonNode errorNode = root.get("error");
-                if (errorNode == null || errorNode.isNull()) {
-                    errorNode = root;
-                }
+                evt = MAPPER.readTree(payload);
+            } catch (Exception notJson) {
+                continue;
+            }
+            JsonNode p = evt.has("payload") && evt.get("payload").isObject() ? evt.get("payload") : evt;
+            // 预留 details 对象透传路径：answer payload 若含 error.{status_code,details} 或顶层 code/details，
+            // 走解析（当前 wire 实证不含；若开发按解读 B 补透传，此分支即时生效）。
+            JsonNode errorNode = p.has("error") && p.get("error").isObject() ? p.get("error") : p;
+            if (errorStatusCode == null) {
                 if (errorNode.has("status_code") && errorNode.get("status_code").isNumber()) {
                     errorStatusCode = errorNode.get("status_code").asInt();
                 } else if (errorNode.has("code") && errorNode.get("code").isNumber()) {
                     errorStatusCode = errorNode.get("code").asInt();
                 }
+            }
+            if (errorDetails == null) {
                 JsonNode detailsNode = errorNode.get("details");
                 if (detailsNode != null && detailsNode.isObject()) {
                     errorDetails = MAPPER.convertValue(detailsNode, new TypeReference<>() {});
                 }
-                parsed = MAPPER.convertValue(root, new TypeReference<>() {});
-            } catch (Exception notJson) {
-                // leave fields null; caller inspects rawBody for diagnostics.
             }
+            if ("answer".equals(evt.path("type").asText(""))) {
+                if (p.has("result_type") && !p.get("result_type").isNull()) {
+                    resultType = p.get("result_type").asText();
+                }
+                if (p.has("output") && !p.get("output").isNull()) {
+                    output = p.get("output").asText();
+                }
+                lastAnswerPayload = MAPPER.convertValue(p, new TypeReference<Map<String, Object>>() {});
+            }
+        }
+        return new QueryResponse(status, output, resultType, errorStatusCode, errorDetails,
+                raw, lastAnswerPayload, false, null);
+    }
+
+    private QueryResponse parseSingleJson(int status, String raw) {
+        String output = null;
+        String resultType = null;
+        Integer errorStatusCode = null;
+        Map<String, Object> errorDetails = null;
+        Map<String, Object> parsed = null;
+        try {
+            JsonNode root = MAPPER.readTree(raw);
+            if (root.has("output") && !root.get("output").isNull()) {
+                output = root.get("output").asText();
+            }
+            if (root.has("result_type") && !root.get("result_type").isNull()) {
+                resultType = root.get("result_type").asText();
+            }
+            JsonNode errorNode = root.get("error");
+            if (errorNode == null || errorNode.isNull()) {
+                errorNode = root;
+            }
+            if (errorNode.has("status_code") && errorNode.get("status_code").isNumber()) {
+                errorStatusCode = errorNode.get("status_code").asInt();
+            } else if (errorNode.has("code") && errorNode.get("code").isNumber()) {
+                errorStatusCode = errorNode.get("code").asInt();
+            }
+            JsonNode detailsNode = errorNode.get("details");
+            if (detailsNode != null && detailsNode.isObject()) {
+                errorDetails = MAPPER.convertValue(detailsNode, new TypeReference<>() {});
+            }
+            parsed = MAPPER.convertValue(root, new TypeReference<>() {});
+        } catch (Exception notJson) {
+            // leave fields null; caller inspects rawBody for diagnostics.
         }
         return new QueryResponse(status, output, resultType, errorStatusCode, errorDetails,
                 raw, parsed, false, null);

@@ -418,16 +418,23 @@ related_docs:
 | FEAT-057.turn-checkpoint-extension | done | 2026-10-21 21:26 | ECS Maven | **PASS** | cp@10/13、EXTENDED×2、allowed≤hard(跨事件基准) | EXTENDED schema 勘误后首绿 |
 | FEAT-057.turn-stall-prompt-escalation | done | 2026-10-21 21:43 | ECS Maven | **PASS** | host_stall_reported=true→STALL_PROMPTED→consecutive_stalls=1 | 经临时 env 覆盖绕开检测器工具名失配（batch3 §A）；开发修复后删覆盖 |
 | FEAT-057.turn-intervention-no-hard-cut | done | 2026-10-20 | ECS 脚本层 | PASS（旁证） | 各局 forbidden leaks 全零 | — |
-| FEAT-057.turn-safety-valve-three-phase | evidence-ready | 2026-10-20 18:08 | ECS 脚本层 | 预判 PASS（交卷分支） | valve@5→final@6→自然 answer（log 180820）；x/16 工厂抬升 | TERMINATED 分支 UT-S03 承接；判据已补两分支 |
-| FEAT-057.time-per-invoke-isolated | partial | 2026-10-20 | ECS 脚本层 | 预判 PASS | A/B 两局独立计时 | — |
-| FEAT-057.time-no-new-dispatch-after-exhaust | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS | B 局：terminated_at=tool_dispatch、elapsed=18.0 | — |
-| FEAT-057.time-timeout-clamping | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS（硬证） | 20s 工具实跑 14541.5ms=剩余预算 | 原规划弱层，实测拿到硬证 |
-| FEAT-057.time-near-deadline-single-shot | evidence-ready | 2026-10-20 18:17 | ECS 脚本层 | 预判 PASS | A 局恰一次，remaining=8.19<15 | X2 口径 |
-| FEAT-057.time-termination-identifiable | evidence-ready | 2026-10-20 18:25 | ECS 脚本层 | 预判 PASS | reason 字面+文案逐字+无泄漏 | X3 口径 |
+| FEAT-057.turn-safety-valve-three-phase | done | 2026-10-21/22 | ECS Maven | **PASS**（x7 确定性局：阀@5+交卷@6） | x7 22:02 局；s4 自然局 INCONCLUSIVE（模型提前收敛，合规） | TERMINATED 分支 UT-S03 承接 |
+| FEAT-057.time-per-invoke-isolated | done | 2026-10-21 | ECS Maven | **PASS** | s3 自然局 + x6 确定性局双证 | — |
+| FEAT-057.time-no-new-dispatch-after-exhaust | done | 2026-10-21 | ECS Maven | **PASS** | x6（18s 注入值）+ s3 全量局 | — |
+| FEAT-057.time-timeout-clamping | done | 2026-10-21 | ECS Maven | **PASS** | x6/s3 Maven 复证（脚本层硬证 14541.5ms 留档） | — |
+| FEAT-057.time-near-deadline-single-shot | done | 2026-10-21 | ECS Maven | **PASS** | s3 全量局单射命中 | X2 口径 |
+| FEAT-057.time-termination-identifiable | done | 2026-10-21 | ECS Maven | **PASS** | s3+x6：reason 字面/文案逐字/terminated_at 枚举 | X3 口径 |
 | FEAT-057.time-dim-independent-enablement | done | 2026-10-20 | ECS 脚本层 | PASS（旁证） | s1 仅轮次 / s3 仅时间交叉 | — |
 | FEAT-057.both-dims-coexistence | done | 2026-10-21 20:50 | ECS Maven | **PASS** | 双 EFFECTIVE 单射+零串扰零终止 | demo 删 first-checkpoint:5 解锁；#236 仍开（契约对齐独立推进） |
-| FEAT-057.events-contract-11-types | partial | 2026-10-20 | ECS 脚本层 | 8/11 类已见 | 证据总账 §一 MUST#17 行 | TURN_TERMINATED/STALL/GENTLE 随阻塞项解锁 |
+| FEAT-057.events-contract-11-types | done | 2026-10-21 | ECS Maven | **10/11 wire 实证** | STALL（s2）、GENTLE（x8 起点 7 轮恰一枚）已收 | 仅 TURN_TERMINATED=UT-S03 口径（澄清清单 #7 对齐） |
 | FEAT-057.overlay-rail-priority | done | 2026-10-21 21:24 | ECS Maven | **PASS**（两连绿） | rail 自报行+output 非空+预算事件零越位 | 新锚首战即绿 |
+| X5 两维抢占（时间 vs 交卷轮） | done | 2026-10-22 08:52 | ECS Maven | **PASS** | 时间维终止先于 FINAL_ROUND_GRANTED 派发 | 赛跑一次即中，未用重试分支 |
+| x6 时间维确定性终止（新增） | done | 2026-10-21 22:02 | ECS Maven | **PASS** | 注入 18s/5s：EFFECTIVE→TERMINATED 全链 | 批次 2 新用例 |
+| x7 安全阀确定性（新增） | done | 2026-10-21 22:02 | ECS Maven | **PASS** | 注入 3/5：阀@5+交卷@6+分支判定 | 批次 2 新用例 |
+| x8 温和提醒（新增） | done | 2026-10-21 22:02 | ECS Maven | **PASS** | 注入保底 3：GENTLE@7 恰一枚+interval=15 | 11 事件最后一枚未观测者由此收齐 |
+| x9 core#236 修复验收（新增） | done | 2026-10-22 08:52 | ECS Maven | **PASS** | 保底5+首检5 启动成功且首检落第 5 轮 | 修复前该配置被拒启（10-21 局留档） |
+
+> **执行锚（正式结论出处）**：post-#236 最终二进制 researcher-agent md5 `0ec31fef1478fb45f5696f968f4dfdd7` / mock-kb md5 `6a88d5e23c037eabdf420a209c548b4d`；全量 12 用例局 2026-10-21 22:19（10 PASS + s4 INCONCLUSIVE + x9 当日判据误报已修）；补跑 x9+X5 局 2026-10-22 08:52 双 PASS；模型 deepseek-v4-pro-0813。**终账：13 用例 = 12 PASS + 1 合规 INCONCLUSIVE（s4，条款由 x7 覆盖）；18 MUST 全部有正式层 PASS 背书；11 事件 wire 实证 10 种。**
 
 ---
 

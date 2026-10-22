@@ -13,8 +13,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * HTTP client for the FEAT-058 timeout-tiering-model-call-demo
@@ -69,7 +71,9 @@ public final class TimeoutProbeHttpClient {
         Objects.requireNonNull(prompt, "prompt");
         Objects.requireNonNull(requestTimeout, "requestTimeout");
 
-        Map<String, Object> body = Map.of("message", prompt);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("conversation_id", "sit-" + UUID.randomUUID());
+        body.put("message", prompt);
         String json = MAPPER.writeValueAsString(body);
 
         HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/query"))

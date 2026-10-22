@@ -486,7 +486,9 @@ final class Feat058RunnablePathTest {
 
     private static Map<String, String> probeEnv(TimeoutDemoLauncher stub) {
         Map<String, String> env = baseProbeEnv();
-        env.put("LLM_API_BASE", stub.baseUrl());
+        // stub 的 OpenAI 兼容端点在 /v1/chat/completions（LlmStubController:47），SDK 对 api-base
+        // 直接拼 /chat/completions，裸 host 会撞 404。实证 2026-10-22 S2 场景 FAIL 后定位。
+        env.put("LLM_API_BASE", stub.baseUrl() + "/v1");
         return env;
     }
 }

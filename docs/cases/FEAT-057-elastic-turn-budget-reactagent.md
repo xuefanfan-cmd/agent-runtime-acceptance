@@ -8,7 +8,7 @@ status_note: fixture 与用例类已落地（b5ae95a）并经 2026-10-20 ECS 首
 owner: TBD
 tags: [integration, reactagent, feat-057, run-budget, elastic-budget]
 depends_on:
-  - researcher-agent-0.1.0.jar 已就绪：`D:/openjiuwen-java/2012/agent-solution/common/example/run-budget-elastic-research-demo/researcher-agent/target/`（~183 MB，2026-10-19 15:39 重打）
+  - researcher-agent-0.1.0.jar 已就绪：`agent-solution/common/example/run-budget-elastic-research-demo/researcher-agent/target/`（~183 MB，2026-10-19 15:39 重打）
   - mock-knowledge-base-0.1.0.jar 已就绪：`.../mock-knowledge-base/target/`（~22 MB）
   - LLM_* env（`source ~/.llmrc`）；外部 aliyun LLM 保 HTTPS_PROXY；LLM_TEMPERATURE 默认 0.2（demo README env 清单固定）
   - TAVILY_API_KEY（`source ~/.tavilyrc`）—— S1/S5 必需，S0/S2/S3/S4/S6/S7 可缺省（走 stub 或 mock-kb）
@@ -52,7 +52,7 @@ related_docs:
 
 ## 0. 执行前置快速清单
 
-- [ ] `researcher-agent-0.1.0.jar` 存在，路径：`D:/openjiuwen-java/2012/agent-solution/common/example/run-budget-elastic-research-demo/researcher-agent/target/`
+- [ ] `researcher-agent-0.1.0.jar` 存在，路径：`agent-solution/common/example/run-budget-elastic-research-demo/researcher-agent/target/`
 - [ ] `mock-knowledge-base-0.1.0.jar` 存在，路径：`.../mock-knowledge-base/target/`
 - [ ] `source ~/.llmrc` 已执行；`LLM_API_KEY` 非空
 - [ ] 代理策略已判定：`LLM_API_BASE=*.aliyuncs.com` → 保 `HTTPS_PROXY`；否则 `unset HTTP_PROXY HTTPS_PROXY`

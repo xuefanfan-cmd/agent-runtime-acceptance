@@ -20,7 +20,7 @@ related_docs:
   - 特性文档：develop/02-features/FEAT-058-model-call-timeout-tiering.md（updated 2026-10-20，12 条 MUST；!340 已把 "阶段信息三段口径" 由 SHOULD 升为 MUST#12）
   - L2 设计：develop/03-architecture/L2-Low-Level-Design/agent-core/Feat-Func-058-model-call-timeout-tiering.md（updated 2026-10-19；附录 C "推理亲和栈下线" 显式声明）
   - 三方对齐表：agent-solution/FEAT-058-alignment-table.md（updated 2026-10-20；11/12 ✓ / 1 ⚠；附录 A/B/C/D 完备）
-  - L1 刷新清单：本仓 docs/review/FEAT-058-l1-doc-review.md（SIT → L1 文档负责人；SIT 后续不等 L1 刷新完成）
+  - L1 刷新清单：SIT 本地评审 note（SIT → L1 文档负责人，不入仓；SIT 后续不等 L1 刷新完成）
   - 代码口径：agent-core-java@origin/develop @ 42b1fcfe；关键类 `ModelClientConfig` / `ModelTimeoutResolver` / `ModelHttpClients` / `IdleBoundInputStream` / `IdleGuardedBodyReader` / `TimeoutPhase` / `ModelTimeoutErrorFactory` / `StatusCode.MODEL_CALL_TIMEOUT(181008)` / `OpenAIModelClient` / `ModelCircuitBreaker`
   - demo README：agent-solution/common/example/timeout-tiering-model-call-demo/README.md（7 场景 S0..S6 + stub 6 种 stall 模式 + 轨迹断言矩阵 + MUST#8 偏差说明）
   - demo HANDOFF：.../HANDOFF.md（本机冒烟结果 5/7 PASS + S3/S4 上游归因）
@@ -65,7 +65,7 @@ related_docs:
 | 4 | 不设全程总时长硬顶 | `FEAT-058.no-total-time-cap` | S4 | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` long-answer 分支 | 上游 B1 bug：asserter 过线但语义被遮蔽（stream 死于 request-total 而非自然完成）；SIT 边界无法 wire 层分辨死因 |
 | 5 | 空闲超时检出死链 | `FEAT-058.idle-timeout-detects-dead-link` | S3 | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` idle + `IdleBoundInputStream` 单测 | 与 MUST#3 同根因；上游修复后一起转 runnable |
 | 6 | 分层超时配置项（独立 + 默认回落） | `FEAT-058.layered-config-with-default-fallback` | S0 + S2（legacy 兼容） | runnable | `ModelTimeoutConfigTest` + resolver 回落链 UT | TC-DEFAULT-BASELINE 覆盖未声明回落；TC-HEADER-WAIT-LEGACY 覆盖 legacy `timeout` 兼容 |
-| 7 | 单次调用超时参数接线（per-call idle override） | `FEAT-058.per-call-idle-override` | 增量（demo 无直接场景） | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` per-call 分支 + 18 处调用点 UT | 增量 TC-PER-CALL-IDLE-OVERRIDE；依赖 AFTER_FIRST_SEGMENT 可观察，blocked_by B1 |
+| 7 | 单次调用超时参数接线（per-call idle override） | `FEAT-058.per-call-idle-override` | 增量（demo 无直接场景） | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` per-call 分支 + core+memory 全部 `resolvePerCallIdleTimeout` 调用点 UT（PR!400 已覆盖） | 增量 TC-PER-CALL-IDLE-OVERRIDE；依赖 AFTER_FIRST_SEGMENT 可观察，blocked_by B1 |
 | 8 | 仓内全部模型 HTTP 栈采用同一分层语义 | `FEAT-058.unified-stack-tiering-across-clients` | 增量（demo README 建议） | runnable | 五个 client 子类（OpenAI/OpenAiCompatible/DashScope/SiliconFlow/DeepSeek）各自 timeout 单测 | 增量 TC-UNIFIED-STACK-COVERAGE；按对齐表附录 B 替代命名：多 client 子类共享 resolver；走 legacy header-wait 路径，不依赖 B1 |
 | 9 | 阻塞调用超时语义一致 | `FEAT-058.blocking-same-tiering-semantics` | S5 | runnable | `OpenAIModelTimeoutTieringTest` blocking 分支 | 阻塞路径 `IdleGuardedBodyReader` 承载 idle；本 TC 覆盖 header-wait 侧 |
 | 10 | 超时错误表面可区分（三类错误 + 181008） | `FEAT-058.error-surface-distinguishable` | S1 + S2 + S3 + S5 | partial | `OpenAIModelTimeoutTieringTest` details assertion | S3 blocked_by B1；非 S3 的三类（connect / header-wait / blocking）全部 runnable；TC-ERROR-DETAILS-PAYLOAD 聚合断言 |
@@ -74,8 +74,13 @@ related_docs:
 
 ### 非范围显式列出
 
-- **IntelliRouterModelClient 覆盖面**（B2，live-exposure latent）：代码里是注册 provider，但走内部 `ReliableRouter` 不走 `ModelHttpClients` + `IdleBoundInputStream`，不读 `connect_timeout_seconds` / `stream_idle_seconds`，异常统一包为 `MODEL_CALL_FAILED(181001)` 不是 `MODEL_CALL_TIMEOUT(181008)`。当前 SDK 无 `RouterFactory` 驱动绑定，production path 不可达（fail-fast 在 `MODEL_SERVICE_CONFIG_ERROR` 之前）。**2026-10-22 开发侧反馈**：方向是刷 L1/L2 显式 carve-out（"MUST#8 的 '仓内全部模型 HTTP 栈' 不含推理亲和栈 `IntelliRouterModelClient`"），SIT 永不构造 TC-INTELLI-ROUTER-TIERING-COVERAGE，本行作为永久 non-scope 记录保留；L1/L2 刷新推进见本仓 `docs/review/FEAT-058-l1-doc-review.md` D3 条目。
+- **IntelliRouterModelClient 覆盖面**（B2，live-exposure latent）：代码里是注册 provider，但走内部 `ReliableRouter` 不走 `ModelHttpClients` + `IdleBoundInputStream`，不读 `connect_timeout_seconds` / `stream_idle_seconds`，异常统一包为 `MODEL_CALL_FAILED(181001)` 不是 `MODEL_CALL_TIMEOUT(181008)`。当前 SDK 无 `RouterFactory` 驱动绑定，production path 不可达（fail-fast 在 `MODEL_SERVICE_CONFIG_ERROR` 之前）。**2026-10-22 开发侧反馈**：方向是刷 L1/L2 显式 carve-out（"MUST#8 的 '仓内全部模型 HTTP 栈' 不含推理亲和栈 `IntelliRouterModelClient`"），SIT 永不构造 TC-INTELLI-ROUTER-TIERING-COVERAGE，本行作为永久 non-scope 记录保留；L1/L2 刷新由上游文档负责人推进。
 - **production 适配器 `JiuwenCoreAgentHandler.createCatalogModel` 透传**（对齐表附录 C 第 1 行）：当前只透传 legacy `timeout`，未透传 `connectTimeout` / `streamIdleSeconds`；但在 "未声明 → core 回落默认" 事实下仍满足 MUST#6。SIT 不构造失败型 TC；runtime 补齐后由 demo 工厂的现有透传路径天然覆盖。
+
+### L1 回灌挂钩（PR#354 评审 3 回灌）
+
+- 当前 L1 10-20 版 §1/§2 MUST#8/§3/§5.1.4/§6/§7.4 UT-I01~I04/§9.1 仍保留 "两条 HTTP 栈" 原文；本档以 L2 附录 B 的 "实现路径与 L1 假设差异" 为锚点绕行通过，并在 §4 B2 把 IntelliRouter 永久 carve-out。
+- **挂钩口径**：本档不阻塞合入，但建议 L1 文档负责人把 MUST#8 "两栈叙事" 与 UT-I01~I04 作为 D1 必修条目正式立项（原文建议见 SIT 本地评审 note，未入仓）。L1 若长期不刷新，04-testplan 与 02-features 会在"亲和栈"维度持续不自洽——SIT 不承接 L1 刷新，但本挂钩作为可审计的转交记录。
 
 ---
 
@@ -187,15 +192,16 @@ related_docs:
 | FAIL | 任一字段偏离 / `stream==true`（阻塞被误识别为流式） |
 | INCONCLUSIVE | stub 启动失败 |
 
-### 3.7 TC-CANCEL-NOT-TIMEOUT（调用方取消 ≠ 超时）
+### 3.7 TC-CANCEL-NOT-TIMEOUT（调用方取消 ≠ 超时） — **弱层回归，MUST#11 判定力归 UT**
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于 `s6` profile（默认超时宽泛）；stub-server `long-hold-for-cancel` 模式（SSE 长流缓慢 heartbeat） |
+| Given | probe-agent 启动于 `s6` profile（默认超时宽泛，idle=600s）；stub-server `long-hold-for-cancel` 模式（SSE 长流缓慢 heartbeat） |
 | When | SIT driver 用 `HttpRequest.newBuilder().timeout(Duration.ofSeconds(3))` 发请求（或等价 `curl --max-time 3`） |
-| Then | caller 侧请求被取消（`HttpTimeoutException` on driver side）；SUT 日志**无** `[181008]`；SUT 侧 `ModelCircuitBreaker.isConnectFailure` 不记取消（弱层：无 "转为连接失败归档" 的日志行；本断言不要求可观察 "cancel 事件已被识别"，只要求 "**不是** 超时事件") |
-| PASS | SUT 日志无 `[181008]` |
-| FAIL | SUT 日志出现 `[181008]`（取消被误识别为超时） |
+| Then | caller 侧请求被取消（`HttpTimeoutException` on driver side）；SUT 日志**无** `[181008]` |
+| 弱层说明 | 本 TC 观察窗口（3s）远小于 SUT 内部 idle 窗口（600s），断言"无 `[181008]`"在观察窗口内恒真——即使取消未被 SUT 正确识别为"非超时"，窗口内也不会出现 181008 行。**MUST#11 "超时与取消区分" 的判定力归 UT**（`OpenAIModelTimeoutTieringTest` + `ModelCircuitBreakerTest`，覆盖 `ModelCircuitBreaker.isConnectFailure` 不记取消的内部分支）。SIT 本 TC 仅作弱层端到端回归，防止"取消被误识别为超时且立刻射出 181008"这类硬回归。 |
+| PASS | SUT 日志无 `[181008]`（弱层保护生效） |
+| FAIL | SUT 日志出现 `[181008]`（取消被误识别为超时并立即射出） |
 | INCONCLUSIVE | caller 侧 timeout 没触发（stub 响应太快） / 日志抓取窗口不够长（扩窗 retry 一次） |
 
 ### 3.8 TC-ERROR-DETAILS-PAYLOAD（错误 payload 四字段聚合）
@@ -213,12 +219,14 @@ related_docs:
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于**新 profile** `s3-per-call`（需开发侧补或 SIT 临时 yaml）：client 级 `stream-idle-seconds=600s` + per-call `ModelInvokeOptions.timeout=300s` 或 `ReActAgentConfig.modelStreamIdleSeconds=300`；stub-server `after-first-segment-idle` 首块后停 310s |
-| When | 1) 带 per-call override 发第一次 `POST /v1/query`；2) 不带 override 发第二次（但 agent 本身仍配 `modelStreamIdleSeconds=300`） |
-| Then（期望） | 第一次 trace：`details.timeout_seconds==300.0`（per-call 生效）；第二次 trace：`details.timeout_seconds==300.0`（agent 级 override 持续生效，因为 modelStreamIdleSeconds 是 agent 常驻字段）；两次之间 **client 级配置不被修改**（可通过第三次用其他 agent 实例跑同一场景验证，期望 `timeout_seconds==600.0`） |
-| PASS | 期望满足（上游修复后） |
-| FAIL | per-call 污染 client 配置 / override 未生效（`timeout_seconds` 仍是 client 级值） |
-| INCONCLUSIVE | 当前默认立场；`blocked_by B1`（依赖 AFTER_FIRST_SEGMENT 可观察） |
+| Given | probe-agent 启动于**新 profile** `s3-per-call`（需开发侧补或 SIT 临时 yaml）：**client 级 `stream-idle-seconds=600s`**（持久配置）；per-call 入口 `ModelInvokeOptions.timeout=300s`（仅第一次调用携带）；stub-server `after-first-segment-idle` 首块后停 310s |
+| When | 1) **带 per-call override=300s** 发第一次 `POST /v1/query`；2) **不带 override** 发第二次（client 级 600s 回退生效） |
+| Then（期望） | 第一次 trace：出现 `[181008]` + `details.timeout_seconds==300.0`（per-call override 生效，300s < 310s stall → 触发）；第二次 trace：HTTP 200 + `result_type==answer` + **无** `[181008]`（client 级 600s > 310s stall → 自然完成，证明 per-call 已释放、client 级配置未被污染） |
+| PASS | 第一次 timeout_seconds=300.0 + 第二次成功完成 |
+| FAIL | 第一次 timeout_seconds≠300（override 未生效）或第二次出现 `[181008]`（per-call 污染 client 配置，client 级被压低到 300） |
+| INCONCLUSIVE | 当前默认立场；`blocked_by B1`（第一次依赖 AFTER_FIRST_SEGMENT 可观察）|
+
+> **PR#354 评审 1 回灌**：原设计把 per-call override（`ModelInvokeOptions.timeout`）与 agent 级常驻字段（`ReActAgentConfig.modelStreamIdleSeconds`）在同一 TC 内叠加，导致"第二腿期望 timeout_seconds=300"的断言歧义。本版 TC 收窄为**仅覆盖 `ModelInvokeOptions.timeout` 的 per-call 语义**（agent 级 `modelStreamIdleSeconds` 的持久字段验证由 UT 的 `ReActAgentConfig` 单测承接），第二腿改为"client 级 600s 回退、stall 310s 不触发超时"，判据无歧义。
 
 ### 3.10 TC-RANGE-VALIDATION（配置区间 fail-fast）
 
@@ -235,12 +243,13 @@ related_docs:
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于 `s2` profile；分别设置 `LLM_PROVIDER=OpenAI` / `OpenAiCompatible` / `DashScope` / `SiliconFlow` / `DeepSeek` 跑五次；stub-server `header-wait-silent`（stub 兼容所有 provider 协议） |
+| 前置 | **demo 侧需先实证 5 provider（OpenAI / OpenAiCompatible / DashScope / SiliconFlow / DeepSeek）均可打通 llm-stub-server**（URL 路径 + 协议差异），由 demo HANDOFF 冒烟表给出可达性清单；DeepSeek 反射委托 OpenAI 栈，天然可达，其余 4 条 provider 若 stub 侧协议未兼容则本 TC 对应子跑降为 INCONCLUSIVE。 |
+| Given | probe-agent 启动于 `s2` profile；分别设置 `LLM_PROVIDER=OpenAI` / `OpenAiCompatible` / `DashScope` / `SiliconFlow` / `DeepSeek` 跑五次；stub-server `header-wait-silent`（stub 兼容性由前置条件保证） |
 | When | 每次 `POST /v1/query` body `{"message":"ping"}` |
 | Then | 五次 trace 的 error payload `details.{phase, layer, timeout_seconds, stream}` **字面相等**；`provider` 字段体现差异（如 `details.provider` 字段若存在） |
 | PASS | 四字段字面相等 |
 | FAIL | 任一字段跨 provider 不等（说明某 provider 子类没走 ModelTimeoutResolver） |
-| INCONCLUSIVE | 非 OpenAI 的 API key 占位但 stub 侧协议解析失败（stub 的协议兼容性问题，非 SUT 问题） |
+| INCONCLUSIVE | stub 协议兼容性问题导致某 provider 子跑失败（归 demo 侧问题，非 SUT 问题；需 demo HANDOFF 更新可达性清单后重跑）|
 
 ---
 
@@ -273,4 +282,4 @@ related_docs:
 
 - **根因**：`IntelliRouterModelClient` 作为注册 provider 但不走三层超时合同；live-exposure latent（SDK 无 `RouterFactory` 绑定）
 - **影响面**：MUST#8 "全部模型 HTTP 栈采用同一分层语义" 的覆盖面；但 production 不可达
-- **立场（2026-10-22 开发确认）**：L1/L2 显式 carve-out（MUST#8 的"仓内全部模型 HTTP 栈"不含 IntelliRouter），SIT 永不构造 TC-INTELLI-ROUTER-TIERING-COVERAGE；L1/L2 刷新由上游文档负责人推进，推动项见 `docs/review/FEAT-058-l1-doc-review.md` D3。
+- **立场（2026-10-22 开发确认）**：L1/L2 显式 carve-out（MUST#8 的"仓内全部模型 HTTP 栈"不含 IntelliRouter），SIT 永不构造 TC-INTELLI-ROUTER-TIERING-COVERAGE；L1/L2 刷新由上游文档负责人推进。

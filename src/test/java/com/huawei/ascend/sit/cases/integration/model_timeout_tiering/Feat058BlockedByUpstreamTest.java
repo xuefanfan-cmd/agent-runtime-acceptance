@@ -149,13 +149,25 @@ final class Feat058BlockedByUpstreamTest {
     /**
      * TC-PER-CALL-IDLE-OVERRIDE (cases §3.9). s3-per-call profile (needs demo
      * side or SIT yaml override): client-level {@code stream-idle-seconds=600s}
-     * + per-call {@code ModelInvokeOptions.timeout=300s} (equivalently
-     * {@code ReActAgentConfig.modelStreamIdleSeconds=300}). Stub mode
-     * {@code after-first-segment-idle} holds silence 310s after first chunk.
+     * + per-call {@code ModelInvokeOptions.timeout=300s} on the first call
+     * only. Stub mode {@code after-first-segment-idle} holds silence 310s
+     * after first chunk.
      *
-     * <p>Expect (after B1 fix): first invocation trips at
-     * {@code timeout_seconds≈300} (per-call override wins); client-level
-     * 600s config is NOT polluted by per-call call stack.
+     * <p>Expect (after B1 fix):
+     * <ul>
+     *   <li>First call (with per-call override=300s): 181008 at
+     *       {@code timeout_seconds≈300} — override wins over client-level 600s;
+     *   <li>Second call (without override): HTTP 200 + {@code result_type=answer}
+     *       — client-level 600s window exceeds 310s stall, request completes
+     *       naturally; proves per-call override released, client config not
+     *       polluted.
+     * </ul>
+     *
+     * <p>Original design overlaid per-call {@code ModelInvokeOptions.timeout}
+     * with agent-level {@code ReActAgentConfig.modelStreamIdleSeconds} in the
+     * same TC — the per-call-release-vs-persistent-override ambiguity is
+     * removed in r1 by narrowing this TC to the per-call layer only (agent-level
+     * persistent-field validation is a UT responsibility).
      */
     @Disabled("blocked_by_upstream B1 + awaits demo-side s3-per-call profile; see cases §3.9")
     @Test
@@ -175,6 +187,9 @@ final class Feat058BlockedByUpstreamTest {
                      .start()) {
 
             TimeoutProbeHttpClient http = new TimeoutProbeHttpClient(probe.baseUrl());
+
+            // First call: per-call override=300s wins over client-level 600s.
+            // Stub stalls 310s > 300s → trips at 300s with timeout envelope.
             QueryResponse first = http.query(PROMPT, IDLE_INVOKE_TIMEOUT);
             new ErrorEnvelopeAsserter(first)
                     .assertTimeoutStatusCode()
@@ -184,10 +199,21 @@ final class Feat058BlockedByUpstreamTest {
                     .assertTimeoutSeconds(300.0, 1.0)
                     .assertStream(true);
 
+            // Second call: no override, client-level 600s window applies.
+            // Stub stalls 310s < 600s → completes naturally, no 181008.
+            // (This is the key assertion: per-call didn't pollute client config.)
             QueryResponse second = http.query(PROMPT, IDLE_INVOKE_TIMEOUT);
-            new ErrorEnvelopeAsserter(second)
-                    .assertTimeoutStatusCode()
-                    .assertTimeoutSeconds(300.0, 1.0);
+            assertThat(second.statusCode())
+                    .as("second call must complete under client-level 600s window")
+                    .isEqualTo(200);
+            assertThat(second.resultType())
+                    .as("second call result_type=answer (natural completion)")
+                    .isEqualTo("answer");
+
+            SutLogTailer tailer = new SutLogTailer(probe.logFile());
+            assertThat(tailer.totalTimeoutCount())
+                    .as("exactly one 181008 line (from first call only)")
+                    .isEqualTo(1);
         }
     }
 

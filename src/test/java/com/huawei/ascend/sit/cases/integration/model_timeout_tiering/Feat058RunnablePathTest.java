@@ -234,6 +234,15 @@ final class Feat058RunnablePathTest {
      * {@code long-hold-for-cancel}, caller aborts after 3s.
      * Expect: driver sees HttpTimeoutException (callerAborted=true); SUT log
      * has zero 181008 lines (cancel is not classified as timeout).
+     *
+     * <p><b>Weak-layer regression</b> — SUT's internal idle window is 600s
+     * (s6 default) and this test only observes a 2–3s window, so "no 181008"
+     * is vacuously true within the observation window. MUST#11 "cancel vs
+     * timeout" judgment power rests with UT ({@code OpenAIModelTimeoutTieringTest}
+     * + {@code ModelCircuitBreakerTest} covering
+     * {@code ModelCircuitBreaker.isConnectFailure} internal branches). This
+     * SIT TC only guards against a hard regression where cancel is
+     * misclassified AND 181008 is emitted immediately.
      */
     @Test
     void callerCancelIsNotTimeout() throws Exception {

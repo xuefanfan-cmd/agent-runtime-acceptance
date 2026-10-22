@@ -98,7 +98,7 @@ related_docs:
 | Fixture | 职责 | 位置建议（SIT 仓） |
 |---|---|---|
 | `TimeoutDemoLauncher` | 启停两个 fat jar；端口 ready probe（18092 / 18094）；注入 `LLM_STUB_DEFAULT_MODE` + `--spring.profiles.active=sN` + S1 的 `LLM_API_BASE_UNREACHABLE` 覆写；超时 kill | `src/test/java/com/huawei/ascend/sit/fixture/.../TimeoutDemoLauncher.java` |
-| `TimeoutProbeHttpClient` | 底层 `java.net.http.HttpClient` 直发 `POST http://127.0.0.1:18092/v1/query`，body `{"message":"<prompt>"}`；返回原始 JSON；暴露 `resultType()` / `output()` / `errorStatusCode()` / `errorDetails()` 返回 Map 包含 `phase/timeout_seconds/layer/stream` 四字段 | `src/test/java/.../TimeoutProbeHttpClient.java` |
+| `TimeoutProbeHttpClient` | 底层 `java.net.http.HttpClient` 直发 `POST http://127.0.0.1:18092/v1/query`，body `{"conversation_id":"sit-<uuid>","message":"<prompt>"}`（demo API 10-19 起 `conversation_id` 为必填字段）；返回原始 JSON；暴露 `resultType()` / `output()` / `errorStatusCode()` / `errorDetails()` 返回 Map 包含 `phase/timeout_seconds/layer/stream` 四字段 | `src/test/java/.../TimeoutProbeHttpClient.java` |
 | `SutLogTailer` | tail probe-agent 日志，解析 `[181008] model call timeout at <PHASE>, effective timeout <N>s, reason: ...` 行 → `TimeoutErrorLogRecord(phase, timeoutSeconds, reason)`；注意 `layer` + `stream` 字段**不进日志**，走 HTTP body 取路径 | `src/test/java/.../SutLogTailer.java`（可复用 FEAT-057 已有 SutLogTailer 的 tail 骨架） |
 | `ErrorEnvelopeAsserter` | 对 HTTP response body error payload 做结构化断言：`assertStatusCode(181008)` / `assertPhase(TimeoutPhase)` / `assertLayer(String)` / `assertTimeoutSeconds(double, ±tolerance)` / `assertStream(boolean)` / `assertAllFourFieldsPresent()` / `classify(expected, actual) -> {PASS, FAIL, INCONCLUSIVE}` | `src/test/java/.../ErrorEnvelopeAsserter.java` |
 

@@ -99,6 +99,20 @@ sut:
   # are for code analysis only and are never used at runtime.
   # Per-agent JVM -D / Spring -- override hints are documented in application-local.yml.
   agents:
+    # —— agent-memory 2.0 验收（Excel 记忆服务场景验收用例）——
+    # SUT 宿主源码：agent-solution common/example/personal-assistant-reactagent-demo
+    # （需先 mvn install 出 com.openjiuwen.example:personal-assistant-reactagent-demo:0.1.2，
+    #  与 PR 843 的 personal-assistant-deepagent-demo 同型，仅内芯换成 ReActAgent）。
+    # 记忆经 runtime jiuwen2 provider 直连 agent-memory 2.0 HTTP 服务（默认 127.0.0.1:8137，
+    #  测试类经 JIUWEN2_ENDPOINT 注入测试侧地址）；LLM 凭据经 LLM_* 环境变量注入。
+    memory-react-agent:
+      group: com.openjiuwen.example
+      artifact: personal-assistant-reactagent-demo
+      version: 0.1.2
+    # agent-memory 2.0 服务本体（remote url-only 声明，供测试类探活与 /v1/search 直查断言；
+    # 需先手工拉起：python -m jiuwen_memory_entry.http_server --auth-mode dev --host 127.0.0.1 --port 8137）
+    agent-memory-2:
+      url: "http://localhost:8137"
     # FEAT-031 Studio DSL SIT 夹具（与 application-local.yml 的同名 agent 一致）。
     studio-dsl-ir-sit:
       group: com.openjiuwen.example

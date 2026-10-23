@@ -39,6 +39,20 @@ public final class ErrorEnvelopeAsserter {
     public static final String LAYER_HEADER_WAIT = "header_wait";
     public static final String LAYER_STREAM_IDLE = "stream_idle";
 
+    /** FEAT-064 four new error codes + the two reused ones (181001 generic, 181008 timeout). */
+    public static final int MODEL_CALL_RATE_LIMITED = 181009;
+    public static final int MODEL_CALL_QUOTA_EXCEEDED = 181010;
+    public static final int MODEL_CALL_AUTH_FAILED = 181011;
+    public static final int MODEL_CALL_CONTEXT_LENGTH_EXCEEDED = 181012;
+    public static final int MODEL_CALL_ERROR = 181001;
+
+    /** FEAT-064 {@code ModelErrorCategory} enum values present on wire. */
+    public static final String CATEGORY_RATE_LIMITED = "RATE_LIMITED";
+    public static final String CATEGORY_QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+    public static final String CATEGORY_AUTH_FAILED = "AUTH_FAILED";
+    public static final String CATEGORY_TEMPORARY = "TEMPORARY";
+    public static final String CATEGORY_CONTEXT_LENGTH_EXCEEDED = "CONTEXT_LENGTH_EXCEEDED";
+
     private final QueryResponse response;
 
     public ErrorEnvelopeAsserter(QueryResponse response) {
@@ -50,17 +64,89 @@ public final class ErrorEnvelopeAsserter {
     }
 
     public ErrorEnvelopeAsserter assertTimeoutStatusCode() {
+        return assertStatusCode(MODEL_CALL_TIMEOUT_CODE);
+    }
+
+    /**
+     * FEAT-064 wire-layer: assert the error envelope SDK status code equals
+     * {@code expectedStatusCode}. Covers 181009/181010/181011/181012 (new) and
+     * 181001 (reused) in addition to 181008 (via {@link #assertTimeoutStatusCode()}).
+     */
+    public ErrorEnvelopeAsserter assertStatusCode(int expectedStatusCode) {
         if (response.errorStatusCode() == null) {
             throw new AssertionError(
-                    "Expected error envelope with status_code=" + MODEL_CALL_TIMEOUT_CODE
+                    "Expected error envelope with status_code=" + expectedStatusCode
                             + " but errorStatusCode was null"
                             + "\n--- raw body ---\n" + response.rawBody());
         }
-        if (response.errorStatusCode() != MODEL_CALL_TIMEOUT_CODE) {
+        if (response.errorStatusCode() != expectedStatusCode) {
             throw new AssertionError(
-                    "Expected error status_code=" + MODEL_CALL_TIMEOUT_CODE
+                    "Expected error status_code=" + expectedStatusCode
                             + " but got " + response.errorStatusCode()
                             + "\n--- raw body ---\n" + response.rawBody());
+        }
+        return this;
+    }
+
+    /**
+     * FEAT-064 details.category contract: every classified error must carry a
+     * {@code category} string field inside the {@code details} object with
+     * value ∈ {RATE_LIMITED, QUOTA_EXCEEDED, AUTH_FAILED, TEMPORARY,
+     * CONTEXT_LENGTH_EXCEEDED, USER_CANCELLED}.
+     */
+    public ErrorEnvelopeAsserter assertCategory(String expectedCategory) {
+        String actual = response.detailsString("category");
+        if (actual == null) {
+            throw new AssertionError("Expected details.category=" + expectedCategory
+                    + " but field missing"
+                    + "\n--- raw body ---\n" + response.rawBody());
+        }
+        if (!actual.equals(expectedCategory)) {
+            throw new AssertionError("Expected details.category=" + expectedCategory
+                    + " but got " + actual
+                    + "\n--- raw body ---\n" + response.rawBody());
+        }
+        return this;
+    }
+
+    /**
+     * FEAT-064 retry-log count assertion. Uses {@link SutLogTailer#countOfRetryLog()}
+     * to count {@code "Model call will retry."} lines emitted by
+     * {@code ModelCallRetrier} and compares against {@code expected}.
+     */
+    public ErrorEnvelopeAsserter assertRetryLogCount(SutLogTailer tailer, int expected) {
+        long actual;
+        try {
+            actual = tailer.countOfRetryLog();
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Failed to read SUT log at " + tailer.logFile(), e);
+        }
+        if (actual != expected) {
+            throw new AssertionError("Expected 'Model call will retry.' log count=" + expected
+                    + " but got " + actual
+                    + "\n--- log tail (last 80 lines) ---\n"
+                    + TimeoutDemoLauncher.tail(tailer.logFile(), 80));
+        }
+        return this;
+    }
+
+    /**
+     * FEAT-064 no-retry assertion for permanent / first-segment-boundary TCs.
+     * Equivalent to {@code assertRetryLogCount(tailer, 0)} with a tailored
+     * message that highlights the short-circuit expectation.
+     */
+    public ErrorEnvelopeAsserter assertNoRetryLog(SutLogTailer tailer) {
+        long actual;
+        try {
+            actual = tailer.countOfRetryLog();
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Failed to read SUT log at " + tailer.logFile(), e);
+        }
+        if (actual != 0) {
+            throw new AssertionError("Expected zero 'Model call will retry.' lines "
+                    + "(permanent error / first-segment boundary) but got " + actual
+                    + "\n--- log tail (last 80 lines) ---\n"
+                    + TimeoutDemoLauncher.tail(tailer.logFile(), 80));
         }
         return this;
     }

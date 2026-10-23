@@ -45,6 +45,13 @@ public final class SutLogTailer {
                     + ",\\s*effective timeout\\s+(?<seconds>[0-9]+(?:\\.[0-9]+)?)s"
                     + ",\\s*reason:\\s*(?<reason>.*)$");
 
+    /** FEAT-064: retry decision log emitted by {@code ModelCallRetrier} once per retry attempt. */
+    private static final Pattern RETRY_LINE = Pattern.compile("Model call will retry\\.");
+
+    /** FEAT-064: {@code category=<CAT>} field embedded in classified error log lines. */
+    private static final Pattern CATEGORY_FIELD = Pattern.compile(
+            "category=(?<category>RATE_LIMITED|QUOTA_EXCEEDED|AUTH_FAILED|TEMPORARY|USER_CANCELLED|CONTEXT_LENGTH_EXCEEDED)");
+
     private final Path logFile;
 
     public SutLogTailer(Path logFile) {
@@ -118,6 +125,69 @@ public final class SutLogTailer {
             }
         }
         return false;
+    }
+
+    /**
+     * FEAT-064: count of {@code "Model call will retry."} lines emitted by
+     * {@code ModelCallRetrier}. Used for:
+     * <ul>
+     *   <li>TC-RATE-LIMITED-PERSISTENT — expect {@code 2} (default maxRetries);
+     *   <li>TC-RATE-LIMITED-RECOVER — expect {@code 1};
+     *   <li>TC-TEMPORARY-EXHAUSTED — expect {@code 2} (both proves retry path
+     *       is taken for TEMPORARY and proves default maxRetries=2);
+     *   <li>TC-QUOTA/AUTH/CONTEXT-LENGTH/STREAM-ERROR-FRAME — expect {@code 0}
+     *       (permanent short-circuit or first-segment boundary).
+     * </ul>
+     */
+    public long countOfRetryLog() throws IOException {
+        if (!Files.isRegularFile(logFile)) {
+            return 0L;
+        }
+        long count = 0;
+        for (String line : Files.readAllLines(logFile)) {
+            if (RETRY_LINE.matcher(line).find()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * FEAT-064: count of log lines containing {@code [NNN]} status code tag.
+     * Used to assert the four new error codes 181009/181010/181011/181012
+     * and the legacy 181001 (generic MODEL_CALL_ERROR) + 181008 (timeout).
+     */
+    public long countOfStatusCode(int statusCode) throws IOException {
+        if (!Files.isRegularFile(logFile)) {
+            return 0L;
+        }
+        String needle = "[" + statusCode + "]";
+        long count = 0;
+        for (String line : Files.readAllLines(logFile)) {
+            if (line.contains(needle)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * FEAT-064: parse the {@code category=<CAT>} field from the last log line
+     * carrying a classification tag. Returns {@code null} if no such line is
+     * present. Used by log-side category assertions.
+     */
+    public String categoryOfLastError() throws IOException {
+        if (!Files.isRegularFile(logFile)) {
+            return null;
+        }
+        String last = null;
+        for (String line : Files.readAllLines(logFile)) {
+            Matcher m = CATEGORY_FIELD.matcher(line);
+            if (m.find()) {
+                last = m.group("category");
+            }
+        }
+        return last;
     }
 
     /**

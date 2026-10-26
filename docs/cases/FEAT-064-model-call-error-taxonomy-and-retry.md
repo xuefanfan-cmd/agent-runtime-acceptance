@@ -25,7 +25,7 @@ related_docs:
   - 代码口径：agent-core-java@origin/develop @ f68f4da6（PR!420 合入 2026-10-21，60 files +4961/-1194）；关键类 `ModelErrorCategory` / `PermanentModelError` / `ModelCallRetrier` / `ClassifiedModelFailureRail` / `FirstSegmentRetryIterator` / `RuleBasedModelErrorClassifier` / `Rails.isFromOperation` / `StatusCode.{181009,181010,181011,181012}` / `ModelClientConfig.maxRetries(default=2)`
   - demo README：agent-solution/common/example/timeout-tiering-model-call-demo/README.md（S7..S13 覆盖矩阵 + stub 7 种 FEAT-064 模式 + 轨迹断言矩阵 + S14/S15 reserved 说明）
   - demo HANDOFF：.../HANDOFF.md（JDK 17/21 构建口径）
-  - SIT 本地 FEAT-064 对齐表（L1↔L2↔代码，4 节 17 能力 M1-M17 全 ✅；仅 D1 R5 keyword set 小漂移不阻塞）
+  - SIT 本地 FEAT-064 对齐表（L1↔L2↔代码，L2 §1.2 的 16 条非 OUT 能力对齐 ✅；仅 D1 R5 keyword set 小漂移不阻塞）
   - 关联 cases 文件（共用 fixture）：docs/cases/FEAT-058-model-call-timeout-tiering.md
   - 保留项依据：SIT-CLARIFY-REPLY-must11-cancel-definition.md（USER_CANCELLED 延迟到 FEAT-058 MUST#11 裁定落地）
 ---
@@ -56,31 +56,31 @@ related_docs:
 
 ## 1. 覆盖矩阵（能力 → 子用例）
 
-对应特性文档 §2 的 15 MUST + 2 SHOULD（本档记为 M1..M17）。SIT 侧状态 "runnable" 表示方案就绪、fixture 待落地；"deferred" 表示 SIT 不承接或延迟承接；"UT only" 表示能力 100% 由 UT 承接。
+本表每行是本档一个"实现要素"粒度子项（粒度细于 L2 §1.2 的"能力"级），用 "L2 §1.2 条目" 列显式回指 L2 §1.2 的能力编号 + 要求级别（**照抄 L2，不自造标注**；条目号即 L2 §1.2 表格从上往下的 1..17）。SIT 侧状态 "runnable" 表示方案就绪、fixture 待落地；"deferred" 表示 SIT 不承接或延迟承接；"UT only" 表示能力 100% 由 UT 承接。
 
-| # | FEAT-064 能力（概要） | 本档 TC ID | 覆盖场景 | 状态 | UT 承接（不复制） | 备注 |
-|---|---|---|---|---|---|---|
-| M1 | ModelErrorCategory 6 值枚举（分类合同） | `FEAT-064.category-rate-limited` / `.quota-exceeded` / `.auth-failed` / `.temporary` / `.context-length-exceeded` | S7-S12 | runnable | `RuleBasedModelErrorClassifierTest` R1-R12 | 5 类 wire 层可观察；USER_CANCELLED 延迟 |
-| M2 | PermanentModelError.defaultRecoverable()=false | `FEAT-064.permanent-short-circuit` | S9/S10/S12 的 "无 Model call will retry" | runnable | `PermanentModelErrorTest` | QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 三类短路 |
-| M3 | ClassifiedModelFailureRail 启动期 fail-fast | （未独立 TC） | — | **UT only** | `ClassifiedModelFailureRailTest` init | SIT 不构造（Rail 存在于 probe-agent 装配即证明初始化通过） |
-| M4 | ModelBackupRail presence yield + maxRetries>0 gate | （未独立 TC） | — | **UT only** | `ClassifiedModelFailureRailTest` presence yield | SIT 不构造 |
-| M5 | ModelCallRetrier 唯一重试循环所有者 | `FEAT-064.retrier-executes-retry-budget` | S7（耗尽） + S8（恢复） | runnable | `ModelCallRetrierTest` | TC-RATE-LIMITED-PERSISTENT / TC-RATE-LIMITED-RECOVER |
-| M6 | OpenAIRetryingHttpClient 下线（代码层） | （未独立 TC） | — | **UT only** | compilation 自然证明 | SIT 不构造 "类消失" 反证 TC |
-| M7 | 流式重试首段分界（FirstSegmentRetryIterator） | `FEAT-064.first-segment-boundary` | S13 | runnable | `FirstSegmentRetryIteratorTest` | TC-STREAM-ERROR-FRAME：首段后无重试日志 |
-| M8 | retryOnRateLimit / retryOnTemporary 开关面 | （未独立 TC） | — | **UT only** | `ModelCallRetrierTest` + `ModelClientConfigTest` | demo 不覆盖关闭开关 TC；SIT 不构造 |
-| M9 | default maxRetries 3→2（外部可观察行为变化） | `FEAT-064.default-max-retries-is-two` | S11 | runnable | `ModelClientConfigTest` default 测 | TC-TEMPORARY-EXHAUSTED 的 "重试恰 2 次" 既证重试路径也证默认值 |
-| M10 | maxRetries 负值 setter 拒绝 | `FEAT-064.max-retries-negative-rejected` | 增量（demo 无直接场景） | runnable | `ModelClientConfigTest` validateMaxRetries | TC-MAX-RETRIES-NEGATIVE-REJECTED |
-| M11 | 四新错误码 181009/181010/181011/181012 | `FEAT-064.status-code-contract` | S7/S9/S10/S12 | runnable | `StatusCode` / `StatusMapping` 单测 | 由分类 TC 一一对应覆盖 |
-| M12 | 181008 timeout 重归 ModelError + details.category 口径扩展 | `FEAT-064.details-category-field` | 聚合 S7/S9/S10/S11/S12 | runnable | `StatusMappingTest` + `BaseError.details` 单测 | TC-DETAILS-CATEGORY-FIELD 跨 TC 聚合；FEAT-058 的 181008 timeout 本档不覆盖（归 FEAT-058） |
-| M13 | Rails.isFromOperation gate（AgentInterrupt/AbortError 透传收窄） | （未独立 TC） | — | **UT only** | `RailsAgentInterruptTest` | SIT 不构造 |
-| M14 | USER_CANCELLED 三形态（C1-C5 cancellation 规则） | TC-USER-CANCELLED-* | S14/S15 reserved | **deferred** | UT-C10 / UT-R06 + 容器 E2E | 待 FEAT-058 MUST#11 cancel 可观察出口裁定 |
-| M15 | ModelCircuitBreaker.onFailure 消费 classification（分类不计熔断） | （未独立 TC） | — | **UT only** | `ModelCircuitBreakerTest` onFailure | SIT 不构造；TC-TEMPORARY-EXHAUSTED 日志 "无熔断 open" 间接弱层佐证 |
-| M16 (SHOULD) | ModelRetryEvent 签名新增 category 字段 | （未独立 TC） | — | **UT only** | `ModelRetryEventTest` | SIT 不读事件总线 |
-| M17 (SHOULD) | 跨 provider 分类差异（OpenAI vs DashScope schema） | （未独立 TC） | — | **UT only** | `RuleBasedModelErrorClassifierTest` provider 分支 | SIT 统一 OpenAI 载体；跨 provider 由 UT 承接 |
+| 实现要素 | L2 §1.2 条目 (要求) | 本档 TC ID | 状态 | UT 承接（不复制） | 备注 |
+|---|---|---|---|---|---|
+| ModelErrorCategory 6 值枚举（分类合同） | §1.2.1 统一错误分类器 (MUST) + §1.2.2 失败表面分类化 (MUST) | `FEAT-064.category-rate-limited` / `.quota-exceeded` / `.auth-failed` / `.temporary` / `.context-length-exceeded`（S7-S12） | runnable | `RuleBasedModelErrorClassifierTest` R1-R12 | 5 类 wire 层可观察；USER_CANCELLED 延迟 |
+| PermanentModelError.defaultRecoverable()=false | §1.2.2 失败表面分类化 (MUST) | `FEAT-064.permanent-short-circuit`（S9/S10/S12 的"无 Model call will retry"） | runnable | `PermanentModelErrorTest` | QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 三类短路 |
+| ClassifiedModelFailureRail 启动期 fail-fast | §1.2.11 主循环护栏按类处置 (MUST) | （未独立 TC） | **UT only** | `ClassifiedModelFailureRailTest` init | SIT 不构造（Rail 存在于 probe-agent 装配即证明初始化通过） |
+| ModelBackupRail presence yield + maxRetries>0 gate | §1.2.11 主循环护栏按类处置 (MUST) | （未独立 TC） | **UT only** | `ClassifiedModelFailureRailTest` presence yield | SIT 不构造 |
+| ModelCallRetrier 唯一重试循环所有者 | §1.2.6 非流式自动重试 (MUST) | `FEAT-064.retrier-executes-retry-budget`（S7 耗尽 + S8 恢复） | runnable | `ModelCallRetrierTest` | TC-RATE-LIMITED-PERSISTENT / TC-RATE-LIMITED-RECOVER |
+| OpenAIRetryingHttpClient 下线（代码层） | §1.2.6 非流式自动重试 (MUST，实现迁移) | （未独立 TC） | **UT only** | compilation 自然证明 | SIT 不构造"类消失"反证 TC |
+| 流式重试首段分界（FirstSegmentRetryIterator） | §1.2.7 流式重试判定线 (MUST) | `FEAT-064.first-segment-boundary`（S13） | runnable | `FirstSegmentRetryIteratorTest` | TC-STREAM-ERROR-FRAME：首段后无重试日志 |
+| retryOnRateLimit / retryOnTemporary 开关面 | §1.2.9 重试配置语义对齐 (MUST) | （未独立 TC） | **UT only** | `ModelCallRetrierTest` + `ModelClientConfigTest` | demo 不覆盖关闭开关 TC；SIT 不构造（档位 A 候选，见 feedback 文档） |
+| default maxRetries 3→2（外部可观察行为变化） | §1.2.9 重试配置语义对齐 (MUST) | `FEAT-064.default-max-retries-is-two`（S11） | runnable | `ModelClientConfigTest` default 测 | TC-TEMPORARY-EXHAUSTED 的"重试恰 2 次"既证重试路径也证默认值 |
+| maxRetries 负值 setter 拒绝 | §1.2.9 重试配置语义对齐 (MUST，校验口径) | `FEAT-064.max-retries-negative-rejected`（增量，demo 无直接场景） | runnable | `ModelClientConfigTest` validateMaxRetries | TC-MAX-RETRIES-NEGATIVE-REJECTED |
+| 四新错误码 181009/181010/181011/181012 | §1.2.3 标准错误码映射 (MUST) | `FEAT-064.status-code-contract`（S7/S9/S10/S12） | runnable | `StatusCode` / `StatusMapping` 单测 | 由分类 TC 一一对应覆盖 |
+| 181008 timeout 重归 ModelError + details.category 口径扩展 | §1.2.3 标准错误码映射 (MUST) + §1.2.2 失败表面分类化 (MUST) | `FEAT-064.details-category-field`（聚合 S7/S9/S10/S11/S12） | runnable | `StatusMappingTest` + `BaseError.details` 单测 | TC-DETAILS-CATEGORY-FIELD 跨 TC 聚合；FEAT-058 的 181008 timeout 本档不覆盖（归 FEAT-058） |
+| Rails.isFromOperation gate（AgentInterrupt/AbortError 透传收窄） | §1.2.10 中断类异常识别放行 (MUST) | （未独立 TC） | **UT only** | `RailsAgentInterruptTest` | SIT 不构造 |
+| USER_CANCELLED 三形态（C1-C5 cancellation 规则） | §1.2.8 用户取消不重试 (MUST) + §1.2.14 取消识别规则显式定义 (MUST) | TC-USER-CANCELLED-\*（S14/S15 reserved） | **deferred** | UT-C10 / UT-R06 + 容器 E2E | 待 FEAT-058 MUST#11 cancel 可观察出口裁定 |
+| ModelCircuitBreaker.onFailure 消费 classification（分类不计熔断） | §1.2.16 熔断计数消费分类 (**SHOULD**) | （未独立 TC） | **UT only** | `ModelCircuitBreakerTest` onFailure | SIT 不构造；TC-TEMPORARY-EXHAUSTED 日志"无熔断 open"间接弱层佐证（档位 A 候选，见 feedback 文档） |
+| ModelRetryEvent 签名新增 category 字段 | 无独立 §1.2 条目（L2 §2.4 实现细节） | （未独立 TC） | **UT only** | `ModelRetryEventTest` | SIT 不读事件总线 |
+| 跨 provider 分类差异（OpenAI vs DashScope schema，挂点覆盖） | §1.2.1 统一错误分类器 (**MUST**，挂点覆盖要素) | （未独立 TC） | **UT only** | `RuleBasedModelErrorClassifierTest` provider 分支 | SIT 统一 OpenAI 载体；跨 provider 由 UT 承接（档位 A 候选，见 feedback 文档） |
 
 ### 非范围显式列出
 
-- **USER_CANCELLED 分类（M14 的 C1-C5）**：L1 本身在 UT 层已 ✅；SIT 覆盖延迟至 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md），不阻塞 FEAT-064 特性合入。
+- **USER_CANCELLED 分类（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5）**：L1 本身在 UT 层已 ✅；SIT 覆盖延迟至 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md），不阻塞 FEAT-064 特性合入。
 - **R1-R12 规则表细节**：UT 承接；SIT 仅在 wire 层证明 "stub 发出某类错误 → SUT 分类正确"，不枚举规则。
 - **ModelCircuitBreaker 熔断阈值 / 滑窗 / half-open**：FEAT-008 / FEAT-057 承接；本方案仅覆盖 "分类不计熔断" 的 pass-through 事实（弱层佐证）。
 - **跨 provider 分类差异**（OpenAI vs DashScope 的 429 响应体 schema）：UT 承接；SIT 对所有分类 TC 统一用 `LLM_PROVIDER=OpenAI`。
@@ -176,10 +176,10 @@ related_docs:
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
 | Then | 日志出现 `[181001]` + `category=TEMPORARY`；`"Model call will retry."` **恰 2 次**（既证重试路径也证默认值已切换为 2，共 3 次调用）；禁 `[181008]/[181009]/[181010]/[181011]/[181012]`；HTTP response body error payload `details.category=="TEMPORARY"` + `details.status_code==181001` |
 | PASS | 181001 + category=TEMPORARY + 重试日志恰 2 次 |
-| FAIL | 任一偏离：错误码非 181001 / category 错位 / 重试次数 ≠ 2（若为 3 则证明默认值未变更，是 M9 FAIL；若为 0/1 则证明 TEMPORARY 未走重试路径，是 M5 FAIL） |
+| FAIL | 任一偏离：错误码非 181001 / category 错位 / 重试次数 ≠ 2（若为 3 则证明默认值未变更，是 L2 §1.2.9 FAIL；若为 0/1 则证明 TEMPORARY 未走重试路径，是 L2 §1.2.6 FAIL） |
 | INCONCLUSIVE | stub 启动失败 / 日志抓取窗口不够长 |
 
-> **本 TC 的双重作用**：M9（default maxRetries 3→2）是外部可观察行为变化，但没有直接 getter 可读；通过 "不显式配置 + 观察重试日志行数恰等于 2" 以**单一 TC 同时证明 M5（TEMPORARY 走重试路径）+ M9（默认值已切换）**，与 demo README S11 定位一致。
+> **本 TC 的双重作用**：default maxRetries 3→2（L2 §1.2.9）是外部可观察行为变化，但没有直接 getter 可读；通过 "不显式配置 + 观察重试日志行数恰等于 2" 以**单一 TC 同时证明 TEMPORARY 走重试路径（L2 §1.2.6）+ 默认值已切换（L2 §1.2.9）**，与 demo README S11 定位一致。
 
 ### 3.6 TC-CONTEXT-LENGTH-EXCEEDED（S12 / 上下文超限永久类，扩展分类）
 
@@ -200,7 +200,7 @@ related_docs:
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
 | Then | 日志出现 `[181001]`；**无** `"Model call will retry."`（首段已到达，`FirstSegmentRetryIterator` 不整次重试）；禁 `[181008]/[181009]/[181010]/[181011]/[181012]` |
 | PASS | 181001 + 无重试日志（证明首段分界合同生效） |
-| FAIL | 出现 `"Model call will retry."`（表明首段分界破坏，违反 M7）/ 错误码非 181001 |
+| FAIL | 出现 `"Model call will retry."`（表明首段分界破坏，违反 L2 §1.2.7 流式重试判定线）/ 错误码非 181001 |
 | INCONCLUSIVE | stub 不发错误帧（流直接完成）/ 流被底层超时截断为 181008 |
 
 ### 3.8 TC-MAX-RETRIES-NEGATIVE-REJECTED（增量 / setter 启动期 fail-fast）
@@ -243,7 +243,7 @@ related_docs:
 
 ### 保留项（deferred，暂不构造）
 
-- **TC-USER-CANCELLED-\***（M14 的 C1-C5 cancellation）：待 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md）；UT-C10 / UT-R06 当前已承接 "CancellationException 恢复 + 不计熔断 + 不整次重试" 的内部断言。L1 本身在 UT 层已 ✅，SIT 延迟不阻塞特性合入。
+- **TC-USER-CANCELLED-\***（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5 cancellation）：待 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md）；UT-C10 / UT-R06 当前已承接 "CancellationException 恢复 + 不计熔断 + 不整次重试" 的内部断言。L1 本身在 UT 层已 ✅，SIT 延迟不阻塞特性合入。
 
 ### 已知设计偏差（不阻塞）
 

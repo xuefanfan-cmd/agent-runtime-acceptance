@@ -83,7 +83,7 @@ final class Feat064MaxRetriesNegativeRejectedTest {
         // Point at a stub URL that doesn't need to resolve — this TC fails before
         // any wire activity. Keeping the var set avoids demo config-missing noise
         // in the startup log that could obscure the maxRetries BindException.
-        env.put("LLM_API_BASE", "http://127.0.0.1:18094");
+        env.put("LLM_API_BASE", "http://127.0.0.1:18094/v1");
         return env;
     }
 }

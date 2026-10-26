@@ -366,7 +366,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
 
     private static Map<String, String> probeEnv(TimeoutDemoLauncher stub) {
         Map<String, String> env = baseProbeEnv();
-        env.put("LLM_API_BASE", stub.baseUrl());
+        env.put("LLM_API_BASE", stub.baseUrl() + "/v1");
         return env;
     }
 

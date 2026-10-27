@@ -1,0 +1,54 @@
+package PACKAGE_NAME;
+
+import com.openjiuwen.service.app.controller.a2a.client.*;
+import org.a2aproject.sdk.spec.*;
+import org.a2aproject.sdk.jsonrpc.common.json.JsonUtil;
+import org.springframework.context.annotation.*;
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/** Explicit opt-in acceptance policy. Uses only the documented response Hook SPI. */
+@Configuration(proxyBeanMethods = false)
+@Profile("feat086-acceptance")
+public class RemoteResponseAcceptanceConfiguration {
+    @Bean RemoteProjectionHook acceptanceProjection(ProbeController probe) {
+        DefaultRemoteProjection defaults = new DefaultRemoteProjection();
+        return (event, context) -> {
+            Map<String,Object> entry = new LinkedHashMap<>();
+            entry.put("remoteAgentName",context.remoteAgentName()); entry.put("parentAgentId",context.parentAgentId());
+            entry.put("parentTaskId",context.parentTaskId()); entry.put("toolCallId",context.toolCallId());
+            entry.put("event",event.getClass().getSimpleName()); probe.events.add(entry);
+            String mode=probe.mode.getOrDefault("projection","default");
+            if(mode.equals("throw")) throw new IllegalStateException("F086-projection-error");
+            if(mode.equals("hide")) return null;
+            if(mode.equals("null-metadata")) return Artifact.builder().artifactId("custom-id").parts(new TextPart("F086-custom-body")).metadata(null).build();
+            return defaults.project(event,context);
+        };
+    }
+    @Bean RemoteTaskResultHook acceptanceResult(ProbeController probe) {
+        return task -> {
+            try { probe.tasks.add(JsonUtil.toJson(task)); } catch(Exception e) { throw new IllegalStateException(e); }
+            String mode=probe.mode.getOrDefault("result","artifacts");
+            if(mode.equals("null")) return null;
+            if(mode.equals("throw")) throw new IllegalStateException("F086-result-error");
+            if(mode.equals("literal")) return probe.mode.getOrDefault("literal","");
+            if(mode.equals("status")) return task.status()==null?"":text(task.status().message());
+            if(mode.equals("history")) { StringBuilder b=new StringBuilder(); if(task.history()!=null)task.history().forEach(m->b.append(text(m))); return b.toString(); }
+            StringBuilder b=new StringBuilder(); if(task.artifacts()!=null)task.artifacts().forEach(a->b.append(parts(a.parts()))); return b.toString();
+        };
+    }
+    static String text(Message m) { return m==null?"":parts(m.parts()); }
+    static String parts(List<Part<?>> p) { StringBuilder b=new StringBuilder(); if(p!=null)p.forEach(v->{if(v instanceof TextPart t)b.append(t.text());}); return b.toString(); }
+    @RestController
+    @Profile("feat086-acceptance")
+    public static class ProbeController {
+        volatile Map<String,String> mode=Map.of();
+        final List<Map<String,Object>> events=new CopyOnWriteArrayList<>();
+        final List<String> tasks=new CopyOnWriteArrayList<>();
+        @PostMapping("/feat086/probe") public Map<String,Object> configure(@RequestBody Map<String,String> mode) {
+            this.mode=Map.copyOf(mode); events.clear(); tasks.clear(); return Map.of("configured",true);
+        }
+        @GetMapping("/feat086/probe") public Map<String,Object> snapshot() { return Map.of("events",events,"tasks",tasks); }
+    }
+}

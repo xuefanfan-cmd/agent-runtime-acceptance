@@ -71,9 +71,11 @@ sut:
     redis:
       image: redis:7-alpine
       port: 6379
-      # Podman on Windows: Testcontainers HostPortWaitStrategy times out on mapped ports.
-      # Use a pre-started Redis (podman run -d -p 6379:6379 redis:7-alpine) and treat as remote.
-      url: "localhost:6379"
+      # FEAT-069 批次（sit-feat069）：redis 切回栈托管（去掉 url）——批次内 e2e
+      # 由 SutStack 按 serviceBinding 按类拉起独立 redis 容器，与 sit-redis-feat065067
+      # (127.0.0.1:6379) 隔离，避免与其他并行批次共享键空间。
+      # 历史注记：Podman on Windows 时代曾要求 pre-started redis（HostPortWaitStrategy 超时），
+      # macOS colima 下无此问题（ENV-1.4/1.8：redis:7-alpine 与 ryuk 均在本地）。
     envexplorer:
       image: agent-env/env-explorer:20260705
       port: 3001
@@ -142,6 +144,49 @@ sut:
           deepanalyze.compat.enabled: "true"
           deepanalyze.compat.max-events-per-task: "5000"
           deepanalyze.auth.enabled: "false"
+    # FEAT-069：DA 宿主数据面（deepanalyze-java 数据面权限与写方迁移）——本批次被测 SUT。
+    # 回归基线 0.1.3-feat069-r2 = agent-solution common@095b7fb89（!890 SIT P1 修复批，#469/#471/#472/#473-A）；
+    # 原基线 0.1.3-feat069 = agent-solution common@6864dc3dd（!841 feat/feat-069-data-plane
+    # 合入点）批次源码构建；勿与其他批次版本（0.1.4 / 0.1.3-feat065067）混用。
+    # 新增条目、不改既有 deepanalyze 条目（FEAT-054 线所有权，ENV-3.11 口径）。
+    deepanalyze-dataplane:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat069-r3
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          # 数据面：写机制全开（批次 e2e 主断言面）；jdbc-url 由用例 serviceBinding 注入动态地址
+          deepanalyze.data.pg.enabled: "true"
+          deepanalyze.record.enabled: "true"
+          deepanalyze.record.session-memory-enabled: "true"
+          deepanalyze.record.reports-enabled: "true"
+          deepanalyze.record.retention-days: "30"
+          # D1 未定案：todo-storage 维持 file（现状口径；docs#38 DS-05 在途）
+          deepanalyze.task-loop.todo-storage: "file"
+          # providers 探测读宿主配置面（读方消失改造；f069-read-02）
+          deepanalyze.providers[0].id: "prov-feat069-hostcfg"
+          deepanalyze.providers[0].name: "宿主配置面 provider"
+          deepanalyze.providers[0].base-url: "http://127.0.0.1:9"
+          deepanalyze.providers[0].model: "no-such-model"
+          deepanalyze.providers[0].api-key: "fixture-only"
+    # FEAT-069 数据面关闭形态（f069-team-04 gating 503 / f069-gate-01 行为一致 / f069-iso-01 独立运行）：
+    # 与 dataplane 条目同制品，仅关数据面与写机制——"数据源未启用时行为与未引入本特性一致"的对照面
+    deepanalyze-dataplane-nopg:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat069-r3
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          deepanalyze.data.pg.enabled: "false"
+          deepanalyze.record.enabled: "false"
     # FEAT-038/039 candidate-bound SIT fixtures. The matrix runner currently selects
     # the openjiuwen profile for all managed black-box test groups.
     tool-scripts-edpa:

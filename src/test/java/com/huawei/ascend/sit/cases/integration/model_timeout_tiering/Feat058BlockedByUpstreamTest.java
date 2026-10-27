@@ -59,11 +59,15 @@ final class Feat058BlockedByUpstreamTest {
      * TC-AFTER-FIRST-SEGMENT-IDLE (cases §3.4). s3 profile,
      * {@code stream-idle-seconds=300s}, stub mode {@code after-first-segment-idle}
      * holds silence for 310s after the first chunk.
-     * Expect (after B1 fix): 181008 at phase={@code AFTER_FIRST_SEGMENT},
+     * Expect: 181008 at phase={@code AFTER_FIRST_SEGMENT},
      * layer={@code stream_idle}, timeout_seconds≈300, stream=true.
+     *
+     * <p>2026-10-27 unblocked: HANDOFF revised B1 attribution — the previously
+     * suspected upstream bug was actually a local JDK 24+ environment mismatch
+     * (本机 JDK 26 下 HttpClient 行为漂移), not a code bug. On JDK 17 / 21
+     * conforming SIT environment this TC is expected to PASS. UPSTREAM-ISSUE-DRAFT
+     * is RETRACTED.
      */
-    @Disabled("blocked_by_upstream B1: AFTER_FIRST_SEGMENT masked by HttpRequest.timeout wiring; "
-            + "see cases §4 Known upstream block B1 and demo UPSTREAM-ISSUE-DRAFT.md")
     @Test
     void afterFirstSegmentIdleIndependentOfHeaderWait() throws Exception {
         assumeFatJarsPresent();
@@ -103,16 +107,15 @@ final class Feat058BlockedByUpstreamTest {
      * TC-NO-TOTAL-CAP-STREAM (cases §3.5). s4 profile, legacy {@code timeout=10s},
      * stub mode {@code long-answer-heartbeat} emits a chunk every 1.5s for 15s
      * total.
-     * Expect (after B1 fix): HTTP 200 + {@code result_type=answer}, zero
-     * {@code [181008]} lines, stream completes naturally.
+     * Expect: HTTP 200 + {@code result_type=answer}, zero {@code [181008]}
+     * lines, stream completes naturally.
      *
-     * <p>Current B1 state: asserter passes (no [181008]) but the stream is
-     * actually killed by {@code HttpRequest.timeout} wired as total response
-     * time, not naturally completed. SIT can't wire-distinguish death-cause
-     * so this TC is Disabled until upstream fix lands.
+     * <p>2026-10-27 unblocked: HANDOFF revised B1 attribution — the previously
+     * suspected upstream bug was actually a local JDK 24+ environment mismatch,
+     * not a code bug. On JDK 17 / 21 conforming SIT environment the stream
+     * completes naturally without hitting the legacy timeout. UPSTREAM-ISSUE-DRAFT
+     * is RETRACTED.
      */
-    @Disabled("blocked_by_upstream B1: stream death-cause not wire-distinguishable (killed by "
-            + "HttpRequest.timeout, not naturally completed); see cases §3.5")
     @Test
     void longAnswerStreamNotCappedByTotalTime() throws Exception {
         assumeFatJarsPresent();

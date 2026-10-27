@@ -151,6 +151,24 @@ public final class TimeoutProbeHttpClient {
                 continue;
             }
             JsonNode p = evt.has("payload") && evt.get("payload").isObject() ? evt.get("payload") : evt;
+            // Primary path for structured error events (2026-10-27 upstream fix landed via
+            // agent-core-java issue #260 PR!242 + agent-runtime-java PR!449):
+            //   data: {"type":"error", "error":"...", "failure":{"code":"MODEL_CALL_...",
+            //          "numericCode":18100N, "isRetryable":true/false}}
+            // Read payload.failure.numericCode as the authoritative SDK status code; also
+            // keep payload.failure as errorDetails so judge-side can read code/isRetryable.
+            // Developer-side DEV-REPLY-sse-structured-error-wire-break-20261027.md §五 "SIT
+            // 侧 parseSse 升级为路线 1" explicitly authorizes this path.
+            if ("error".equals(eventType) && p.has("failure") && p.get("failure").isObject()) {
+                JsonNode failure = p.get("failure");
+                if (errorStatusCode == null && failure.has("numericCode")
+                        && failure.get("numericCode").isNumber()) {
+                    errorStatusCode = failure.get("numericCode").asInt();
+                }
+                if (errorDetails == null) {
+                    errorDetails = MAPPER.convertValue(failure, new TypeReference<>() {});
+                }
+            }
             // 预留 details 对象透传路径：answer payload 若含 error.{status_code,details} 或顶层 code/details，
             // 走解析（当前 wire 实证不含；若开发按解读 B 补透传，此分支即时生效）。
             JsonNode errorNode = p.has("error") && p.get("error").isObject() ? p.get("error") : p;

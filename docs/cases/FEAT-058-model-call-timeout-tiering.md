@@ -290,12 +290,12 @@ related_docs:
 | TC-DEFAULT-BASELINE | runnable | — | fixture 落地 + 实现 |
 | TC-CONNECT-TIMEOUT | runnable | — | fixture 落地 + 实现 + 预检 TEST-NET-1 可达性 |
 | TC-HEADER-WAIT-LEGACY | runnable | — | fixture 落地 + 实现 |
-| TC-AFTER-FIRST-SEGMENT-IDLE | blocked_by_upstream | B1 | 等 agent-core-java upstream PR（见 demo UPSTREAM-ISSUE-DRAFT.md）；fixture 可先落 |
-| TC-NO-TOTAL-CAP-STREAM | blocked_by_upstream | B1 | 同上 |
+| TC-AFTER-FIRST-SEGMENT-IDLE | **wire-eof-rooted-in-mvc-bug** | 共用 bf19b76/5bae22e | ✅ 2026-10-27 fixture 全修完（/v1 后缀 fc15b30 + stub FIRST_SEGMENT_MS=310000 36ef7da），300s stream_idle 真触发 + ModelCallRetrier 两层重试共 10 分钟 → wire EOF；跟 FEAT-064 对象路径同根，等开发侧 QueryMvcExceptionHandler 修复 |
+| TC-NO-TOTAL-CAP-STREAM | **landed PASS** | — | ✅ 2026-10-27 /v1 后缀 fc15b30 修完 ECS 实证 PASS（96.99s，MUST#4 契约 wire 可观察性验证通过）|
 | TC-BLOCKING-SAME-SEMANTICS | runnable | — | fixture 落地 + 实现 |
 | TC-CANCEL-NOT-TIMEOUT | runnable | — | fixture 落地 + driver 侧 `HttpRequest.timeout(3s)` 支持 |
 | TC-ERROR-DETAILS-PAYLOAD | runnable | — | 依赖 3 条前置 TC 完成 |
-| TC-PER-CALL-IDLE-OVERRIDE | blocked_by_upstream | B1 + 需开发侧补 profile | 两件事：① B1 修复；② `s3-per-call` profile（demo 或 SIT yaml 二选一） |
+| TC-PER-CALL-IDLE-OVERRIDE | blocked_by_demo | 需 demo s3-per-call profile + per-call HTTP 入口 | B1 已 RETRACTED（2026-10-23 HANDOFF 归因到 JDK 24+ 环境），当前仅等 demo 侧补 per-call 入口（见 §3.9） |
 | TC-RANGE-VALIDATION | runnable | — | fixture 落地 + 临时 yaml 制造越界 |
 | TC-UNIFIED-STACK-COVERAGE | runnable | — | fixture 落地 + 跨 provider env 切换；API key 占位获取 |
 | **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |

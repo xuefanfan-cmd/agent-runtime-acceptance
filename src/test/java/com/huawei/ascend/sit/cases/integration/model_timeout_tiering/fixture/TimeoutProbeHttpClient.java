@@ -137,6 +137,19 @@ public final class TimeoutProbeHttpClient {
             } catch (Exception notJson) {
                 continue;
             }
+            // Skip type=model_retry events: their payload carries the upstream HTTP
+            // status_code (429/500/etc), NOT the SDK error code (181009/181001). Reading
+            // status_code from model_retry would misclassify the retry event's HTTP
+            // status as the terminal error code and shadow the real error (which lands
+            // either in a later type=error event or in the terminal type=answer with
+            // payload.result_type=error — the latter per 2026-10-22 Reply §二 1 is the
+            // current wire shape for ModelError/PermanentModelError object-path cases).
+            // Cross-ref: FEAT-064 observation report 2026-10-27 §二 B 组 self-admitted
+            // parseSse bug (docsReview commit ee5ed0b).
+            String eventType = evt.path("type").asText("");
+            if ("model_retry".equals(eventType)) {
+                continue;
+            }
             JsonNode p = evt.has("payload") && evt.get("payload").isObject() ? evt.get("payload") : evt;
             // 预留 details 对象透传路径：answer payload 若含 error.{status_code,details} 或顶层 code/details，
             // 走解析（当前 wire 实证不含；若开发按解读 B 补透传，此分支即时生效）。

@@ -18,19 +18,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * FEAT-064 — TC-MAX-RETRIES-NEGATIVE-REJECTED (cases §3.8). Startup-time
- * fail-fast on invalid {@code openjiuwen.service.llm.max-retries=-1}: the
- * {@code ModelClientConfig$Builder.validateMaxRetries} setter must reject
- * negatives → Spring Boot binding fails → probe-agent exits non-zero without
- * ever becoming ready.
+ * fail-fast on invalid {@code demo.timeout-probe.max-retries-override=-1}:
+ * the {@code ModelClientConfig$Builder.validateMaxRetries} setter must reject
+ * negatives → Spring Boot binding / Builder.build() fails → probe-agent exits
+ * non-zero without ever becoming ready.
  *
  * <p>Mirrors the FEAT-058 TC-RANGE-VALIDATION pattern: uses
  * {@link TimeoutDemoLauncher#startExpectingFailure()} rather than readiness
  * probe. No stub is launched (this TC does not go over the wire).
  *
  * <p>The override is injected as a CLI arg
- * ({@code --openjiuwen.service.llm.max-retries=-1}) so the demo yaml stays
- * untouched (per cases §2.3 "不改 demo 内容" + memory
- * {@code [[feedback_scope_only_own_files]]}).
+ * ({@code --demo.timeout-probe.max-retries-override=-1}) targeting the demo's
+ * own {@code TimeoutProbeAgentProperties}. probe-agent does NOT bind the
+ * platform-level {@code openjiuwen.service.llm.*} namespace — per dev-side
+ * 2026-10-26 FEAT-064 coverage-gaps REPLY §A.1 / §C.1 clarification, the demo
+ * builds its {@code ModelClientConfig} via {@code TimeoutProbeAgentFactory.build()}
+ * which calls {@code Builder.maxRetries(propsValue)} directly, so only the
+ * {@code demo.timeout-probe.*} namespace reaches the SDK validate.
  */
 @Tag("integration")
 @Tag("feat-064")
@@ -47,7 +51,7 @@ final class Feat064MaxRetriesNegativeRejectedTest {
         try (TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
                 .profile("s0")
                 .envAll(baseProbeEnv())
-                .arg("--openjiuwen.service.llm.max-retries=-1")
+                .arg("--demo.timeout-probe.max-retries-override=-1")
                 .startupTimeout(Duration.ofSeconds(30))
                 .build()) {
             probe.startExpectingFailure();

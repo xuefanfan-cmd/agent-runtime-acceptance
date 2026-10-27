@@ -166,7 +166,19 @@ public final class TimeoutProbeHttpClient {
                     errorStatusCode = failure.get("numericCode").asInt();
                 }
                 if (errorDetails == null) {
-                    errorDetails = MAPPER.convertValue(failure, new TypeReference<>() {});
+                    Map<String, Object> details = MAPPER.convertValue(
+                            failure, new TypeReference<>() {});
+                    // 新 wire schema 用 failure.code (MODEL_CALL_X) 表达分类，老判据预期
+                    // details.category (X)。把 failure.code 映射回 category 字段兼容老判据。
+                    // 对齐开发侧 2026-10-26 FEAT-064 Reply §A.3 分类集 (M14) 名字。
+                    if (failure.has("code") && failure.get("code").isTextual()) {
+                        String failureCode = failure.get("code").asText();
+                        String category = mapFailureCodeToCategory(failureCode);
+                        if (category != null) {
+                            details.put("category", category);
+                        }
+                    }
+                    errorDetails = details;
                 }
             }
             // 预留 details 对象透传路径：answer payload 若含 error.{status_code,details} 或顶层 code/details，
@@ -236,6 +248,34 @@ public final class TimeoutProbeHttpClient {
 
     private static String stripTrailingSlash(String s) {
         return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
+    }
+
+    /**
+     * 把新 wire schema 的 {@code failure.code}（如 "MODEL_CALL_FAILED"）映射回老判据
+     * 预期的 {@code category} 字段（如 "TEMPORARY"）。
+     *
+     * <p>对齐 FEAT-064 分类集 M14（RATE_LIMITED / QUOTA_EXCEEDED / AUTH_FAILED /
+     * TEMPORARY / CONTEXT_LENGTH_EXCEEDED / USER_CANCELLED）。
+     *
+     * <p>注意：{@code MODEL_CALL_FAILED} 对应 {@code TEMPORARY} 分类（181001 =
+     * 一般临时故障错误码）。
+     *
+     * @param failureCode 新 wire schema 的 failure.code 字符串
+     * @return 对应的老 category 枚举字符串；未知 code 返回 null
+     */
+    private static String mapFailureCodeToCategory(String failureCode) {
+        if (failureCode == null) {
+            return null;
+        }
+        return switch (failureCode) {
+            case "MODEL_CALL_FAILED" -> "TEMPORARY";
+            case "MODEL_CALL_RATE_LIMITED" -> "RATE_LIMITED";
+            case "MODEL_CALL_AUTH_FAILED" -> "AUTH_FAILED";
+            case "MODEL_CALL_QUOTA_EXCEEDED" -> "QUOTA_EXCEEDED";
+            case "MODEL_CALL_CONTEXT_LENGTH_EXCEEDED" -> "CONTEXT_LENGTH_EXCEEDED";
+            case "MODEL_CALL_USER_CANCELLED" -> "USER_CANCELLED";
+            default -> null;
+        };
     }
 
     public record QueryResponse(

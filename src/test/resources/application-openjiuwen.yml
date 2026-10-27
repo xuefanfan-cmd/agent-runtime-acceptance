@@ -932,6 +932,48 @@ sut:
       group: com.customer
       artifact: customer-multipart-app
       version: "1.0.0"
+    # FEAT-068（2026-10-19）：团队模板库批次的 e2e SUT。r5 补跑起制品 0.1.3-feat068-r5
+    # （源=官方 common@aa037142d=!896——含 !880=#465 修复合入、3921165f4=#476 完成超时接线；
+    # core 再前移 0.1.17-feat068-r5=agent-core-java develop@65df4e9b=!436（!870 otel 常量所需）；
+    # 构建与指纹档案见 FEAT-068 批次目录 20261019-build-feat068/ r5 段）。
+    # 历代：r3=cf4571b30（#462 回归）/ r4=cf4571b30+952c71ff9 cherry-pick（#465 回归，!880 合入前）。
+    # #476 修复语义：engine 将 completionTimeout 接到 task-loop run-timeout-seconds，新默认 1920s——
+    # 600s 看门狗（r4 三连挂根因，见 r4 段注释）随之解除，council ~590s 富余充足，本条目无需新配置键。
+    # system-properties 与上面 deepanalyze-feat065067 条目原逐键一致；2026-10-21 起少一键（stream-idle，见下）；
+    # 2026-10-22 起再少一键（in_memory，见下）；两个 2026-10-22 试错的无效旋钮键已移除（spring.mvc.async.request-timeout /
+    # openjiuwen.timeout.blocking-queue-ms，均实测不影响行为）。
+    # 已登记偏差：仅 max-iterations=4（D3 同族，判据结构性）；in_memory 偏差（D4 绕行）已随 r4 撤除、登记解除。
+    # 【2026-10-21 更正】本注释曾写「DEFAULT_TOOL_CALL_TIMEOUT=1800」——经 067 线逐键核对指认，该键在两个条目里
+    # 都不存在，属幻影键；长任务超时的真实对外承诺面是 deepanalyze.workflow.run-timeout-seconds（r4 时代默认 1800，
+    # 经 ToolCard resilience.timeout_s 进 core，卡片未声明的工具才回落默认 300）。
+    # 【2026-10-21 移除 stream-idle-seconds=1800】docs#32 责任人裁决（comment 194890340）：显式配置越界
+    # （stream-idle ∉[300,900]）经 ModelTimeoutResolver 在使用点校验会抛 IllegalArgumentException（启动/首次调用即拒）。
+    # 该旋钮（FEAT-058 模型调用超时分层）已随 r4 core 基线落地为活键，默认 600 在界内，不再配置。
+    # 【2026-10-22 撤除 in_memory】D4 修复（f4ac34e6，!400）已进 r4 core 基线 ⇒ 默认 checkpointer 装配可用，
+    # 撤除绕行并同轮解除偏差登记（r3 及以前 core=0.1.17@9966e03d 不含修复故保留，撤除必炸机制见 067 线批次记录 §7F）。
+    # 独立条目的理由：068 批次证据须绑定自己的制品指纹，不共用 067 线的 SUT 钉子。
+    deepanalyze-feat068:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat068-r5
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.prompt-assembly.compression.enabled: "false"
+          deepanalyze.prompt-assembly.system-prompt.enabled: "false"
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          deepanalyze.workflow.enabled: "true"
+          deepanalyze.workflow.parallelism: "4"
+          # 【2026-10-22 伴随发现披露（原 D-new 试错已撤）】council 全链实测 589.0s（r3）～596.4s（r4），r4 三次复跑
+          # 均在请求+600.09s 被 core `DeepAgentConfig.completionTimeout` 默认 600s 的 TimeoutEvaluator 收束
+          # （工具 outcome=success 但终态事件被清 ⇒ /run 聚合 toolCall 卡 running/output 空）。该默认在 r2/r3 的
+          # core 基线（9966e03d）即存在——预先存在、非本轮变量引入；engine/core 均无 yml/sysprop 覆盖键
+          # （spring.mvc.async.request-timeout 与 openjiuwen.timeout.blocking-queue-ms 两键实测无效已移除）。
+          # r4 的 §7.2 复验由 parallel＋通道用例承载（均 <600s）；council 待实现侧加 completion-timeout 映射键后补跑。
+          deepanalyze.model.max-iterations: "4"
+
   # Per-agent LLM api-key injection: an agent that declares `llm-api-key-property: <spring-key>`
   # gets the global LLM_API_KEY value (below) injected at launch as `--<spring-key>=<LLM_API_KEY>`,
   # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works

@@ -50,6 +50,30 @@
              （0.1.2 引用的 WorkflowInteraction$GraphInterruptRuntimeWrapper 在 0.1.17 已删除）；
              验证更新基线时用 -Dagent-core-ext-studio-dsl.version=<common@<sha>> 临时 re-pin。 -->
         <agent-core-ext-studio-dsl.version>0.1.3</agent-core-ext-studio-dsl.version>
+        <!-- FEAT-065/066/067（2026-10-16 新增）：编排引擎与 DA 宿主的被测制品。
+             两者均未发布到公网 Maven 仓（实测 central 404），由 openJiuwen/agent-solution
+             common@f9da5b54f 源码构建；版本号用批次专属串，**不复用** 0.1.3/0.1.4，
+             以免同一坐标对应两份不同内容（0.1.4 是 common@b3155d440 构建的，属 FEAT-054 线基线）。
+             构建配方见 Test_work/memory/ENV-本机SIT环境事实.md 的 ENV-3.5 ~ ENV-3.10。 -->
+        <!-- FEAT-068（2026-10-19 二次裁决）：模板库批次改测 post-085 新形态。源=openJiuwen/agent-solution
+             common@ce9019d86（detached worktree 构建，指纹见
+             01-Design_File/20261019-feat-068-team-template/evidence/20261019-build-feat068/ r2 段）。
+             与 0.1.3-feat065067-r3（16:00 重建版）同源 ce9019d86 的相邻状态，067 线既有用例在本版本面继续有效；
+             067 线 yml SUT 条目仍钉其自身版本，不受本属性影响。 -->
+        <agent-core-ext-orchestration.version>0.1.3-feat068-r5</agent-core-ext-orchestration.version>
+        <deepanalyze-engine.version>0.1.3-feat068-r5</deepanalyze-engine.version>
+        <!-- FEAT-065/066 静态合同用例（065-S21 / 066-S13）要读被测模块**源码**（设计明写"含注释"）。
+             这里只留空默认值，**不在测试仓里硬编码本机路径**；执行时用
+             -Dorchestration.source.root=<agent-core-ext-orchestration 的 src/main/java 绝对路径> 传入，
+             经 surefire 的 systemPropertyVariables 透传给测试。缺它时该用例记 SKIPPED（INCONCLUSIVE），
+             不判产品 FAIL、也不假装通过。 -->
+        <orchestration.source.root></orchestration.source.root>
+        <!-- FEAT-067 的两条静态用例（067-S09 的白名单序关系、067-S15 的事件契约对账）要读 DA 宿主**源码**。
+             同样只留空默认值，执行时用
+             -Ddeepanalyze.source.root=<deepanalyze-java engine 的 src/main/java 绝对路径> 传入。
+             注意 067-S12（护栏 actrule.yaml）与 067-S10（模板资产）读的是 **classpath 资产**，
+             不需要本属性。 -->
+        <deepanalyze.source.root></deepanalyze.source.root>
     </properties>
 
     <dependencyManagement>
@@ -238,6 +262,24 @@
             <version>${agent-core-ext-studio-dsl.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- FEAT-065/066：确定性编排层（蓝图调度 + 交叉验证装载期编译）。
+             组件层直接消费其公开面：BlueprintLoader.load / BlueprintScheduler / BlueprintWorkflowCompiler /
+             SubAgentExecutor。依据 FEAT-065 §3「成员绑定契约」与「执行入口」两个跨模块 API 契约。 -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-orchestration</artifactId>
+            <version>${agent-core-ext-orchestration.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-067：DA 宿主的会话内工作流工具组（da.workflow 包六件）。
+             六件工具的公开构造器依赖全部可注入（DaWorkflowRunner 收 memberFactory + parallelism，
+             DelegateTaskTool 收 board + delegate 函数），故工具契约可在组件层验证，无需拉起宿主进程。 -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>deepanalyze-engine</artifactId>
+            <version>${deepanalyze-engine.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -249,6 +291,11 @@
                 <configuration>
                     <!-- Default: run only component + integration (skip e2e / performance) -->
                     <excludedGroups>e2e,performance</excludedGroups>
+                    <!-- FEAT-065/066：把被测源码根透传给静态合同用例（见 <properties> 说明） -->
+                    <systemPropertyVariables>
+                        <orchestration.source.root>${orchestration.source.root}</orchestration.source.root>
+                        <deepanalyze.source.root>${deepanalyze.source.root}</deepanalyze.source.root>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 

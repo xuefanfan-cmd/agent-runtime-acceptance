@@ -246,7 +246,11 @@ final class Feat058BlockedByUpstreamTest {
         env.put("LLM_MODEL", "stub-model");
         env.put("LLM_SSL_VERIFY", "false");
         env.put("LLM_TEMPERATURE", "0.0");
-        env.put("LLM_API_BASE", stub.baseUrl());
+        // stub 的 OpenAI 兼容端点在 /v1/chat/completions（LlmStubController:47），SDK 对 api-base
+        // 直接拼 /chat/completions，裸 host 会撞 404。对齐 Feat058RunnablePathTest:503 的 /v1
+        // 修复（10-22 commit eb9bf49）——当时本测试类三条全 @Disabled 所以漏修，2026-10-27
+        // 翻 S3/S4 @Disabled 后 S4 7s EOF 实证了同一个坑。
+        env.put("LLM_API_BASE", stub.baseUrl() + "/v1");
         return env;
     }
 }

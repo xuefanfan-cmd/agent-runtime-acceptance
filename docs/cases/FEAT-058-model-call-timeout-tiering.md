@@ -251,6 +251,36 @@ related_docs:
 | FAIL | 任一字段跨 provider 不等（说明某 provider 子类没走 ModelTimeoutResolver） |
 | INCONCLUSIVE | stub 协议兼容性问题导致某 provider 子跑失败（归 demo 侧问题，非 SUT 问题；需 demo HANDOFF 更新可达性清单后重跑）|
 
+### 3.12 TC-CANCEL-OBS-S18（MUST#11 cancel 可观测 / blocking 侧通道） — **跨 FEAT 承接 FEAT-064 USER_CANCELLED**
+
+| 字段 | 内容 |
+|---|---|
+| 定位 | **MUST#11 cancel-observability output 强层判据**。承接原 FEAT-064 cases §4 保留项 "TC-USER-CANCELLED-\* 待 FEAT-058 MUST#11 裁定落地" 的 blocking 分支。走 develop-head m2（agent-core-java mr/437 #252 cancellation log anchor + probe-agent `CancelProbeController` 侧通道），绕开 §3.7 TC-CANCEL-NOT-TIMEOUT 走 `/v1/query` 的弱层口径。 |
+| Given | probe-agent 启动于 `s0` profile；stub-server `header-wait-silent` 模式（stub 发完 header 后不发 body，worker 阻塞读 body） |
+| When | SIT driver `POST /probe/cancel/blocking?cancel_after_ms=300` → probe-agent 在 worker 线程提交 `model.invoke(...)`，调度 `future.cancel(true)` 300 ms 后触发 |
+| Then | probe-agent 日志出现 `event=model_call_cancelled`（`ClassifiedModelErrors.toCancellation` 规范化锚点）；日志**无** `[181008]`（确保 cancel 先于三层 timer 任一一个触发） |
+| PASS | 日志出现 cancel anchor + 无 181008 |
+| FAIL | cancel anchor 未出现（可能原因：jar 为 develop-head m2 之前版本，缺 CancelProbeController，POST 返 404） / 日志出现 181008（cancel 被归类为 timeout 而非 USER_CANCELLED） |
+| INCONCLUSIVE | POST 返非 200 非 404（可能是 probe-agent 启动期异常，诊断方向在启动日志） |
+| 载体 | `Feat058Feat064CancelObservabilityTest.blockingCancelEmitsAnchorLogNoTimeout` |
+
+### 3.13 TC-CANCEL-OBS-S19（MUST#11 cancel 可观测 / streaming 侧通道） — **跨 FEAT 承接 FEAT-064 USER_CANCELLED**
+
+| 字段 | 内容 |
+|---|---|
+| 定位 | 同 §3.12，streaming 分支——cancel 在流式 `model.stream(...)` 的 chunk 迭代中触发，覆盖 `OpenAIModelClient` 的 mid-stream read-cancelled 分支 + stream-open 分支（两分支任一命中 anchor 均 PASS） |
+| Given | 同 §3.12 |
+| When | SIT driver `POST /probe/cancel/streaming?cancel_after_ms=300` → probe-agent 在 worker 线程启动流式迭代，调度 `future.cancel(true)` 300 ms 后触发；interrupt 传播到 stream chunk 迭代位 |
+| Then | 同 §3.12（anchor 字串与 blocking 共用；reason 后缀会在 `model stream interrupted` / `model stream read cancelled` 两种中命中其一，SIT 不断言 reason 文本，只断言 anchor presence） |
+| PASS | 同 §3.12 |
+| FAIL | 同 §3.12 |
+| INCONCLUSIVE | 同 §3.12 |
+| 载体 | `Feat058Feat064CancelObservabilityTest.streamingCancelEmitsAnchorLogNoTimeout` |
+
+> **§3.7 vs §3.12/§3.13 的分工**：§3.7（弱层）通过 driver 侧 HTTP 3s abort 验 "caller 取消窗口内无 181008"，MUST#11 判定力归 UT；§3.12/§3.13（强层）通过 probe-agent 侧通道直接触发 model-layer cancel + 读 anchor 日志，是 MUST#11 cancel-observability output 的直接判据。两组互补，不替代。
+>
+> **跨 FEAT 归属澄清**：anchor 日志行是 FEAT-058 MUST#11 的可观测承诺；`USER_CANCELLED` 分类名是 FEAT-064 L2 §1.2.14 的分类集 M14 的成员。本两条 TC 验的是 anchor，主属 FEAT-058；SIT 测试类用 `@Tag("feat-058") @Tag("feat-064")` 双 Tag 承接。
+
 ---
 
 ## 4. 状态跟踪
@@ -268,6 +298,8 @@ related_docs:
 | TC-PER-CALL-IDLE-OVERRIDE | blocked_by_upstream | B1 + 需开发侧补 profile | 两件事：① B1 修复；② `s3-per-call` profile（demo 或 SIT yaml 二选一） |
 | TC-RANGE-VALIDATION | runnable | — | fixture 落地 + 临时 yaml 制造越界 |
 | TC-UNIFIED-STACK-COVERAGE | runnable | — | fixture 落地 + 跨 provider env 切换；API key 占位获取 |
+| **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |
+| **TC-CANCEL-OBS-S19** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S18 共 2/2）** |
 
 ### 已知阻塞 B1 跟踪
 

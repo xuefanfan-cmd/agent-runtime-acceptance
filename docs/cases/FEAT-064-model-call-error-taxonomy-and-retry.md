@@ -303,7 +303,7 @@ related_docs:
 
 ### 保留项（deferred，暂不构造）
 
-- **TC-USER-CANCELLED-\***（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5 cancellation）：待 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md）；UT-C10 / UT-R06 当前已承接 "CancellationException 恢复 + 不计熔断 + 不整次重试" 的内部断言。L1 本身在 UT 层已 ✅，SIT 延迟不阻塞特性合入。
+- **TC-USER-CANCELLED-\***（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5 cancellation）：**2026-10-27 升级为 landed**——FEAT-058 MUST#11 "cancel 可观察出口" 已通过 agent-core-java mr/437 #252 cancellation log anchor + probe-agent `CancelProbeController` 侧通道落地（develop-head m2），SIT TC 实体承接到 FEAT-058 cases §3.12 TC-CANCEL-OBS-S18 + §3.13 TC-CANCEL-OBS-S19（跨 FEAT 双 Tag `@Tag("feat-058") @Tag("feat-064")`）。ECS 2026-10-27 实测 2/2 PASS。本 FEAT-064 cases 不再独立新增 TC-USER-CANCELLED-\* 条目，USER_CANCELLED 分类的 wire 可观测承诺由 FEAT-058 §3.12/§3.13 覆盖；UT-C10 / UT-R06 继续承接 "CancellationException 恢复 + 不计熔断 + 不整次重试" 的内部断言。
 - **TC-CLASSIFIED-FAILURE-NOT-COUNTED**（L2 §1.2.16 熔断计数消费分类，**SHOULD**）：等 agent-core-java 平台开放 `ModelCircuitBreaker` 观测面（开发侧 2026-10-26 答复给出三选一方案：公开 `isOpen()`/`consecutiveFailures()` modifier / breaker 注入 Spring bean / Micrometer gauge；偏好方案 1）。平台 issue 落地后 TC 构造策略按 §1.2.16 原文——驱动若干次 QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 分类失败，断言 `state=CLOSED` + `failureCount=0`（RATE_LIMITED / TEMPORARY **计入**熔断，不是"不计入"的构造标的）；UT `ModelCircuitBreakerTest.onFailure` 当前承接。SHOULD 等级，SIT 延迟不阻塞特性合入。
 
 ### 已知设计偏差（不阻塞）

@@ -74,6 +74,13 @@ final class Feat058BlockedByUpstreamTest {
 
         Map<String, String> stubEnv = commonEnv();
         stubEnv.put("LLM_STUB_DEFAULT_MODE", "after-first-segment-idle");
+        // stub handleAfterFirstSegmentIdle 的 sleep 时长 = props.firstSegmentIdleMillis，
+        // application.yml 默认 20_000ms（远小于 probe s3 profile 的 stream-idle=300s）→
+        // stub 20s 就发完 "first"+"late" 自然完成，probe 永远不触发 timeout。
+        // 必须把 stub sleep 推到 >300s 才能让 probe 的 stream-idle 判据生效。
+        // 实证根因：2026-10-27 翻 @Disabled 跑一次 FAIL（wire 完整 "first"+"late"+answer），
+        // 对账 stub TieredTimeoutHandlers.java:163 定位到此。
+        stubEnv.put("LLM_STUB_FIRST_SEGMENT_MS", "310000");
         try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
                 .envAll(stubEnv)
                 .build()

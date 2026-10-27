@@ -374,15 +374,16 @@ final class Feat058RunnablePathTest {
         assumeFatJarsPresent();
 
         Map<String, String> probeEnvMap = baseProbeEnv();
-        // Push the out-of-range value as a top-level JVM property override so the
-        // probe-agent Spring binding fails early (the demo s0 profile uses the SDK
-        // default; we inject OJ_LLM_CONNECT_TIMEOUT=3s which the demo application.yml
-        // consumes as ${LLM_CONNECT_TIMEOUT:...} if wired, else the test is
-        // INCONCLUSIVE because the demo didn't expose a connect-timeout env.
-        probeEnvMap.put("LLM_CONNECT_TIMEOUT", "3s");
+        // 2026-10-27 修正：原本设环境变量 LLM_CONNECT_TIMEOUT=3s，但 s0 profile 的
+        // application.yml 没有读这个环境变量的绑定（只有 s1 profile 读），导致 probe-agent
+        // 用默认 10s 启动成功，判据"probe 应启动失败"失败。
+        // 改用启动参数直接覆盖 Spring 配置（跟 P3-2 修 negativeMaxRetriesFailsStartup 一个套路），
+        // 让 openjiuwen.service.llm.connect-timeout=3s 直接命中 LlmProperties，
+        // 构造 ModelClientConfig 时 SDK validate(3<5) 拒绝 → probe-agent 启动期 fail-fast。
         try (TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
                 .profile("s0")
                 .envAll(probeEnvMap)
+                .arg("--openjiuwen.service.llm.connect-timeout=3s")
                 .startupTimeout(Duration.ofSeconds(30))
                 .build()) {
             probe.startExpectingFailure();

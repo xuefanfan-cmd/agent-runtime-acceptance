@@ -272,7 +272,9 @@ public final class TimeoutProbeHttpClient {
             case "MODEL_CALL_RATE_LIMITED" -> "RATE_LIMITED";
             case "MODEL_CALL_AUTH_FAILED" -> "AUTH_FAILED";
             case "MODEL_CALL_QUOTA_EXCEEDED" -> "QUOTA_EXCEEDED";
-            case "MODEL_CALL_CONTEXT_LENGTH_EXCEEDED" -> "CONTEXT_LENGTH_EXCEEDED";
+            // 产品侧 StatusCode 枚举 context length 常量名**不带** _CALL_ 中段
+            // （L2 Feat-Func-064 §4.1 StatusCode 定义 line 542 原文）。
+            case "MODEL_CONTEXT_LENGTH_EXCEEDED" -> "CONTEXT_LENGTH_EXCEEDED";
             case "MODEL_CALL_USER_CANCELLED" -> "USER_CANCELLED";
             default -> null;
         };

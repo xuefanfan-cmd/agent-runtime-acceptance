@@ -151,6 +151,36 @@ public final class ErrorEnvelopeAsserter {
         return this;
     }
 
+    /**
+     * FEAT-064 wire-level stub call count assertion. Reads {@code GET /__stats}
+     * from the llm-stub-server side channel and asserts the hit count for the
+     * given mode equals {@code expected}. This disambiguates inner Retrier
+     * retries (which emit {@code "Model call will retry."} log lines) from
+     * outer Rail guardrail retries (which do NOT emit that log line but still
+     * issue a fresh wire call).
+     *
+     * <p>Example two-layer defaults for persistent RATE_LIMITED/TEMPORARY:
+     * {@code 6 stub calls / 4 retry logs} per {@code (2+1)×(1+1)=6}.
+     *
+     * @param stats stub-server stats client (bound to llm-stub-server base url)
+     * @param mode stub mode name as recorded in {@code /__stats}
+     *             (e.g. {@code rate-limited-persistent}, {@code server-5xx})
+     * @param expected expected hit count
+     */
+    public ErrorEnvelopeAsserter assertStubCallCount(StubStatsClient stats, String mode, int expected) {
+        int actual;
+        try {
+            actual = stats.callCount(mode);
+        } catch (Exception e) {
+            throw new AssertionError("Failed to read /__stats for mode=" + mode, e);
+        }
+        if (actual != expected) {
+            throw new AssertionError("Expected stub /__stats[" + mode + "]=" + expected
+                    + " but got " + actual);
+        }
+        return this;
+    }
+
     public ErrorEnvelopeAsserter assertPhase(TimeoutPhase expected) {
         String actual = response.detailsString("phase");
         if (actual == null) {

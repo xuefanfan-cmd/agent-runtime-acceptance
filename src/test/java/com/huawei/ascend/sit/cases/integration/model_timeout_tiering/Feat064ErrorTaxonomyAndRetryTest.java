@@ -5,6 +5,7 @@
 package com.huawei.ascend.sit.cases.integration.model_timeout_tiering;
 
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.ErrorEnvelopeAsserter;
+import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.StubStatsClient;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.SutLogTailer;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutDemoLauncher;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient;
@@ -42,6 +43,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>TC-CONTEXT-LENGTH-EXCEEDED (§3.6) — S12
  *   <li>TC-STREAM-ERROR-FRAME (§3.7) — S13
  *   <li>TC-DETAILS-CATEGORY-FIELD (§3.9) — aggregates 5 traces
+ *   <li>TC-SUCCESS-NO-INTERFERENCE (ST-R01, L1 §8.3) — stub {@code ok} happy path
+ *   <li>TC-STREAM-RECOVER-BEFORE-FIRST (ST-S01, L1 §8.3) — stub
+ *       {@code rate-limited-recover} first-segment boundary + stream data integrity
  * </ul>
  *
  * <p>All TCs use the demo {@code s0} profile (baseline — no three-layer timeout
@@ -71,10 +75,32 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     private static final int DEFAULT_MAX_RETRIES = 2;
 
     /**
+     * FEAT-064 default guardrail retries on {@code ClassifiedModelFailureRail}.
+     * Rail is unconditionally registered by {@code ReActAgent}; its default is
+     * 1. Rail does NOT consume {@code retryOnRateLimit}/{@code retryOnTemporary}
+     * switches — only {@code maxRetries>0}.
+     *
+     * <p>Two-layer math for persistent retryable classification under default
+     * config: {@code (DEFAULT_MAX_RETRIES+1) × (DEFAULT_GUARDRAIL_RETRIES+1)
+     *   = (2+1)×(1+1) = 6} stub calls.
+     *
+     * <p>Inner retry log count (emitted only by {@code ModelCallRetrier}, not
+     * Rail): {@code DEFAULT_MAX_RETRIES × (DEFAULT_GUARDRAIL_RETRIES+1) = 2×2 = 4}.
+     */
+    private static final int DEFAULT_GUARDRAIL_RETRIES = 1;
+
+    private static final int PERSISTENT_RETRYABLE_STUB_CALLS =
+            (DEFAULT_MAX_RETRIES + 1) * (DEFAULT_GUARDRAIL_RETRIES + 1);  // 6
+
+    private static final int PERSISTENT_RETRYABLE_RETRY_LOG_COUNT =
+            DEFAULT_MAX_RETRIES * (DEFAULT_GUARDRAIL_RETRIES + 1);        // 4
+
+    /**
      * TC-RATE-LIMITED-PERSISTENT (cases §3.1). stub mode
      * {@code rate-limited-persistent} returns 429 + {@code rate_limit_exceeded}
      * on every call. Expect: 181009 + {@code category=RATE_LIMITED} +
-     * exactly {@code DEFAULT_MAX_RETRIES} retry log lines.
+     * {@value PERSISTENT_RETRYABLE_RETRY_LOG_COUNT} retry log lines +
+     * {@value PERSISTENT_RETRYABLE_STUB_CALLS} stub calls (two-layer defaults).
      */
     @Test
     void rateLimitedPersistentExhaustsBudget() throws Exception {
@@ -84,7 +110,9 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_RATE_LIMITED)
-                    .assertRetryLogCount(trace.tailer, DEFAULT_MAX_RETRIES);
+                    .assertRetryLogCount(trace.tailer, PERSISTENT_RETRYABLE_RETRY_LOG_COUNT)
+                    .assertStubCallCount(trace.stats, "rate-limited-persistent",
+                            PERSISTENT_RETRYABLE_STUB_CALLS);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED);
@@ -95,7 +123,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
      * TC-RATE-LIMITED-RECOVER (cases §3.2). stub mode
      * {@code rate-limited-recover} returns 429 first, 200 afterwards
      * ({@code LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1}). Expect: HTTP 200 +
-     * {@code result_type=answer} + exactly 1 retry log line + no 181009.
+     * {@code result_type=answer} + exactly 1 retry log line + 2 stub calls
+     * (first 429 → retry → 200) + no 181009.
      */
     @Test
     void rateLimitedRecoverSucceedsAfterOneRetry() throws Exception {
@@ -114,9 +143,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .as("result_type for rate-limited-recover success")
                     .isEqualTo("answer");
 
-            // Exactly one retry (first 429 → retry → 200)
+            // Exactly one inner retry (first 429 → retry → 200), 2 stub calls
             new ErrorEnvelopeAsserter(trace.response)
-                    .assertRetryLogCount(trace.tailer, 1);
+                    .assertRetryLogCount(trace.tailer, 1)
+                    .assertStubCallCount(trace.stats, "rate-limited-recover", 2);
 
             // No classified error codes should have landed as terminal failures
             assertNoOtherClassifiedCodes(trace.tailer, -1);
@@ -127,7 +157,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
      * TC-QUOTA-EXCEEDED (cases §3.3). stub mode {@code quota-exceeded} returns
      * 402 + {@code insufficient_quota}. {@code PermanentModelError.defaultRecoverable=false}
      * → short-circuit, zero retries. Expect: 181010 + {@code category=QUOTA_EXCEEDED}
-     * + no retry log.
+     * + no retry log + 1 stub call (Rail gates permanent classification; neither
+     * Retrier nor Rail retries).
      */
     @Test
     void quotaExceededIsPermanentAndShortCircuits() throws Exception {
@@ -137,7 +168,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_QUOTA_EXCEEDED)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "quota-exceeded", 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED);
@@ -147,7 +179,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     /**
      * TC-AUTH-FAILED (cases §3.4). stub mode {@code auth-failed} returns 401 +
      * {@code invalid_api_key}. Expect: 181011 + {@code category=AUTH_FAILED}
-     * + no retry log.
+     * + no retry log + 1 stub call (permanent short-circuit).
      */
     @Test
     void authFailedIsPermanentAndShortCircuits() throws Exception {
@@ -157,7 +189,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "auth-failed", 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED);
@@ -167,11 +200,13 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     /**
      * TC-TEMPORARY-EXHAUSTED (cases §3.5). stub mode {@code server-5xx} returns
      * 500 + {@code server_error} on every call. Expect: 181001 +
-     * {@code category=TEMPORARY} + exactly 2 retry log lines (proves TEMPORARY
-     * walks the retry path AND default maxRetries is 2 after FEAT-064 !420).
+     * {@code category=TEMPORARY} + {@value PERSISTENT_RETRYABLE_RETRY_LOG_COUNT}
+     * retry log lines + {@value PERSISTENT_RETRYABLE_STUB_CALLS} stub calls
+     * (two-layer defaults — proves TEMPORARY walks the retry path AND default
+     * {@code maxRetries} is 2 after FEAT-064 !420).
      *
-     * <p>Dual-purpose TC — see cases §3.5 note. The {@code "恰 2 次"} assertion
-     * is load-bearing for both M5 and M9.
+     * <p>Dual-purpose TC — see cases §3.5 note. The retry-log + stub-call pair
+     * is load-bearing for both §1.2.6 and §1.2.9.
      */
     @Test
     void temporaryExhaustsAtDefaultMaxRetriesTwo() throws Exception {
@@ -181,7 +216,9 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_TEMPORARY)
-                    .assertRetryLogCount(trace.tailer, DEFAULT_MAX_RETRIES);
+                    .assertRetryLogCount(trace.tailer, PERSISTENT_RETRYABLE_RETRY_LOG_COUNT)
+                    .assertStubCallCount(trace.stats, "server-5xx",
+                            PERSISTENT_RETRYABLE_STUB_CALLS);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -194,7 +231,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     /**
      * TC-CONTEXT-LENGTH-EXCEEDED (cases §3.6). stub mode
      * {@code context-length-exceeded} returns 400 + {@code code=context_length_exceeded}.
-     * Expect: 181012 + {@code category=CONTEXT_LENGTH_EXCEEDED} + no retry log.
+     * Expect: 181012 + {@code category=CONTEXT_LENGTH_EXCEEDED} + no retry log
+     * + 1 stub call (permanent short-circuit).
      */
     @Test
     void contextLengthExceededIsPermanentAndShortCircuits() throws Exception {
@@ -204,7 +242,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "context-length-exceeded", 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED);
@@ -214,8 +253,9 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     /**
      * TC-STREAM-ERROR-FRAME (cases §3.7). stub mode {@code stream-error-frame}
      * emits SSE first segment OK, then an error frame. {@code FirstSegmentRetryIterator}
-     * must NOT whole-call retry after first segment. Expect: 181001 + zero
-     * retry log lines.
+     * must NOT whole-call retry after first segment; Rail is also bypassed by
+     * the first-segment boundary. Expect: 181001 + zero retry log lines + 1
+     * stub call.
      */
     @Test
     void streamErrorFrameDoesNotTriggerWholeCallRetry() throws Exception {
@@ -224,7 +264,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
         try (QueryTrace trace = runStubbed("stream-error-frame")) {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "stream-error-frame", 1);
 
             assertThat(trace.tailer.totalTimeoutCount())
                     .as("stream-error-frame must not emit any 181008")
@@ -274,6 +315,90 @@ final class Feat064ErrorTaxonomyAndRetryTest {
         }
     }
 
+    /**
+     * TC-SUCCESS-NO-INTERFERENCE (L1 §8.3 ST-R01). stub mode {@code ok} returns
+     * HTTP 200 + an SSE answer stream with a real completion body. Baseline
+     * regression check that FEAT-064 taxonomy + Rail wiring does not interfere
+     * with the happy path: expect HTTP 200 + {@code result_type=answer} + non-empty
+     * {@code output} + zero retry log lines + exactly 1 stub call + no classified
+     * error codes in the SUT log.
+     *
+     * <p>This TC is cheap (sub-second) and the only green-path anchor in the
+     * class — it fails loudly if a future FEAT-064 code change accidentally
+     * injects an error landing into the success surface.
+     */
+    @Test
+    void successPathIsNotInterferedWith() throws Exception {
+        assumeFatJarsPresent();
+
+        try (QueryTrace trace = runStubbed("ok")) {
+            assertThat(trace.response.statusCode())
+                    .as("HTTP status for ok success")
+                    .isEqualTo(200);
+            assertThat(trace.response.resultType())
+                    .as("result_type for ok success")
+                    .isEqualTo("answer");
+            assertThat(trace.response.output())
+                    .as("output for ok success must be non-empty")
+                    .isNotNull()
+                    .isNotBlank();
+
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "ok", 1);
+
+            assertNoOtherClassifiedCodes(trace.tailer, -1);
+            assertThat(trace.tailer.totalTimeoutCount())
+                    .as("ok success must not emit any 181008")
+                    .isZero();
+        }
+    }
+
+    /**
+     * TC-STREAM-RECOVER-BEFORE-FIRST (L1 §8.3 ST-S01). stub mode
+     * {@code rate-limited-recover} emits HTTP 429 on first attempt (before any
+     * SSE segment lands) then HTTP 200 with full SSE answer stream on retry.
+     * This exercises the first-segment boundary: {@code FirstSegmentRetryIterator}
+     * MAY whole-call retry before the first segment lands, and the recovered
+     * answer must flow through unmodified.
+     *
+     * <p>Differs from {@link #rateLimitedRecoverSucceedsAfterOneRetry()} in
+     * anchor + emphasis: that TC pins the §3.2 M-series retry-count contract
+     * ({@code 2 stub calls / 1 retry log}); this TC pins the L1 §8.3 ST-series
+     * stream-data-integrity contract (end-to-end {@code result_type=answer} +
+     * non-empty {@code output} after recover). The two share stub config but
+     * assert different acceptance surfaces — both are kept so a change to only
+     * one surface still fails the right test.
+     */
+    @Test
+    void streamRecoverBeforeFirstSegmentPreservesAnswer() throws Exception {
+        assumeFatJarsPresent();
+
+        Map<String, String> stubExtra = new LinkedHashMap<>();
+        stubExtra.put("LLM_STUB_RATE_LIMITED_RECOVER_AFTER", "1");
+        stubExtra.put("LLM_STUB_RATE_LIMITED_RETRY_AFTER_SECONDS", "1");
+
+        try (QueryTrace trace = runStubbed("rate-limited-recover", stubExtra)) {
+            assertThat(trace.response.statusCode())
+                    .as("HTTP status after first-segment-boundary recover")
+                    .isEqualTo(200);
+            assertThat(trace.response.resultType())
+                    .as("result_type after recover")
+                    .isEqualTo("answer");
+            assertThat(trace.response.output())
+                    .as("output after recover must survive the retry transition")
+                    .isNotNull()
+                    .isNotBlank();
+
+            // At least 1 retry fired (exact count pinned by §3.2 sibling TC).
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertRetryLogCount(trace.tailer, 1)
+                    .assertStubCallCount(trace.stats, "rate-limited-recover", 2);
+
+            assertNoOtherClassifiedCodes(trace.tailer, -1);
+        }
+    }
+
     // ---------------- helpers ----------------
 
     private QueryTrace runStubbed(String stubMode) throws Exception {
@@ -299,7 +424,8 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             QueryResponse resp = new TimeoutProbeHttpClient(probe.baseUrl())
                     .query(PROMPT, DEFAULT_INVOKE_TIMEOUT);
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
-            return new QueryTrace(stub, probe, resp, tailer);
+            StubStatsClient stats = new StubStatsClient(stub.baseUrl());
+            return new QueryTrace(stub, probe, resp, tailer, stats);
         } catch (Exception | Error e) {
             if (probe != null) {
                 probe.close();
@@ -380,13 +506,15 @@ final class Feat064ErrorTaxonomyAndRetryTest {
         final TimeoutDemoLauncher probe;
         final QueryResponse response;
         final SutLogTailer tailer;
+        final StubStatsClient stats;
 
         QueryTrace(TimeoutDemoLauncher stub, TimeoutDemoLauncher probe,
-                   QueryResponse response, SutLogTailer tailer) {
+                   QueryResponse response, SutLogTailer tailer, StubStatsClient stats) {
             this.stub = stub;
             this.probe = probe;
             this.response = response;
             this.tailer = tailer;
+            this.stats = stats;
         }
 
         @Override

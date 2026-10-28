@@ -5,6 +5,7 @@
 package com.huawei.ascend.sit.cases.integration.model_timeout_tiering;
 
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.ErrorEnvelopeAsserter;
+import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.StubStatsClient;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.SutLogTailer;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutDemoLauncher;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient;
@@ -73,14 +74,23 @@ final class Feat064RetryConfigAndCrossProviderTest {
     /**
      * TC-RATE-LIMITED-SWITCH-OFF (cases §3.10). s14 profile sets
      * {@code demo.timeout-probe.retry-on-rate-limited: false} → bypass retry
-     * loop for RATE_LIMITED. stub mode {@code rate-limited-persistent}
-     * returns 429 persistently. Expect 181009 landing + zero retry-log lines.
+     * loop for RATE_LIMITED in {@code ModelCallRetrier}. stub mode
+     * {@code rate-limited-persistent} returns 429 persistently. Expect 181009
+     * landing + zero retry-log lines.
      *
      * <p>Does NOT assert {@code details.category} string per cases §3.10 note:
      * platform's {@code "Model call will retry."} log line (which carries the
      * category field) does not fire when the switch is OFF, so the category
      * substring is co-absent with the retry log. Status-code 181009 ↔
      * RATE_LIMITED 1:1 mapping is already pinned by R6 state-code rule.
+     *
+     * <p><b>Pending dev decision 2026-10-28 (see memory
+     * {@code feat-064-rail-switch-off-still-retries-pending-dev}):</b>
+     * {@code ClassifiedModelFailureRail} 不消费 {@code retry-on-rate-limited}
+     * 开关，所以在 Retrier 内层关闭的情况下，Rail 仍可能按分类规则整轮重试 1 次
+     * （DEFAULT_MAX_GUARDRAIL_RETRIES=1）。本轮暂不断言 stub 调用数，等开发裁定
+     * "开关 OFF 时 Rail 是否也应短路" 之后再补 {@code assertStubCallCount}
+     * （若按设计则 2 次；若认同是缺陷则改为 1 次 + 开 bug）。
      */
     @Test
     void rateLimitedSwitchOffBypassesRetry() throws Exception {
@@ -99,10 +109,17 @@ final class Feat064RetryConfigAndCrossProviderTest {
     /**
      * TC-TEMPORARY-SWITCH-OFF (cases §3.11). s15 profile sets
      * {@code demo.timeout-probe.retry-on-temporary: false} → bypass retry
-     * loop for TEMPORARY. stub mode {@code server-5xx} returns 500
-     * persistently. Expect 181001 landing + zero retry-log lines.
+     * loop for TEMPORARY in {@code ModelCallRetrier}. stub mode
+     * {@code server-5xx} returns 500 persistently. Expect 181001 landing +
+     * zero retry-log lines.
      *
      * <p>Same no-category-assertion caveat as TC-RATE-LIMITED-SWITCH-OFF.
+     *
+     * <p><b>Pending dev decision 2026-10-28 (see memory
+     * {@code feat-064-rail-switch-off-still-retries-pending-dev}):</b>
+     * {@code ClassifiedModelFailureRail} 不消费 {@code retry-on-temporary}
+     * 开关，所以在 Retrier 内层关闭的情况下，Rail 仍可能按分类规则整轮重试 1 次。
+     * 本轮暂不断言 stub 调用数，等开发裁定后再补 {@code assertStubCallCount}。
      */
     @Test
     void temporarySwitchOffBypassesRetry() throws Exception {
@@ -125,8 +142,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
      * TC-MAX-RETRIES-ZERO-NO-RETRY (cases §3.12). s16 profile sets
      * {@code demo.timeout-probe.max-retries-override: 0} → close the retry
      * budget (L2 §2.3 原文: {@code maxRetries=0} 等价于关闭全部自动重试).
-     * stub mode {@code server-5xx}. Expect 181001 landing + {@code max_retries=0}
-     * field in log + zero retry-log lines (first failure is terminal).
+     * stub mode {@code server-5xx}. Expect 181001 landing +
+     * {@code max_retries=0} field in log + zero retry-log lines + exactly 1
+     * stub call ({@code ClassifiedModelFailureRail} only fires when
+     * {@code maxRetries>0}, so Rail also honors maxRetries=0 as全路关闭).
      */
     @Test
     void maxRetriesZeroShutsDownRetryBudget() throws Exception {
@@ -135,7 +154,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
         try (QueryTrace trace = runStubbed("server-5xx", "s16", Map.of())) {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "server-5xx", 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -154,9 +174,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
      * mode with env {@code LLM_STUB_RESPONSE_SCHEMA=dashscope} → emits a
      * DashScope-style 401 body ({@code {"code":"InvalidApiKey",...}}) instead
      * of the OpenAI schema. Expect 181011 + {@code category=AUTH_FAILED}
-     * + zero retry-log lines — proving the classifier hookpoint does not
-     * swallow the status code on a foreign schema body (L2 §1.2.1 挂点覆盖
-     * requirement; R6 state-code rule is schema-agnostic by design).
+     * + zero retry-log lines + exactly 1 stub call (AUTH_FAILED is permanent
+     * → both Retrier and Rail short-circuit).
      */
     @Test
     void crossProviderSchemaHookpointCoverage() throws Exception {
@@ -169,7 +188,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "auth-failed", 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED);
@@ -198,7 +218,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
             QueryResponse resp = new TimeoutProbeHttpClient(probe.baseUrl())
                     .query(PROMPT, DEFAULT_INVOKE_TIMEOUT);
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
-            return new QueryTrace(stub, probe, resp, tailer);
+            StubStatsClient stats = new StubStatsClient(stub.baseUrl());
+            return new QueryTrace(stub, probe, resp, tailer, stats);
         } catch (Exception | Error e) {
             if (probe != null) {
                 probe.close();
@@ -285,13 +306,15 @@ final class Feat064RetryConfigAndCrossProviderTest {
         final TimeoutDemoLauncher probe;
         final QueryResponse response;
         final SutLogTailer tailer;
+        final StubStatsClient stats;
 
         QueryTrace(TimeoutDemoLauncher stub, TimeoutDemoLauncher probe,
-                   QueryResponse response, SutLogTailer tailer) {
+                   QueryResponse response, SutLogTailer tailer, StubStatsClient stats) {
             this.stub = stub;
             this.probe = probe;
             this.response = response;
             this.tailer = tailer;
+            this.stats = stats;
         }
 
         @Override

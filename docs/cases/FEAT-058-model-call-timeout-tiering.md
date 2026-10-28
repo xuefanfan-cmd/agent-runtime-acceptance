@@ -287,19 +287,30 @@ related_docs:
 
 | TC | 当前状态 | 阻塞 | 待办 |
 |---|---|---|---|
-| TC-DEFAULT-BASELINE | runnable | — | fixture 落地 + 实现 |
-| TC-CONNECT-TIMEOUT | runnable | — | fixture 落地 + 实现 + 预检 TEST-NET-1 可达性 |
-| TC-HEADER-WAIT-LEGACY | runnable | — | fixture 落地 + 实现 |
+| TC-DEFAULT-BASELINE | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（Feat058RunnablePathTest, 6.57s） |
+| TC-CONNECT-TIMEOUT | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（39.14s）—— 新 jar PR!242+PR!442+PR!449 修 #260 + wire 结构化 failure 后，#260 EOF 清零；BEFORE_CONNECT + connect 5s 转绿 |
+| TC-HEADER-WAIT-LEGACY | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（68.75s）—— 同上，BEFORE_FIRST_SEGMENT + header_wait 8s 转绿 |
 | TC-AFTER-FIRST-SEGMENT-IDLE | **wire-eof-rooted-in-mvc-bug** | 共用 bf19b76/5bae22e | ✅ 2026-10-27 fixture 全修完（/v1 后缀 fc15b30 + stub FIRST_SEGMENT_MS=310000 36ef7da），300s stream_idle 真触发 + ModelCallRetrier 两层重试共 10 分钟 → wire EOF；跟 FEAT-064 对象路径同根，等开发侧 QueryMvcExceptionHandler 修复 |
 | TC-NO-TOTAL-CAP-STREAM | **landed PASS** | — | ✅ 2026-10-27 /v1 后缀 fc15b30 修完 ECS 实证 PASS（96.99s，MUST#4 契约 wire 可观察性验证通过）|
-| TC-BLOCKING-SAME-SEMANTICS | runnable | — | fixture 落地 + 实现 |
-| TC-CANCEL-NOT-TIMEOUT | runnable | — | fixture 落地 + driver 侧 `HttpRequest.timeout(3s)` 支持 |
-| TC-ERROR-DETAILS-PAYLOAD | runnable | — | 依赖 3 条前置 TC 完成 |
+| TC-BLOCKING-SAME-SEMANTICS | **blocked_by_contract_ambiguity (MUST#9)** | 等 MUST#9 窄义/广义裁定 | 2026-10-28 ECS 复跑仍 FAIL（72.01s）；跟开发侧 2026-10-27 `SIT-CLARIFY-REPLY-must9-ambiguity-s5-fail.md` 既存条文歧义同根。stub mode `idle-silent-blocking` 发 status 200 不发 body → probe 认为 header 阶段已过（窄义），不触发 header_wait=8s；栈：`ClassifiedModelErrors.toCancellation` 由 60s driver timeout 的 shutdown hook 触发（CancellationException，非 ModelError），全程无 wire body |
+| TC-CANCEL-NOT-TIMEOUT | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（69.01s，弱层判据） |
+| TC-ERROR-DETAILS-PAYLOAD | **blocked_by_contract_ambiguity (MUST#9)** | 等 MUST#9 窄义/广义裁定 | 2026-10-28 ECS 复跑仍 FAIL（179.57s）；3 段 trace 里 s1 段 + s2 段 PASS asserter，**s5 段 FAIL** 跟 TC-BLOCKING-SAME-SEMANTICS 同根；MUST#9 裁定后一起恢复 |
 | TC-PER-CALL-IDLE-OVERRIDE | blocked_by_demo | 需 demo s3-per-call profile + per-call HTTP 入口 | B1 已 RETRACTED（2026-10-23 HANDOFF 归因到 JDK 24+ 环境），当前仅等 demo 侧补 per-call 入口（见 §3.9） |
-| TC-RANGE-VALIDATION | runnable | — | fixture 落地 + 临时 yaml 制造越界 |
-| TC-UNIFIED-STACK-COVERAGE | runnable | — | fixture 落地 + 跨 provider env 切换；API key 占位获取 |
+| TC-RANGE-VALIDATION | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（2.72s）；异常栈改层：从 agent-core-java `ModelClientConfig$Builder.build` 下沉到 agent-service-app `LlmConfigResolver.validateTimeoutTiering:222`，错误消息改为 `openjiuwen.service.llm.connect-timeout must be between 5 and 15 seconds`；TC `containsAnyOf("ModelClientConfig","connect","range","must be between")` 判据 "connect" + "must be between" 覆盖新消息 → PASS 不受影响 |
+| TC-UNIFIED-STACK-COVERAGE | **blocked_by_contract_ambiguity (provider 枚举)** | 等 provider 枚举契约裁定 | 2026-10-28 ECS 复跑 ERROR（74.57s）—— iter2 `LLM_PROVIDER=OpenAiCompatible` fail-fast with `[181000] model provider is invalid`。agent-core-java-0.1.17 `ProviderType` enum 已把 `OPEN_AI_COMPATIBLE` 改为 `OPEN_ROUTER`（外部字符串 "OpenAiCompatible" → "OpenRouter"），但 demo README 10-27 + 本地 cases §3.11 仍写 "OpenAiCompatible"（三源不自洽）；observation 已推 docsReview：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`），请开发侧裁定路径 A/B/C（见 observation §三）|
 | **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |
 | **TC-CANCEL-OBS-S19** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S18 共 2/2）** |
+
+### 2026-10-28 全盘复跑小结（Feat058RunnablePathTest 8 TC + Feat058Feat064CancelObservabilityTest 2 TC + Feat058BlockedByUpstreamTest 3 TC）
+
+- **使用 jar**：develop-head PR!242 + PR!442 + PR!449 bundle（agent-core-java-0.1.17）
+- **Feat058RunnablePathTest 8 TC**：**5 PASS**（defaultBaseline / connectLayer / headerWait / callerCancel / rangeValidation）+ **2 FAIL**（blockingPath / errorDetailsPayload — 均 MUST#9 既存问题）+ **1 ERROR**（unifiedStackCoverage — provider 枚举改名）
+- **S18/S19**：2026-10-27 PASS，本次未重跑
+- **BlockedByUpstream 3 TC**：S9 skipped（等 demo），S3 wire-EOF（见上表），S4 PASS
+- **已推 docsReview observation**：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e575cb3ecaa6a9982a80c952a62316`）
+- **等开发侧裁定**：
+  1. MUST#9 条文歧义窄义/广义（S5 + errorDetails）—— 已推送 `SIT-CLARIFY-REPLY-must9-ambiguity-s5-fail.md` 10-22 既存
+  2. provider 枚举改名 A/B/C 路径（unifiedStack）—— 今日推送
 
 ### 已知阻塞 B1 跟踪
 

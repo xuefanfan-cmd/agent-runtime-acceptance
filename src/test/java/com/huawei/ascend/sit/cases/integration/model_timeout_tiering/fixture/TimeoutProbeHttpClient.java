@@ -234,18 +234,54 @@ public final class TimeoutProbeHttpClient {
             if (root.has("result_type") && !root.get("result_type").isNull()) {
                 resultType = root.get("result_type").asText();
             }
+            // 新 wire schema 支持 (对称 parseSse 的升级)：
+            //   {"type":"error", "error":"...", "failure":{"code":"MODEL_CALL_...",
+            //    "numericCode":18100N, "isRetryable":true/false}}
+            // 单 JSON 场景可能是 S5 blocking 路径——wire body 结构同新 schema。
+            // 对齐开发侧 2026-10-27 DEV-REPLY-sse-structured-error-wire-break §五 "SIT 侧
+            // parseSse 升级为路线 1"（本处把路线 1 对称补到 parseSingleJson）。
+            JsonNode p = root;
+            if (root.has("payload") && root.get("payload").isObject()) {
+                p = root.get("payload");
+            }
+            if (p.has("failure") && p.get("failure").isObject()) {
+                JsonNode failure = p.get("failure");
+                if (errorStatusCode == null && failure.has("numericCode")
+                        && failure.get("numericCode").isNumber()) {
+                    errorStatusCode = failure.get("numericCode").asInt();
+                }
+                if (errorDetails == null) {
+                    Map<String, Object> details = MAPPER.convertValue(
+                            failure, new TypeReference<>() {});
+                    if (failure.has("code") && failure.get("code").isTextual()) {
+                        String category = mapFailureCodeToCategory(failure.get("code").asText());
+                        if (category != null) {
+                            details.put("category", category);
+                        }
+                    }
+                    if (p.has("error") && p.get("error").isTextual()) {
+                        enrichDetailsFromErrorText(p.get("error").asText(), details);
+                    }
+                    errorDetails = details;
+                }
+            }
+            // 保留老 schema 兼容 fallback (旧 wire 的 error.status_code / error.details)
             JsonNode errorNode = root.get("error");
             if (errorNode == null || errorNode.isNull()) {
                 errorNode = root;
             }
-            if (errorNode.has("status_code") && errorNode.get("status_code").isNumber()) {
-                errorStatusCode = errorNode.get("status_code").asInt();
-            } else if (errorNode.has("code") && errorNode.get("code").isNumber()) {
-                errorStatusCode = errorNode.get("code").asInt();
-            }
-            JsonNode detailsNode = errorNode.get("details");
-            if (detailsNode != null && detailsNode.isObject()) {
-                errorDetails = MAPPER.convertValue(detailsNode, new TypeReference<>() {});
+            if (errorNode.isObject()) {
+                if (errorStatusCode == null && errorNode.has("status_code")
+                        && errorNode.get("status_code").isNumber()) {
+                    errorStatusCode = errorNode.get("status_code").asInt();
+                } else if (errorStatusCode == null && errorNode.has("code")
+                        && errorNode.get("code").isNumber()) {
+                    errorStatusCode = errorNode.get("code").asInt();
+                }
+                JsonNode detailsNode = errorNode.get("details");
+                if (errorDetails == null && detailsNode != null && detailsNode.isObject()) {
+                    errorDetails = MAPPER.convertValue(detailsNode, new TypeReference<>() {});
+                }
             }
             parsed = MAPPER.convertValue(root, new TypeReference<>() {});
         } catch (Exception notJson) {

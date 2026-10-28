@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * HTTP client for the FEAT-058 timeout-tiering-model-call-demo
@@ -178,6 +180,13 @@ public final class TimeoutProbeHttpClient {
                             details.put("category", category);
                         }
                     }
+                    // 从 payload.error 文本正则抽 phase/timeout_seconds/layer/stream 四字段
+                    // (开发侧 Reply §四 3 建议路径 — 这四字段 wire 面不透传，SIT 走 regex 过渡抽)。
+                    // 对齐 Feat058 用例的 assertPhase / assertLayer / assertTimeoutSeconds /
+                    // assertStream / assertAllFourFieldsPresent 判据。
+                    if (p.has("error") && p.get("error").isTextual()) {
+                        enrichDetailsFromErrorText(p.get("error").asText(), details);
+                    }
                     errorDetails = details;
                 }
             }
@@ -253,17 +262,6 @@ public final class TimeoutProbeHttpClient {
     /**
      * 把新 wire schema 的 {@code failure.code}（如 "MODEL_CALL_FAILED"）映射回老判据
      * 预期的 {@code category} 字段（如 "TEMPORARY"）。
-     *
-     * <p>对齐 FEAT-064 分类集 M14（RATE_LIMITED / QUOTA_EXCEEDED / AUTH_FAILED /
-     * TEMPORARY / CONTEXT_LENGTH_EXCEEDED / USER_CANCELLED）。
-     *
-     * <p>注意：{@code MODEL_CALL_FAILED} 对应 {@code TEMPORARY} 分类（181001 =
-     * 一般临时故障错误码）。
-     *
-     * @param failureCode 新 wire schema 的 failure.code 字符串
-     * @return 对应的老 category 枚举字符串；未知 code 返回 null
-     */
-    private static String mapFailureCodeToCategory(String failureCode) {
         if (failureCode == null) {
             return null;
         }
@@ -275,9 +273,61 @@ public final class TimeoutProbeHttpClient {
             // 产品侧 StatusCode 枚举 context length 常量名**不带** _CALL_ 中段
             // （L2 Feat-Func-064 §4.1 StatusCode 定义 line 542 原文）。
             case "MODEL_CONTEXT_LENGTH_EXCEEDED" -> "CONTEXT_LENGTH_EXCEEDED";
+            case "MODEL_CALL_TIMEOUT" -> "TEMPORARY";
             case "MODEL_CALL_USER_CANCELLED" -> "USER_CANCELLED";
             default -> null;
         };
+    }
+
+    private static final Pattern PHASE_PATTERN =
+            Pattern.compile("timeout at (BEFORE_CONNECT|BEFORE_FIRST_SEGMENT|AFTER_FIRST_SEGMENT)");
+    private static final Pattern TIMEOUT_SECONDS_PATTERN =
+            Pattern.compile("effective timeout (\\d+(?:\\.\\d+)?)s");
+    private static final Pattern LAYER_PATTERN =
+            Pattern.compile("reason: (connect|header_wait|stream_idle) timeout");
+
+    /**
+     * 从 wire body 的 error 文本（如 "ModelError: model call timeout at BEFORE_CONNECT,
+     * effective timeout 5.0s, reason: connect timeout after 5.0s"）用正则抽
+     * phase / timeout_seconds / layer / stream 四个字段，补进 details map。
+     *
+     * <p>开发侧 2026-10-22 Reply §二 1 明说 "details 子对象不穿透 HTTP body"，§四 3
+     * 建议 SIT 走 output.reason regex 过渡抽取——本方法实现该路径。
+     *
+     * <p>stream 字段从 phase 推：BEFORE_CONNECT=false（连接阶段还没有流），
+     * BEFORE_FIRST_SEGMENT=true、AFTER_FIRST_SEGMENT=true（都已进入流式阶段）。
+     *
+     * <p>只在 details map 还没有这些字段时才补；structured failure 已经透传的字段不覆盖。
+     *
+     * @param errText error 文本（可能为 null 或空）
+     * @param details 现有 details map（可写）
+     */
+    private static void enrichDetailsFromErrorText(String errText, Map<String, Object> details) {
+        if (errText == null || errText.isEmpty() || details == null) {
+            return;
+        }
+        if (!details.containsKey("phase")) {
+            Matcher m = PHASE_PATTERN.matcher(errText);
+            if (m.find()) {
+                String phase = m.group(1);
+                details.put("phase", phase);
+                if (!details.containsKey("stream")) {
+                    details.put("stream", !"BEFORE_CONNECT".equals(phase));
+                }
+            }
+        }
+        if (!details.containsKey("timeout_seconds")) {
+            Matcher m = TIMEOUT_SECONDS_PATTERN.matcher(errText);
+            if (m.find()) {
+                details.put("timeout_seconds", Double.parseDouble(m.group(1)));
+            }
+        }
+        if (!details.containsKey("layer")) {
+            Matcher m = LAYER_PATTERN.matcher(errText);
+            if (m.find()) {
+                details.put("layer", m.group(1));
+            }
+        }
     }
 
     public record QueryResponse(

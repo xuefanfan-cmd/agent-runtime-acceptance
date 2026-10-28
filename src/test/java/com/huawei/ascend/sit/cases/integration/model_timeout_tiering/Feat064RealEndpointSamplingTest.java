@@ -140,7 +140,10 @@ final class Feat064RealEndpointSamplingTest {
             new ErrorEnvelopeAsserter(resp)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED)
-                    .assertNoRetryLog(tailer);
+                    .assertNoRetryLog(tailer)
+                    .assertTerminalLogCategory(tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED,
+                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
         }
     }
 
@@ -187,7 +190,10 @@ final class Feat064RealEndpointSamplingTest {
 
             new ErrorEnvelopeAsserter(resp)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED)
-                    .assertNoRetryLog(tailer);
+                    .assertNoRetryLog(tailer)
+                    .assertTerminalLogCategory(tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED,
+                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
         }
     }
 

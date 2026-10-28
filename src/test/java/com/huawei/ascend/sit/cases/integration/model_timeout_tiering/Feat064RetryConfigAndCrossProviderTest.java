@@ -202,24 +202,33 @@ final class Feat064RetryConfigAndCrossProviderTest {
     }
 
     /**
-     * TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK (cases §3.21, ST-O01). Runs the stub
-     * {@code auth-failed} mode twice from the same stub process: once with the
-     * default {@code LLM_PROVIDER=OpenAI} probe env (first pass), then with
-     * {@code LLM_PROVIDER=DeepSeek} overriding the probe env (second pass).
+     * TC-CROSS-FAMILY-OPENAI-VS-SILICONFLOW (cases §3.21, ST-O01 — r6 订正
+     * DeepSeek→SiliconFlow). Runs the stub {@code auth-failed} mode twice from
+     * the same stub process: once with the default {@code LLM_PROVIDER=OpenAI}
+     * probe env (first pass), then with {@code LLM_PROVIDER=SiliconFlow}
+     * overriding the probe env (second pass).
      *
-     * <p>DeepSeek is a {@code BaseModelClient} subclass (independent from
-     * {@code OpenAIModelClient}) that happens to speak OpenAI-compatible wire —
-     * the stub serves it unchanged. DashScope / IntelliRouter use their own
-     * Transport stacks and are NOT compatible with the stub (2026-10-28 dev
-     * confirmation).
+     * <p>r6 订正: SiliconFlow is the true second family — {@code
+     * SiliconFlowModelClient} brings its own {@code Retrier} +
+     * {@code FirstSegmentRetryIterator} + {@code SseIterator} + independent
+     * error handlers (full-stack separation). DeepSeek was ruled out at r6
+     * review: {@code DeepSeekModelClient.openAiDelegate()} reflectively creates
+     * a {@code OpenAIModelClient} instance and delegates all calls to it, so
+     * DeepSeek is NOT an independent stack and does not prove classifier
+     * schema-agnosticism across two families.
+     *
+     * <p>SiliconFlow speaks OpenAI-compatible wire — llm-stub-server serves
+     * it unchanged. DashScope / IntelliRouter use their own Transport stacks
+     * and are NOT compatible with the stub.
      *
      * <p>Expect both passes classify to {@code 181011} + stub==1 on each pass
      * → the classifier is schema-agnostic across OpenAI-wire-compatible
-     * provider families. Each pass uses its own stub subprocess so
-     * {@code /__stats} reads are isolated (no reset dance needed).
+     * provider families with independent client stacks. Each pass uses its own
+     * stub subprocess so {@code /__stats} reads are isolated (no reset dance
+     * needed).
      */
     @Test
-    void crossFamilyOpenAIAndDeepSeekClassifyAuthFailureIdentically() throws Exception {
+    void crossFamilyOpenAIAndSiliconFlowClassifyAuthFailureIdentically() throws Exception {
         assumeFatJarsPresent();
 
         // Pass 1: default OpenAI family.
@@ -230,9 +239,9 @@ final class Feat064RetryConfigAndCrossProviderTest {
                     .assertStubCallCount(trace.stats, "auth-failed", 1);
         }
 
-        // Pass 2: DeepSeek family — probe env override LLM_PROVIDER=DeepSeek.
+        // Pass 2: SiliconFlow family — probe env override LLM_PROVIDER=SiliconFlow.
         Map<String, String> probeOverride = new LinkedHashMap<>();
-        probeOverride.put("LLM_PROVIDER", "DeepSeek");
+        probeOverride.put("LLM_PROVIDER", "SiliconFlow");
         try (QueryTrace trace = runStubbedWithProbeOverride(
                 "auth-failed", "s0", Map.of(), probeOverride)) {
             new ErrorEnvelopeAsserter(trace.response)
@@ -252,8 +261,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
     /**
      * Variant that layers {@code probeEnvOverride} on top of the baseline
      * {@link #probeEnv(TimeoutDemoLauncher)} map — used by ST-O01 to flip
-     * {@code LLM_PROVIDER=DeepSeek} on the second pass. Keys in the override
-     * win over the baseline.
+     * {@code LLM_PROVIDER=SiliconFlow} on the second pass. Keys in the
+     * override win over the baseline.
      */
     private QueryTrace runStubbedWithProbeOverride(String stubMode, String probeProfile,
                                                    Map<String, String> stubExtraEnv,

@@ -53,6 +53,16 @@ public final class ErrorEnvelopeAsserter {
     public static final String CATEGORY_TEMPORARY = "TEMPORARY";
     public static final String CATEGORY_CONTEXT_LENGTH_EXCEEDED = "CONTEXT_LENGTH_EXCEEDED";
 
+    /**
+     * FEAT-064 r6: {@code reason} enum values on T3 terminal log — landed via
+     * agent-core-java PR!449 (2026-10-27). Shape of T3 line:
+     * {@code "Model call failed. {category=<CAT>, reason=<REASON>}"}.
+     */
+    public static final String REASON_PERMANENT_ERROR = "PERMANENT_ERROR";
+    public static final String REASON_RETRY_BUDGET_EXHAUSTED = "RETRY_BUDGET_EXHAUSTED";
+    public static final String REASON_RETRY_DISABLED_BY_SWITCH = "RETRY_DISABLED_BY_SWITCH";
+    public static final String REASON_RETRY_BUDGET_ZERO = "RETRY_BUDGET_ZERO";
+
     private final QueryResponse response;
 
     public ErrorEnvelopeAsserter(QueryResponse response) {
@@ -145,6 +155,40 @@ public final class ErrorEnvelopeAsserter {
         if (actual != 0) {
             throw new AssertionError("Expected zero 'Model call will retry.' lines "
                     + "(permanent error / first-segment boundary) but got " + actual
+                    + "\n--- log tail (last 80 lines) ---\n"
+                    + TimeoutDemoLauncher.tail(tailer.logFile(), 80));
+        }
+        return this;
+    }
+
+    /**
+     * FEAT-064 r6: T3 terminal failure log strong-eq assertion — landed via
+     * agent-core-java PR!449 (2026-10-27). Asserts exactly {@code expected}
+     * log lines matching {@code "Model call failed. {category=<CAT>,
+     * reason=<REASON>}"} with the given category + reason pair.
+     *
+     * <p>Used for:
+     * <ul>
+     *   <li>permanent-class strong-eq 1: QUOTA_EXCEEDED / AUTH_FAILED /
+     *       CONTEXT_LENGTH_EXCEEDED, reason=PERMANENT_ERROR;
+     *   <li>retryable-exhausted strong-eq 1: TEMPORARY / RATE_LIMITED,
+     *       reason=RETRY_BUDGET_EXHAUSTED;
+     *   <li>switch-off strong-eq 1: reason=RETRY_DISABLED_BY_SWITCH;
+     *   <li>budget-zero strong-eq 1: reason=RETRY_BUDGET_ZERO.
+     * </ul>
+     */
+    public ErrorEnvelopeAsserter assertTerminalLogCategory(SutLogTailer tailer,
+            String category, String reason, int expected) {
+        long actual;
+        try {
+            actual = tailer.countOfTerminalFailureLog(category, reason);
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Failed to read SUT log at " + tailer.logFile(), e);
+        }
+        if (actual != expected) {
+            throw new AssertionError("Expected T3 'Model call failed.' log count="
+                    + expected + " for category=" + category + ", reason=" + reason
+                    + " but got " + actual
                     + "\n--- log tail (last 80 lines) ---\n"
                     + TimeoutDemoLauncher.tail(tailer.logFile(), 80));
         }

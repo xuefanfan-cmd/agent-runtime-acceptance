@@ -167,7 +167,8 @@ public final class TimeoutProbeHttpClient {
             }
             JsonNode p = evt.has("payload") && evt.get("payload").isObject() ? evt.get("payload") : evt;
             // Primary path for structured error events (2026-10-27 upstream fix landed via
-            // agent-core-java issue #260 PR!242 + agent-runtime-java PR!449):
+            // agent-core-java PR!437 + agent-runtime-java PR!236 + agent-runtime-java PR!242
+            // + agent-core-java PR!449 — Reply r6 对齐的 4-PR bundle):
             //   data: {"type":"error", "error":"...", "failure":{"code":"MODEL_CALL_...",
             //          "numericCode":18100N, "isRetryable":true/false}}
             // Read payload.failure.numericCode as the authoritative SDK status code; also

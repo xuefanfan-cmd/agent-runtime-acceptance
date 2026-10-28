@@ -176,7 +176,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_QUOTA_EXCEEDED)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "quota-exceeded", 1);
+                    .assertStubCallCount(trace.stats, "quota-exceeded", 1)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_QUOTA_EXCEEDED,
+                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED);
@@ -197,7 +200,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "auth-failed", 1);
+                    .assertStubCallCount(trace.stats, "auth-failed", 1)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED,
+                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED);
@@ -225,7 +231,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_TEMPORARY)
                     .assertRetryLogCount(trace.tailer, PERSISTENT_RETRYABLE_RETRY_LOG_COUNT)
                     .assertStubCallCount(trace.stats, "server-5xx",
-                            PERSISTENT_RETRYABLE_STUB_CALLS);
+                            PERSISTENT_RETRYABLE_STUB_CALLS)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_TEMPORARY,
+                            ErrorEnvelopeAsserter.REASON_RETRY_BUDGET_EXHAUSTED, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -250,7 +259,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "context-length-exceeded", 1);
+                    .assertStubCallCount(trace.stats, "context-length-exceeded", 1)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED,
+                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED);
@@ -445,10 +457,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     }
 
     /**
-     * TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (cases §3.20, ST-S02). stub
-     * mode {@code stream-rate-limited-first-segment-after} emits the first SSE
-     * segment OK, then injects a 429. {@code FirstSegmentRetryIterator} MUST
-     * NOT whole-call retry past the first segment (MUST#7 "首段后不透明重试");
+     * TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (cases §3.20, ST-S03 子型
+     * — r6 relabel S02→S03). stub mode {@code stream-rate-limited-first-segment-after}
+     * emits the first SSE segment OK, then injects a 429. {@code FirstSegmentRetryIterator}
+     * MUST NOT whole-call retry past the first segment (MUST#7 "首段后不透明重试");
      * Rail is also bypassed at that boundary. Expect: numericCode ∈
      * {181009, 181001} (the exact code is schema-dependent — DashScope family
      * maps 429-after-first to TEMPORARY; OpenAI family keeps RATE_LIMITED) +
@@ -456,6 +468,11 @@ final class Feat064ErrorTaxonomyAndRetryTest {
      *
      * <p>Demo S21 covers this scenario per 2026-10-28 dev confirmation —
      * SIT does not need to construct a custom stream.
+     *
+     * <p>r6 relabel: this TC is "retryable semantics + first-segment-after"
+     * sub-variant of ST-S03. The true ST-S02 (strict pin 181001 unique, pure
+     * TCP disconnect without payload) is covered by §3.22 TC
+     * {@link #streamDisconnectFirstSegmentAfterStrictPinsTemporary}.
      */
     @Test
     void streamRateLimitedFirstSegmentAfterShortCircuits() throws Exception {
@@ -479,6 +496,42 @@ final class Feat064ErrorTaxonomyAndRetryTest {
 
             assertThat(trace.tailer.totalTimeoutCount())
                     .as("stream-rate-limited-first-segment-after must not emit any 181008")
+                    .isZero();
+        }
+    }
+
+    /**
+     * TC-STREAM-DISCONNECT-FIRST-SEGMENT-AFTER-STRICT (cases §3.22, ST-S02
+     * 真型 — r6 新增). stub mode {@code stream-disconnect-first-segment-after}
+     * emits the first SSE segment OK, then closes TCP without any wire
+     * payload (no 429, no error frame, pure disconnect). Classifier MUST
+     * strict-pin to {@code numericCode==181001} (MODEL_CALL_ERROR / TEMPORARY)
+     * — the unique landing for payload-less disconnect — and MUST NOT
+     * whole-call retry (MUST#7 "首段后不透明重试"). Expect: strong-eq
+     * numericCode==181001 + zero retry log + strong-eq 1 stub call.
+     *
+     * <p>r6 新增: separates "retryable semantics after first segment" (§3.20,
+     * ST-S03 子型) from "pure disconnect after first segment" (this TC, true
+     * ST-S02). stub mode is new and needs demo-handoff smoke.
+     */
+    @Test
+    void streamDisconnectFirstSegmentAfterStrictPinsTemporary() throws Exception {
+        assumeFatJarsPresent();
+
+        try (QueryTrace trace = runStubbed("stream-disconnect-first-segment-after")) {
+            Integer actualCode = trace.response.errorStatusCode();
+            assertThat(actualCode)
+                    .as("Expected numericCode strict-pin 181001 (TEMPORARY) for "
+                            + "first-segment-after pure disconnect without wire payload")
+                    .isEqualTo(ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
+
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats,
+                            "stream-disconnect-first-segment-after", 1);
+
+            assertThat(trace.tailer.totalTimeoutCount())
+                    .as("stream-disconnect-first-segment-after must not emit any 181008")
                     .isZero();
         }
     }

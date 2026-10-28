@@ -48,6 +48,19 @@ public final class SutLogTailer {
     /** FEAT-064: retry decision log emitted by {@code ModelCallRetrier} once per retry attempt. */
     private static final Pattern RETRY_LINE = Pattern.compile("Model call will retry\\.");
 
+    /**
+     * FEAT-064 r6: terminal failure log emitted by {@code ModelCallRetrier} /
+     * {@code BaseModelClient} after permanent short-circuit or retry-budget
+     * exhaustion. Landed via agent-core-java PR!449 (2026-10-27).
+     * <p>Shape: {@code "Model call failed. {category=<CAT>, reason=<REASON>}"}
+     * where {@code REASON} ∈ {@code PERMANENT_ERROR / RETRY_BUDGET_EXHAUSTED
+     * / RETRY_DISABLED_BY_SWITCH / RETRY_BUDGET_ZERO}.
+     */
+    private static final Pattern TERMINAL_LINE = Pattern.compile(
+            "Model call failed\\.\\s*\\{category=(?<category>[A-Z_]+)"
+                    + ",\\s*reason=(?<reason>PERMANENT_ERROR|RETRY_BUDGET_EXHAUSTED"
+                    + "|RETRY_DISABLED_BY_SWITCH|RETRY_BUDGET_ZERO)\\}");
+
     /** FEAT-064: {@code category=<CAT>} field embedded in classified error log lines. */
     private static final Pattern CATEGORY_FIELD = Pattern.compile(
             "category=(?<category>RATE_LIMITED|QUOTA_EXCEEDED|AUTH_FAILED|TEMPORARY|USER_CANCELLED|CONTEXT_LENGTH_EXCEEDED)");
@@ -188,6 +201,34 @@ public final class SutLogTailer {
             }
         }
         return last;
+    }
+
+    /**
+     * FEAT-064 r6: count of {@code "Model call failed. {category=<CAT>,
+     * reason=<REASON>}"} terminal log lines strictly matching the given
+     * category + reason pair. Landed via agent-core-java PR!449 — T3 channel.
+     * <p>Used for permanent-class strong-eq assertions (expect {@code 1}):
+     * TC-QUOTA-EXCEEDED ({@code QUOTA_EXCEEDED, PERMANENT_ERROR}),
+     * TC-AUTH-FAILED ({@code AUTH_FAILED, PERMANENT_ERROR}),
+     * TC-CONTEXT-LENGTH-EXCEEDED ({@code CONTEXT_LENGTH_EXCEEDED,
+     * PERMANENT_ERROR}), TC-TEMPORARY-EXHAUSTED ({@code TEMPORARY,
+     * RETRY_BUDGET_EXHAUSTED}), etc.
+     */
+    public long countOfTerminalFailureLog(String category, String reason) throws IOException {
+        Objects.requireNonNull(category, "category");
+        Objects.requireNonNull(reason, "reason");
+        if (!Files.isRegularFile(logFile)) {
+            return 0L;
+        }
+        long count = 0;
+        for (String line : Files.readAllLines(logFile)) {
+            Matcher m = TERMINAL_LINE.matcher(line);
+            if (m.find() && category.equals(m.group("category"))
+                    && reason.equals(m.group("reason"))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

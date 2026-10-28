@@ -262,6 +262,14 @@ public final class TimeoutProbeHttpClient {
     /**
      * 把新 wire schema 的 {@code failure.code}（如 "MODEL_CALL_FAILED"）映射回老判据
      * 预期的 {@code category} 字段（如 "TEMPORARY"）。
+     *
+     * <p>对齐 FEAT-064 分类集 M14（RATE_LIMITED / QUOTA_EXCEEDED / AUTH_FAILED /
+     * TEMPORARY / CONTEXT_LENGTH_EXCEEDED / USER_CANCELLED）。
+     *
+     * @param failureCode 新 wire schema 的 failure.code 字符串
+     * @return 对应的老 category 枚举字符串；未知 code 返回 null
+     */
+    private static String mapFailureCodeToCategory(String failureCode) {
         if (failureCode == null) {
             return null;
         }

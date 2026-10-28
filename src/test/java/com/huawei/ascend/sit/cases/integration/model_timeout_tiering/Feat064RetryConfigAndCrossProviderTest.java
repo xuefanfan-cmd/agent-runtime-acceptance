@@ -49,6 +49,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       + {@code category=AUTH_FAILED} + zero retry-log lines. L2 §1.2.1
  *       (MUST) classifier hookpoint coverage (DashScope schema × 401 as the
  *       representative schema-agnostic R6 state-code path).
+ *   <li>TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK (cases §3.21, ST-O01) — two runs:
+ *       OpenAI family then DeepSeek family. Both re-use stub {@code auth-failed}
+ *       mode; the second run overrides {@code LLM_PROVIDER=DeepSeek} on probe
+ *       env. Expect both runs classify to {@code 181011} + stub==1 → the
+ *       classifier is schema-agnostic across OpenAI-wire-compatible provider
+ *       families (DashScope / IntelliRouter excluded — stub does not speak
+ *       those protocols).
  * </ul>
  *
  * <p>Why a sibling class rather than appending to
@@ -73,10 +80,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
 
     /**
      * TC-RATE-LIMITED-SWITCH-OFF (cases §3.10). s14 profile sets
-     * {@code demo.timeout-probe.retry-on-rate-limited: false} → bypass retry
-     * loop for RATE_LIMITED in {@code ModelCallRetrier}. stub mode
+     * {@code demo.timeout-probe.retry-on-rate-limited: false} → bypass Retrier
+     * inner retry loop for RATE_LIMITED. stub mode
      * {@code rate-limited-persistent} returns 429 persistently. Expect 181009
-     * landing + zero retry-log lines.
+     * landing + zero retry-log lines + strong-eq 2 stub calls.
      *
      * <p>Does NOT assert {@code details.category} string per cases §3.10 note:
      * platform's {@code "Model call will retry."} log line (which carries the
@@ -84,13 +91,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
      * substring is co-absent with the retry log. Status-code 181009 ↔
      * RATE_LIMITED 1:1 mapping is already pinned by R6 state-code rule.
      *
-     * <p><b>Pending dev decision 2026-10-28 (see memory
-     * {@code feat-064-rail-switch-off-still-retries-pending-dev}):</b>
+     * <p>r5 strong-eq (2026-10-28 dev confirmation):
      * {@code ClassifiedModelFailureRail} 不消费 {@code retry-on-rate-limited}
-     * 开关，所以在 Retrier 内层关闭的情况下，Rail 仍可能按分类规则整轮重试 1 次
-     * （DEFAULT_MAX_GUARDRAIL_RETRIES=1）。本轮暂不断言 stub 调用数，等开发裁定
-     * "开关 OFF 时 Rail 是否也应短路" 之后再补 {@code assertStubCallCount}
-     * （若按设计则 2 次；若认同是缺陷则改为 1 次 + 开 bug）。
+     * 开关 — Retrier 关闭 → 内层只打 1 次；Rail 仍按 {@code DEFAULT_MAX_GUARDRAIL_RETRIES=1}
+     * 整轮重试 1 次 → stub 总共观察 2 次调用。这是设计行为，非缺陷。
      */
     @Test
     void rateLimitedSwitchOffBypassesRetry() throws Exception {
@@ -99,7 +103,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
         try (QueryTrace trace = runStubbed("rate-limited-persistent", "s14", Map.of())) {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "rate-limited-persistent", 2);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED);
@@ -108,18 +113,17 @@ final class Feat064RetryConfigAndCrossProviderTest {
 
     /**
      * TC-TEMPORARY-SWITCH-OFF (cases §3.11). s15 profile sets
-     * {@code demo.timeout-probe.retry-on-temporary: false} → bypass retry
-     * loop for TEMPORARY in {@code ModelCallRetrier}. stub mode
-     * {@code server-5xx} returns 500 persistently. Expect 181001 landing +
-     * zero retry-log lines.
+     * {@code demo.timeout-probe.retry-on-temporary: false} → bypass Retrier
+     * inner retry loop for TEMPORARY. stub mode {@code server-5xx} returns 500
+     * persistently. Expect 181001 landing + zero retry-log lines + strong-eq
+     * 2 stub calls.
      *
      * <p>Same no-category-assertion caveat as TC-RATE-LIMITED-SWITCH-OFF.
      *
-     * <p><b>Pending dev decision 2026-10-28 (see memory
-     * {@code feat-064-rail-switch-off-still-retries-pending-dev}):</b>
+     * <p>r5 strong-eq (2026-10-28 dev confirmation):
      * {@code ClassifiedModelFailureRail} 不消费 {@code retry-on-temporary}
-     * 开关，所以在 Retrier 内层关闭的情况下，Rail 仍可能按分类规则整轮重试 1 次。
-     * 本轮暂不断言 stub 调用数，等开发裁定后再补 {@code assertStubCallCount}。
+     * 开关 — Retrier 关闭 → 内层只打 1 次；Rail 仍按
+     * {@code DEFAULT_MAX_GUARDRAIL_RETRIES=1} 整轮重试 1 次 → stub 总共观察 2 次。
      */
     @Test
     void temporarySwitchOffBypassesRetry() throws Exception {
@@ -128,7 +132,8 @@ final class Feat064RetryConfigAndCrossProviderTest {
         try (QueryTrace trace = runStubbed("server-5xx", "s15", Map.of())) {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
-                    .assertNoRetryLog(trace.tailer);
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "server-5xx", 2);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -196,10 +201,63 @@ final class Feat064RetryConfigAndCrossProviderTest {
         }
     }
 
+    /**
+     * TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK (cases §3.21, ST-O01). Runs the stub
+     * {@code auth-failed} mode twice from the same stub process: once with the
+     * default {@code LLM_PROVIDER=OpenAI} probe env (first pass), then with
+     * {@code LLM_PROVIDER=DeepSeek} overriding the probe env (second pass).
+     *
+     * <p>DeepSeek is a {@code BaseModelClient} subclass (independent from
+     * {@code OpenAIModelClient}) that happens to speak OpenAI-compatible wire —
+     * the stub serves it unchanged. DashScope / IntelliRouter use their own
+     * Transport stacks and are NOT compatible with the stub (2026-10-28 dev
+     * confirmation).
+     *
+     * <p>Expect both passes classify to {@code 181011} + stub==1 on each pass
+     * → the classifier is schema-agnostic across OpenAI-wire-compatible
+     * provider families. Each pass uses its own stub subprocess so
+     * {@code /__stats} reads are isolated (no reset dance needed).
+     */
+    @Test
+    void crossFamilyOpenAIAndDeepSeekClassifyAuthFailureIdentically() throws Exception {
+        assumeFatJarsPresent();
+
+        // Pass 1: default OpenAI family.
+        try (QueryTrace trace = runStubbed("auth-failed", "s0", Map.of())) {
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "auth-failed", 1);
+        }
+
+        // Pass 2: DeepSeek family — probe env override LLM_PROVIDER=DeepSeek.
+        Map<String, String> probeOverride = new LinkedHashMap<>();
+        probeOverride.put("LLM_PROVIDER", "DeepSeek");
+        try (QueryTrace trace = runStubbedWithProbeOverride(
+                "auth-failed", "s0", Map.of(), probeOverride)) {
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED)
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats, "auth-failed", 1);
+        }
+    }
+
     // ---------------- helpers ----------------
 
     private QueryTrace runStubbed(String stubMode, String probeProfile,
                                   Map<String, String> stubExtraEnv) throws Exception {
+        return runStubbedWithProbeOverride(stubMode, probeProfile, stubExtraEnv, Map.of());
+    }
+
+    /**
+     * Variant that layers {@code probeEnvOverride} on top of the baseline
+     * {@link #probeEnv(TimeoutDemoLauncher)} map — used by ST-O01 to flip
+     * {@code LLM_PROVIDER=DeepSeek} on the second pass. Keys in the override
+     * win over the baseline.
+     */
+    private QueryTrace runStubbedWithProbeOverride(String stubMode, String probeProfile,
+                                                   Map<String, String> stubExtraEnv,
+                                                   Map<String, String> probeEnvOverride) throws Exception {
         Map<String, String> stubEnv = commonEnv();
         stubEnv.put("LLM_STUB_DEFAULT_MODE", stubMode);
         stubEnv.putAll(stubExtraEnv);
@@ -210,9 +268,11 @@ final class Feat064RetryConfigAndCrossProviderTest {
                 .start();
         TimeoutDemoLauncher probe = null;
         try {
+            Map<String, String> finalProbeEnv = probeEnv(stub);
+            finalProbeEnv.putAll(probeEnvOverride);
             probe = TimeoutDemoLauncher.probeAgent()
                     .profile(probeProfile)
-                    .envAll(probeEnv(stub))
+                    .envAll(finalProbeEnv)
                     .build()
                     .start();
             QueryResponse resp = new TimeoutProbeHttpClient(probe.baseUrl())

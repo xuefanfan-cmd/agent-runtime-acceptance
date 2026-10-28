@@ -2,19 +2,24 @@
 feature_id: FEAT-064
 feature_title: 模型调用错误分类与弹性重试
 sut: timeout-tiering-model-call-demo 的 timeout-probe-agent（与 FEAT-058 共用载体，ReActAgent，openjiuwen 范式，fat jar 独立运行；端口 18092 + llm-stub-server 端口 18094），对端 stub 在 FEAT-058 的 7 种 stall 模式之外**追加 7 种 FEAT-064 错误注入模式**（HTTP 429 / 402 / 401 / 500 / 400+context_length_exceeded / SSE error frame / 429→200 recover）；FEAT-064 测的是**分类规则 + 重试策略**，用真实 LLM 无法可控注入这些错误类型，所以 stub 是必要对端
-scope: 本档覆盖 FEAT-064 SIT 侧黑盒可观察（`POST /v1/query` body + SUT 日志的分类错误行 `[181009/181010/181011/181012/181001]` + `category=<CAT>` 字段 + `"Model call will retry."` 行计数 + HTTP response body 的 error payload `details.category` 字段）；UT 侧已由 dev team 交付 73 UT（PR!420 @ f68f4da6）+ 容器 E2E 11/11 PASS，本档不复制。
-status: pending-implementation
-status_note: 测试方案与 **17 条 TC 骨架**（9 原 + 4 增量 s14/s15/s16/s17 + 4 新增 ST 系列：R01/S01/C01/C02）已沉淀 + **1 条 deferred TC** 等平台 observability issue；fixture 代码（TimeoutDemoLauncher / TimeoutProbeHttpClient / SutLogTailer / ErrorEnvelopeAsserter / **StubStatsClient 新增**）**与 FEAT-058 共用**，asserter 侧新增 FEAT-064 分类断言方法（`assertCategory` / `assertRetryLogCount` / `assertNoRetryLog` / `assertStubCallCount`）；S7-S13 的 7 个 demo fat jar 已由 demo 侧 2026-10-22 本机构建完成，demo 本机冒烟 7/7 PASS；**s14/s15/s16/s17 四个新 profile 待 demo 下一轮 push 带新 fat jar + scripts 到位后再开跑**（见 `docs/review/FEAT-064-demo-coverage-gaps-feedback.md` 的开发侧 2026-10-26 答复）；SIT 侧用例类 2026-10-28 r2 已落地 TC 代码，含 §3.10/§3.11 Rail 开关 OFF 的 pending 条目（等开发裁定）。
+scope: 本档覆盖 FEAT-064 SIT 侧黑盒可观察。T1 结构化错误码主通道走 `/v1/query` SSE 事件 `payload.failure.{code,numericCode,isRetryable}`（新 wire schema，由 agent-core-java PR!242 + agent-runtime-java PR!449 于 2026-10-27 落地）；L2 §2.5 定义的 A2A Task `message.metadata["openjiuwen.error"].{code,numericCode,retryable}` 为同形字段，仅承载通道不同。T2 走 SUT retry 日志 `Model call will retry. {category=<CAT>, ...}` 行计数（**可重试类** RATE_LIMITED/TEMPORARY，源于 L2 §3.10「每次重试」）。T3 走 SUT terminal 失败日志 `Model call failed. {category=<CAT>, ...}` 行（**永久类**与**可重试类预算耗尽**；源于 L1 §5.1.7，平台层结构化终态日志未落地前永久类走 **partial** 状态，仅断 T1 numericCode）。分类明细（R1-R12 规则表）由 UT 承接，本档不复制。
+status: pending-implementation (r5)
+status_note: **r5 刷新**对 2026-10-28 评审员 4 条反馈 + SIT 侧两项补充（a L1 ST-R04 层级范围脚注、b ST-O01 fixture LLM_PROVIDER 可覆写）全面响应。**(1) 方案 B 字段路径订正**：T1 主通道从 `metadata.openjiuwen.error.numericCode` 订正为 `/v1/query` SSE 事件 `payload.failure.numericCode`（PR!242+PR!449 2026-10-27 已落地到 wire 面），不改 A2A entry、保留 `/v1/query`。`§2.2` Fixture 清理 `errorDetails()` category 返回残留 + deprecate 老的 `assertCategory` 字串判据。**(2) 双层重试判据重锁 strong-eq**：按 L2 §2.3「全程调用上限 = (maxRetries+1)×(护栏重试次数+1) = 3×2 = 6」，§3.1/§3.5 持续可重试类 strong-eq `stub=6 / retry 日志=4`；§3.10/§3.11 开关 OFF strong-eq `stub=2`（Retrier 不消费开关短路、Rail `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 不消费开关仍整轮一次）；§3.12 maxRetries=0 strong-eq `stub=1`（两层都通过 gate `maxRetries>0` 关断）；永久类 strong-eq `stub=1`。`§1.5.2` 待开发裁定段废弃，`assertStubCallCountBetween` fixture 弃用。**(3) ST 编号订正 + 补齐 4 新 TC**：§3.16→ST-R01（原 ST-C01，真实端点 happy path 对应 L1 §8.3 ST-R01 回归承诺）；§3.17→ST-C01（原 ST-C02，真实端点 bad-key 认证失败）；§3.7→ST-S03（原 ST-S02，首段**后**错误帧对应 L1 §8.3 ST-S03）；§3.14 不再认领 L1 ST-R01，定位为"stub CI 补充（成功回归锚点）"。新增 §3.18 TC-NON-STREAM-RATE-LIMITED-RECOVER（ST-R02 非流式一次恢复）/ §3.19 TC-REAL-ENDPOINT-CONTEXT-LENGTH（ST-C02 真实端点超窗 → 181012）/ §3.20 TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER（ST-S02 首段**后**可重试错误不整次重试，demo S21）/ §3.21 TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK（ST-O01 两族 OpenAI × DeepSeek，LLM_PROVIDER 环境变量切换）。**(4) 永久类状态 → partial**：§3.3/§3.4/§3.6/§3.17/§3.19 五条永久类 TC 的 T3 category 终态日志通道未落地，状态从 runnable 降为 partial，仅断 T1 numericCode；ST-O02（两族独立栈 real-endpoint 跨族抽样）继续列作跟踪项不入 TC 骨架。**(a) L1 ST-R04 层级范围脚注**：L1 §8.3 ST-R04「总调用=3」是 Retrier 内层单层描述；L2 §2.3「6 = (maxRetries+1)×(护栏重试次数+1)」是双层总计；两份文档层级范围不同、各自正确。**(b) fixture LLM_PROVIDER 覆写**：`TimeoutDemoLauncher.probeAgent()` 默认 env 允许 TC 侧覆写 `LLM_PROVIDER`，支撑 §3.21 ST-O01 两族切换（OpenAI → DeepSeek，两者都走 OpenAI 兼容 wire，llm-stub-server 可用）。r3/r4 已回应的评审意见 (C1-C5) 保留；fixture 代码（TimeoutDemoLauncher / TimeoutProbeHttpClient / SutLogTailer / ErrorEnvelopeAsserter / StubStatsClient）**与 FEAT-058 共用**，asserter 侧新增分类断言方法；SIT 侧 TC 已在仓侧落地（`Feat064ErrorTaxonomyAndRetryTest` / `Feat064RetryConfigAndCrossProviderTest` / `Feat064RealEndpointSamplingTest`，r5 增量 4 条）。
 owner: TBD
 tags: [integration, reactagent, feat-064, model-call-error-taxonomy-and-retry]
 depends_on:
-  - timeout-probe-agent-0.1.0.jar 已就绪（与 FEAT-058 共用 jar；s14-s17 需等 demo 下一轮 push 带的新 fat jar，新增 3 个 probe-agent 配置透传字段）
-  - llm-stub-server-0.1.0.jar 已就绪（stub 已含 FEAT-064 7 种错误注入模式；s17 需等 demo 下一轮 push 带新 stub jar，新增 `LLM_STUB_RESPONSE_SCHEMA=openai|dashscope` 开关）
-  - 不需要真实 LLM 凭据——demo 全部打本机 stub（127.0.0.1:18094）
-  - `unset HTTP_PROXY HTTPS_PROXY`（stub 在本机 loopback，企业代理会干扰）
+  - **agent-core-java PR!242 (2026-10-27 landed)**：/v1/query SSE 事件 `data: {"type":"error", "error":"...", "failure":{"code":"MODEL_CALL_...", "numericCode":18100N, "isRetryable":...}}` structured failure 字段落地（T1 主通道源头）
+  - **agent-runtime-java PR!449 (2026-10-27 landed)**：/v1/query SSE 侧 structured failure 透传配套修复
+  - timeout-probe-agent-0.1.0.jar 已就绪（与 FEAT-058 共用 jar；s14-s17 profile 已在 2026-10-26 demo 下发的 fat jar 中就绪）
+  - llm-stub-server-0.1.0.jar 已就绪（stub 已含 FEAT-064 7 种错误注入模式；s17 schema 开关 `LLM_STUB_RESPONSE_SCHEMA=openai|dashscope` 已在 2026-10-26 下发的 fat jar 中就绪；`GET /__stats` + `POST /__stats/reset` stats 通道已就绪）
+  - **demo S21 stub mode `stream-rate-limited-first-segment-after`**（首段**后**连接按 429 等语义关闭，供 §3.20 ST-S02 承接）
+  - DeepSeek LLM 真实凭据或兼容 wire 的本地 stub 对接（§3.21 ST-O01 两族跨切；OpenAI 与 DeepSeek 均走 OpenAI 兼容 wire，llm-stub-server 可用）
+  - 不需要真实 LLM 凭据——除 §3.16/§3.17（manual tag）外，demo 全部打本机 stub（127.0.0.1:18094）
+  - §3.16/§3.17 真实端点 TC 需 `source ~/.llmrc` + unset proxy，CI 不自动跑
+  - `unset HTTP_PROXY HTTPS_PROXY`（stub 在本机 loopback，企业代理会干扰；真实端点同样需要）
   - **JDK 17 或 21**（JDK 24+ 下 agent-core-java 的 Lombok `sun.misc.Unsafe` 反射失效，probe-agent fat jar 启动崩）
   - 端口 18092（probe-agent）/ 18094（llm-stub-server）可用
-  - `LLM_PROVIDER=OpenAI`（统一分类载体，stub 实现 OpenAI 兼容协议）
+  - `LLM_PROVIDER=OpenAI`（统一分类载体，stub 实现 OpenAI 兼容协议；真实端点同样走 OpenAI 兼容协议）
   - 可选：`LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`（rate-limited-recover 恢复前返多少次 429，默认 1）
   - 可选：`LLM_STUB_RATE_LIMITED_RETRY_AFTER_SECONDS=1`（429 响应头 `Retry-After` 值，默认 1 秒）
   - **FEAT-064 TC 全部用默认 profile**（不覆写三层超时），避免与 FEAT-058 的 timeout 分类混淆
@@ -22,7 +27,7 @@ depends_on:
     - `demo.timeout-probe.retry-on-rate-limited: false`（s14）
     - `demo.timeout-probe.retry-on-temporary: false`（s15）
     - `demo.timeout-probe.max-retries-override: 0`（s16）
-  - **s17 新增 stub env**：`LLM_STUB_RESPONSE_SCHEMA=dashscope` + `LLM_STUB_DEFAULT_MODE=auth-failed`
+  - **s17 stub env**：`LLM_STUB_RESPONSE_SCHEMA=dashscope` + `LLM_STUB_DEFAULT_MODE=auth-failed`
 related_docs:
   - 本方案 testplan（权威位置）：Technical-AF/docs:develop/04-testplan/FEAT-064-model-call-error-taxonomy-and-retry.md
   - 特性文档：develop/02-features/FEAT-064-model-call-error-taxonomy-and-retry.md（17 能力 = 15 MUST + 2 SHOULD + OUT；§4 11 旅程；§7 36 UT 计划；§8 11 ST 计划）
@@ -37,7 +42,15 @@ related_docs:
 
 # FEAT-064 — 模型调用错误分类与弹性重试 用例设计
 
-> **一句话**：以 demo `timeout-probe-agent` 为 SUT（与 FEAT-058 共用）、`llm-stub-server` 为可控对端（追加 7 种 FEAT-064 错误注入模式），把 FEAT-064 §2 的 15 MUST + 2 SHOULD + default `maxRetries` 3→2 外部可观察行为变化，映射为可在 SIT 侧黑盒断言的子用例。demo 覆盖 **S7..S13 共 7 个场景**，SIT 在此基础上追加 2 条增量 TC（maxRetries 负值 fail-fast + 错误 payload `details.category` 聚合）。USER_CANCELLED（C1-C5）SIT 覆盖延迟至 FEAT-058 MUST#11 裁定落地，UT 已承接。
+> **一句话**：以 `timeout-probe-agent` 为 SUT（与 FEAT-058 共用）、`llm-stub-server` 为可控对端（追加 7 种 FEAT-064 错误注入模式），把 FEAT-064 §2 的 15 MUST + 2 SHOULD + default `maxRetries` 3→2 外部可观察行为变化，映射为 SIT 侧黑盒断言的子用例。T1 主通道走 **/v1/query SSE 事件 `payload.failure.{code,numericCode,isRetryable}`**（新 wire schema，由 agent-core-java PR!242 + agent-runtime-java PR!449 于 2026-10-27 落地）；L2 §2.5 定义的 A2A Task `message.metadata["openjiuwen.error"].{code,numericCode,retryable}` 为同形字段，本档走 /v1/query SSE 侧，SIT 不改走 A2A entry。分类 category 走 SUT 日志（可重试类走 `Model call will retry.` 行；永久类待平台层结构化终态日志通道落地启用，当前永久类 TC 走 **partial** 状态仅断 T1）。按 L2 §2.3 "Rail+Retrier 双层" 事实，持续可重试类 strong-eq `stub=6 / retry 日志=4`（`(maxRetries+1)×(railRetries+1) = 3×2`）；开关 OFF strong-eq `stub=2`；maxRetries=0 两层全关 strong-eq `stub=1`；永久类 strong-eq `stub=1`。USER_CANCELLED（C1-C5）SIT 覆盖已由 FEAT-058 §3.12/§3.13 承接。
+>
+> **r5 刷新**（回应 2026-10-28 评审 4 条意见 + SIT 侧 a/b 两项补充）：
+> - **(1) 方案 B 字段路径订正**：T1 主通道从 `metadata.openjiuwen.error.numericCode` 订正为 /v1/query SSE 事件 `payload.failure.numericCode`（PR!242+PR!449 已落地）；`§2.2` Fixture 清理 `errorDetails()` category 残留 + deprecate 老 `assertCategory` 字串判据。
+> - **(2) 双层重试 strong-eq 重锁**：按 L2 §2.3「全程调用上限 = (maxRetries+1)×(护栏重试次数+1)」确定公式，§3.1/§3.5 从 r4 区间 `[3,6]/[2,4]` 回锁 strong-eq `6/4`；§3.10/§3.11 从 `[1,2]` 回锁 strong-eq `2`（Retrier 关、Rail `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 整轮一次）；§1.5.2 待开发裁定段废弃，`assertStubCallCountBetween` fixture 弃用。
+> - **(3) ST 编号订正 + 4 条新 TC**：§3.16→ST-R01、§3.17→ST-C01、§3.7→ST-S03；§3.14 不再认领 L1 ST-R01（降为 stub CI 补充）。新增 §3.18 ST-R02（非流式一次恢复）/ §3.19 ST-C02（真实端点超窗 181012）/ §3.20 ST-S02（首段**后**可重试错误不整次重试，demo S21）/ §3.21 ST-O01（OpenAI × DeepSeek 两族，LLM_PROVIDER 切换）。
+> - **(4) 永久类 → partial**：§3.3/§3.4/§3.6/§3.17/§3.19 五条永久类 TC T3 category 终态日志通道未落地，状态降为 partial；ST-O02（两族独立栈 real-endpoint）跟踪项不入 TC 骨架。
+> - **(a) L1 ST-R04 层级范围脚注**（见 §5）：L1 §8.3 ST-R04「总调用=3」是 Retrier 内层单层描述；L2 §2.3「6」是双层总计；两者层级范围不同、各自正确，SIT 以 L2 §2.3 双层事实为锚。
+> - **(b) fixture LLM_PROVIDER 覆写**（见 §2.2）：`TimeoutDemoLauncher` 默认 probe env 允许 TC 侧覆写 `LLM_PROVIDER`，支撑 §3.21 ST-O01 两族切换。
 
 > **状态含义**：
 > - **runnable**：fixture 就绪 + 可直接落地实现
@@ -66,29 +79,100 @@ related_docs:
 | 实现要素 | L2 §1.2 条目 (要求) | 本档 TC ID | 状态 | UT 承接（不复制） | 备注 |
 |---|---|---|---|---|---|
 | ModelErrorCategory 6 值枚举（分类合同） | §1.2.1 统一错误分类器 (MUST) + §1.2.2 失败表面分类化 (MUST) | `FEAT-064.category-rate-limited` / `.quota-exceeded` / `.auth-failed` / `.temporary` / `.context-length-exceeded`（S7-S12） | runnable | `RuleBasedModelErrorClassifierTest` R1-R12 | 5 类 wire 层可观察；USER_CANCELLED 延迟 |
-| PermanentModelError.defaultRecoverable()=false | §1.2.2 失败表面分类化 (MUST) | `FEAT-064.permanent-short-circuit`（S9/S10/S12 的"无 Model call will retry"） | runnable | `PermanentModelErrorTest` | QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 三类短路 |
+| PermanentModelError.defaultRecoverable()=false | §1.2.2 失败表面分类化 (MUST) | `FEAT-064.permanent-short-circuit`（S9/S10/S12 的"无 Model call will retry"） | **partial** | `PermanentModelErrorTest` | r5 降级 runnable→partial：§3.3/§3.4/§3.6 T3 category 字段待平台层终态日志通道开放，当前仅断 T1 numericCode；QUOTA/AUTH/CTX_LEN 三类短路事实本身（T2 零 retry + stub==1）仍走 strong-eq |
 | ClassifiedModelFailureRail 启动期 fail-fast | §1.2.11 主循环护栏按类处置 (MUST) | （未独立 TC） | **UT only** | `ClassifiedModelFailureRailTest` init | SIT 不构造（Rail 存在于 probe-agent 装配即证明初始化通过） |
 | ModelBackupRail presence yield + maxRetries>0 gate | §1.2.11 主循环护栏按类处置 (MUST) | （未独立 TC） | **UT only** | `ClassifiedModelFailureRailTest` presence yield | SIT 不构造 |
 | ModelCallRetrier 唯一重试循环所有者 | §1.2.6 非流式自动重试 (MUST) | `FEAT-064.retrier-executes-retry-budget`（S7 耗尽 + S8 恢复） | runnable | `ModelCallRetrierTest` | TC-RATE-LIMITED-PERSISTENT / TC-RATE-LIMITED-RECOVER |
 | OpenAIRetryingHttpClient 下线（代码层） | §1.2.6 非流式自动重试 (MUST，实现迁移) | （未独立 TC） | **UT only** | compilation 自然证明 | SIT 不构造"类消失"反证 TC |
-| 流式重试首段分界（FirstSegmentRetryIterator） | §1.2.7 流式重试判定线 (MUST) | `FEAT-064.first-segment-boundary`（S13） | runnable | `FirstSegmentRetryIteratorTest` | TC-STREAM-ERROR-FRAME：首段后无重试日志 |
-| retryOnRateLimit / retryOnTemporary 开关面 | §1.2.9 重试配置语义对齐 (MUST) | `FEAT-064.rate-limited-switch-off`（s14）/ `.temporary-switch-off`（s15） | runnable（**等 demo s14/s15 jar**） | `ModelCallRetrierTest` + `ModelClientConfigTest` | TC-RATE-LIMITED-SWITCH-OFF / TC-TEMPORARY-SWITCH-OFF（开发侧 2026-10-26 ack，走 probe-agent `demo.timeout-probe.*` 命名空间） |
+| 流式重试首段分界（FirstSegmentRetryIterator，首段**后**不整次重试） | §1.2.7 流式重试判定线 (MUST) 首段**后**分支 | `FEAT-064.first-segment-boundary`（S13，承接 L1 §8.3 ST-S03） | runnable | `FirstSegmentRetryIteratorTest` | TC-STREAM-ERROR-FRAME（§3.7）：首段后无重试日志；r5 订正 ST 编号 S02→**S03**（首段**后**错误帧契约） |
+| retryOnRateLimit / retryOnTemporary 开关面 | §1.2.9 重试配置语义对齐 (MUST) | `FEAT-064.rate-limited-switch-off`（s14）/ `.temporary-switch-off`（s15） | runnable | `ModelCallRetrierTest` + `ModelClientConfigTest` | TC-RATE-LIMITED-SWITCH-OFF / TC-TEMPORARY-SWITCH-OFF（开发侧 2026-10-26 ack，走 probe-agent `demo.timeout-probe.*` 命名空间） |
 | default maxRetries 3→2（外部可观察行为变化） | §1.2.9 重试配置语义对齐 (MUST) | `FEAT-064.default-max-retries-is-two`（S11） | runnable | `ModelClientConfigTest` default 测 | TC-TEMPORARY-EXHAUSTED 的"重试恰 2 次"既证重试路径也证默认值 |
 | maxRetries 负值 setter 拒绝 | §1.2.9 重试配置语义对齐 (MUST，校验口径) | `FEAT-064.max-retries-negative-rejected`（增量，demo 无直接场景） | runnable | `ModelClientConfigTest` validateMaxRetries | TC-MAX-RETRIES-NEGATIVE-REJECTED |
-| maxRetries=0 预算关断 wire-observable | §1.2.9 重试配置语义对齐 (MUST，配置消费 wire-observable 后果) | `FEAT-064.max-retries-zero-no-retry`（s16） | runnable（**等 demo s16 jar**） | `ModelCallRetrierTest` maxRetries=0 分支 | TC-MAX-RETRIES-ZERO-NO-RETRY（开发侧 2026-10-26 归属校正：从 §1.2.11 Rail 装配事实剥到 §1.2.9 wire-observable 后果） |
+| maxRetries=0 预算关断 wire-observable | §1.2.9 重试配置语义对齐 (MUST，配置消费 wire-observable 后果) | `FEAT-064.max-retries-zero-no-retry`（s16） | runnable | `ModelCallRetrierTest` maxRetries=0 分支 | TC-MAX-RETRIES-ZERO-NO-RETRY（开发侧 2026-10-26 归属校正：从 §1.2.11 Rail 装配事实剥到 §1.2.9 wire-observable 后果） |
 | 四新错误码 181009/181010/181011/181012 | §1.2.3 标准错误码映射 (MUST) | `FEAT-064.status-code-contract`（S7/S9/S10/S12） | runnable | `StatusCode` / `StatusMapping` 单测 | 由分类 TC 一一对应覆盖 |
-| 181008 timeout 重归 ModelError + details.category 口径扩展 | §1.2.3 标准错误码映射 (MUST) + §1.2.2 失败表面分类化 (MUST) | `FEAT-064.details-category-field`（聚合 S7/S9/S10/S11/S12） | runnable | `StatusMappingTest` + `BaseError.details` 单测 | TC-DETAILS-CATEGORY-FIELD 跨 TC 聚合；FEAT-058 的 181008 timeout 本档不覆盖（归 FEAT-058） |
+| 181008 timeout 重归 ModelError + numericCode 聚合口径 | §1.2.3 标准错误码映射 (MUST) + §1.2.2 失败表面分类化 (MUST) | `FEAT-064.numeric-code-field`（聚合 S7/S9/S10/S11/S12） | runnable | `StatusMappingTest` + `BaseError.details` 单测 | TC-NUMERIC-CODE-FIELD 跨 TC 聚合（r3 重命名，原 TC-DETAILS-CATEGORY-FIELD）；FEAT-058 的 181008 timeout 本档不覆盖（归 FEAT-058） |
 | Rails.isFromOperation gate（AgentInterrupt/AbortError 透传收窄） | §1.2.10 中断类异常识别放行 (MUST) | （未独立 TC） | **UT only** | `RailsAgentInterruptTest` | SIT 不构造 |
 | USER_CANCELLED 三形态（C1-C5 cancellation 规则） | §1.2.8 用户取消不重试 (MUST) + §1.2.14 取消识别规则显式定义 (MUST) | TC-USER-CANCELLED-\*（S14/S15 reserved） | **deferred** | UT-C10 / UT-R06 + 容器 E2E | 待 FEAT-058 MUST#11 cancel 可观察出口裁定 |
-| ModelCircuitBreaker.onFailure 消费 classification（分类不计熔断） | §1.2.16 熔断计数消费分类 (**SHOULD**) | `FEAT-064.classified-failure-not-counted` | **deferred（等平台 observability issue）** | `ModelCircuitBreakerTest` onFailure | TC-CLASSIFIED-FAILURE-NOT-COUNTED：等 agent-core-java 开放熔断器观测面（开发侧 2026-10-26 ack，三选一方案中偏好方案 1）；现行弱层佐证（TC-TEMPORARY-EXHAUSTED 日志无 `circuit open` 行）保留但不作为正式 TC |
+| ModelCircuitBreaker.onFailure 消费 classification（分类不计熔断） | §1.2.16 熔断计数消费分类 (**SHOULD**) | `FEAT-064.classified-failure-not-counted` | runnable（**r4 升级**，详见 §4 保留项） | `ModelCircuitBreakerTest` onFailure | TC-CLASSIFIED-FAILURE-NOT-COUNTED：平台层已提供 `Model.getCircuitBreakerSnapshot()` 公开只读快照（isOpen + consecutiveFailures 二态），SIT 可按正-反对照组方式构造；SHOULD 等级，不阻塞合入 |
 | ModelRetryEvent 签名新增 category 字段 | 无独立 §1.2 条目（L2 §2.4 实现细节） | （未独立 TC） | **UT only** | `ModelRetryEventTest` | SIT 不读事件总线 |
-| 跨 provider 分类差异（OpenAI vs DashScope schema，挂点覆盖） | §1.2.1 统一错误分类器 (**MUST**，挂点覆盖要素) | `FEAT-064.cross-provider-classification`（s17） | runnable（**等 demo s17 stub jar**） | `RuleBasedModelErrorClassifierTest` provider 分支 | TC-CROSS-PROVIDER-CLASSIFICATION：用 DashScope schema × AUTH_FAILED (401) 作代表性场景；R6 状态码直判天然 schema-agnostic；R7 关键词命中由 UT 承接（开发侧 2026-10-26 ack） |
+| 跨 provider 分类差异（OpenAI vs DashScope schema，挂点覆盖） | §1.2.1 统一错误分类器 (**MUST**，挂点覆盖要素) | `FEAT-064.cross-provider-classification`（s17） | runnable | `RuleBasedModelErrorClassifierTest` provider 分支 | TC-CROSS-PROVIDER-CLASSIFICATION：用 DashScope schema × AUTH_FAILED (401) 作代表性场景；R6 状态码直判天然 schema-agnostic；R7 关键词命中由 UT 承接（开发侧 2026-10-26 ack） |
+| 成功路径零干扰（stub CI 补充 / 回归锚点） | §1.2.1 统一错误分类器 (MUST) + §1.2.6 非流式自动重试 (MUST) 的"不干扰" negative branch | `FEAT-064.success-no-interference` | runnable | — | TC-SUCCESS-NO-INTERFERENCE（§3.14）：stub `ok` → HTTP 200 + answer + 零分类错误码 + 零 retry + stub==1；**r5 定位订正**：不认领 L1 §8.3 ST-R01（后者归 §3.16 真实端点 happy path），本 TC 仅作 stub CI 回归锚点 |
+| 流式首段**前**错误 → 整次重试（L1 §8.3 ST-S01） | §1.2.7 流式重试判定线 (MUST) 首段**前**分支 | `FEAT-064.stream-recover-before-first` | runnable | `FirstSegmentRetryIteratorTest` first-segment-before 分支 | TC-STREAM-RECOVER-BEFORE-FIRST（§3.15）：stub `rate-limited-recover` + `stream:true` body；首段尚未到达时整次重试合法；与 §3.7（首段**后**不重试）互补 |
+| 真实端点成功路径（L1 §8.3 **ST-R01**） | §1.2.1 统一错误分类器 (MUST，真实端点抽样 happy path) | `FEAT-064.real-endpoint-ok` | runnable | — | TC-REAL-ENDPOINT-OK（§3.16）：**r5 ST 订正** C01→R01；`@Tag("real-endpoint")` + `assumeTrue(LLM_API_BASE 等 env)` |
+| 非流式一次恢复（L1 §8.3 **ST-R02**） | §1.2.6 非流式自动重试 (MUST) 的"重试一次即恢复"正向路径 | `FEAT-064.non-stream-rate-limited-recover` | **runnable（r5 新增）** | `ModelCallRetrierTest` recover 分支 | TC-NON-STREAM-RATE-LIMITED-RECOVER（§3.18）：stub `rate-limited-recover`，**不带** `stream:true`（blocking 单 JSON 路径）；与 §3.15 流式版互补，证明 Retrier 对 blocking 路径同样一次 recover |
+| 真实端点认证失败（L1 §8.3 **ST-C01**） | §1.2.1 统一错误分类器 (MUST，真实端点抽样 bad-key) + §1.2.3 标准错误码映射 (MUST) | `FEAT-064.real-endpoint-auth-failed` | **partial** | — | TC-REAL-ENDPOINT-AUTH-FAILED（§3.17）：**r5 ST 订正** C02→C01；T3 category 字段待平台层通道开放，仅断 T1 numericCode==181011 |
+| 真实端点上下文超窗（L1 §8.3 **ST-C02**） | §1.2.1 统一错误分类器 (MUST，真实端点抽样 context-length) + §1.2.3 标准错误码映射 (MUST) | `FEAT-064.real-endpoint-context-length` | **partial（r5 新增）** | — | TC-REAL-ENDPOINT-CONTEXT-LENGTH（§3.19）：构造超长 prompt 触发真实服务商 `context_length_exceeded`；T1 strong-eq numericCode==181012；T3 category 待通道开放 |
+| 流式首段**后**可重试错误不整次重试（L1 §8.3 **ST-S02**） | §1.2.7 流式重试判定线 (MUST) 首段**后**分支 的 "`rate_limited` 等语义" 子分支 | `FEAT-064.stream-rate-limited-first-segment-after` | **runnable（r5 新增）** | `FirstSegmentRetryIteratorTest` first-segment-after 分支 | TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER（§3.20）：demo S21 stub mode `stream-rate-limited-first-segment-after`（首段正常后 429 语义关闭）；判据同 §3.7（零 retry + stub==1） |
+| 跨 provider 两族（L1 §8.3 **ST-O01**，OpenAI × DeepSeek，LLM_PROVIDER 切换） | §1.2.1 统一错误分类器 (MUST) 的 "挂点覆盖多族" 要素 | `FEAT-064.cross-family-openai-deepseek` | **runnable（r5 新增）** | `RuleBasedModelErrorClassifierTest` provider 分支 | TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK（§3.21）：probe env `LLM_PROVIDER=OpenAI` vs `LLM_PROVIDER=DeepSeek` 两跑；OpenAI 走 `OpenAIModelClient`、DeepSeek 走 `BaseModelClient` 独立子类但 OpenAI 兼容 wire，llm-stub-server `auth-failed` mode 可同时服务两族；判据 strong-eq numericCode==181011 两族齐 |
 
 ### 非范围显式列出
 
-- **USER_CANCELLED 分类（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5）**：L1 本身在 UT 层已 ✅；SIT 覆盖延迟至 FEAT-058 MUST#11 "cancel 可观察出口" 裁定落地（见 SIT-CLARIFY-REPLY-must11-cancel-definition.md），不阻塞 FEAT-064 特性合入。
+- **USER_CANCELLED 分类（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5）**：L1 本身在 UT 层已 ✅；SIT 覆盖已由 FEAT-058 §3.12/§3.13 TC-CANCEL-OBS-S18/S19 承接（跨 FEAT 双 Tag `@Tag("feat-058") @Tag("feat-064")`），不阻塞 FEAT-064 特性合入。
 - **R1-R12 规则表细节**：UT 承接；SIT 仅在 wire 层证明 "stub 发出某类错误 → SUT 分类正确"，不枚举规则。
-- **ModelCircuitBreaker 熔断阈值 / 滑窗 / half-open**：FEAT-008 / FEAT-057 承接；本方案仅覆盖 "分类不计熔断" 的 pass-through 事实（TC-CLASSIFIED-FAILURE-NOT-COUNTED 等平台 observability issue 落地后承接）。
+- **ModelCircuitBreaker 熔断阈值 / 滑窗 / half-open**：FEAT-008 / FEAT-057 承接；本方案仅覆盖 "分类不计熔断" 的 pass-through 事实（TC-CLASSIFIED-FAILURE-NOT-COUNTED，L2 §1.2.16，走 `Model.getCircuitBreakerSnapshot()` 公开读路径，详见 §4 保留项）。
+- **L1 §8.3 ST-O02 "两族 real-endpoint 跨族抽样"**：ST-O01（§3.21）走 LLM_PROVIDER 切换 + stub `auth-failed` 已覆盖"两族挂点均能分类"；ST-O02 要求两族**真实端点**跨族抽样抽真实 LLM 调用，需 OpenAI + DeepSeek 两套真实凭据并行配置，不入 r5 TC 骨架，归 §4 跟踪项。
+
+---
+
+## 1.4 判据边界 — 可观测通道约束（L2 §2.5 现状保留）
+
+**关键事实**：T1 结构化错误码主通道由 agent-core-java PR!242 + agent-runtime-java PR!449（2026-10-27 landed）落地到 `/v1/query` SSE 事件 `payload.failure.{code,numericCode,isRetryable}` 字段上；L2 §2.5 同口径定义了 A2A Task `message.metadata["openjiuwen.error"].{code,numericCode,retryable}` 为**同形字段**，仅承载通道不同（本档 SIT 侧走 `/v1/query` SSE，不改走 A2A entry）。SIT 侧判据必须按以下三通道落地，**不得断言** HTTP body 内老的 `details.category` / `details.status_code` 字段（这两个字段在 wire 层结构性不存在）。
+
+| # | 通道 | 载体 | 覆盖的分类口径 | 固化依据 |
+|---|------|------|---------------|---------|
+| **T1** | `/v1/query` SSE 事件 `data: {"type":"error", "error":"...", "failure":{...}}` 内的 `failure.{code,numericCode,isRetryable}` 三字段 | 新 wire schema（PR!242+PR!449 2026-10-27 landed）；同口径 A2A Task `message.metadata["openjiuwen.error"]` 由 FEAT-053 metadata schema 承接 | 任何类（五码一一映射）| L2 §2.5；agent-core-java PR!242；agent-runtime-java PR!449 |
+| **T2** | SUT retry 日志 `Model call will retry.` | 日志行结构化携带 `category=<CAT>` 字段 | **可重试类**（RATE_LIMITED / TEMPORARY）| L2 §3.10「每次重试」；`ModelCallRetrier.publishRetry` |
+| **T3** | SUT terminal 日志 `Model call failed.` | 日志行结构化携带 `category=<CAT>` 字段 | **永久类**（QUOTA/AUTH/CTX_LEN）+ 可重试类**预算耗尽** | L1 §5.1.7「每次模型调用失败」要求平台层结构化终态日志落地后启用 |
+
+### 1.4.1 判据组合规则
+
+| 场景类别 | 主通道（必断） | 辅通道（必断） | 禁出 |
+|---------|-------------|-------------|------|
+| 可重试类重试中 → 耗尽（S7/S11/S13） | T1 `failure.numericCode` 匹配 | T2 retry 行计数 strong-eq `maxRetries×(railRetries+1) = 4`（L2 §2.3 双层事实：Retrier 内层 `maxRetries=2` × Rail 整轮重试一次） | T2 count ≠ 4 |
+| 可重试类重试中 → 恢复（S8 / ST-S01 / ST-R02） | T1 不出错（HTTP 200）| T2 retry 行计数 strong-eq 1 | T2 count ≠ 1 |
+| 永久类直接短路（S9/S10/S12/ST-C01/ST-C02）| T1 `failure.numericCode` 匹配 | **当前（partial）**：T2 零 retry 行；**T3 平台层通道开放后**：T3 terminal 行 `category=<对应 CAT>` | T2 任何 retry 行 |
+| 可重试类 + 开关 OFF（s14/s15） | T1 `failure.numericCode` 匹配 | T2 零 retry 行 **且** stub 调用次数 strong-eq 2（Retrier 关短路 + Rail `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 不消费开关仍整轮一次）| T2 ≥1 retry 行 / stub ≠ 2 |
+| maxRetries=0 两层全关（s16） | T1 `failure.numericCode` 匹配 | T2 零 retry 行 **且** stub 调用次数 strong-eq 1（两层都通过 gate `maxRetries>0` 关断）| stub ≠ 1 |
+| 成功路径零干扰（ST-R01 / 本档 §3.14 stub CI 补充）| T1 不出错（HTTP 200 + `result_type=answer` + output 非空）| T2 零 retry 行 **且** 零分类错误码 numericCode 出现 **且** stub 调用次数 strong-eq 1 | 任何分类错误码出现 / 任何 retry 行 / stub ≠ 1 |
+| 跨族挂点（ST-O01，OpenAI × DeepSeek）| 两族各自 T1 `failure.numericCode` 均匹配 | 两族各自 T2 零 retry 行 + stub 调用次数 strong-eq 1 | 任一族偏离即 FAIL |
+
+### 1.4.2 为什么 T3 需要等平台层通道落地
+
+L1 §5.1.7 要求「每次模型调用失败」在日志稳定呈现分类结果（含永久类），L2 §3.10 实现只覆盖「每次重试」事件。两者是规格缺口（L1↔L2），永久类当前**只有** `OpenAI API async invoke error.` 行 + `HTTP <code>:` 文本片段，**无** 结构化 `category=X` 字段。SIT 侧 `assertTerminalLogCategory` helper 首版 throw `UnsupportedOperationException`，等平台层结构化终态日志通道落地后解禁；在此之前永久类 TC 的 T3 判据暂 defer，仅断 T1 numericCode。
+
+---
+
+## 1.5 双层重试与 stub 调用次数判据（L2 §2.3 两层事实）
+
+**关键事实**：FEAT-064 真实承载是 **ModelCallRetrier**（可重试类 inner retry）+ **ClassifiedModelFailureRail**（Rail guardrail retry）两层。单纯观察 retry 日志行会在部分场景产生**假阴性**，判据必须补 stub 侧 request-count 维度。
+
+### 1.5.1 两层的消费口径差异（源：`ClassifiedModelFailureRail` + `ModelCallRetrier` + L2 §2.3）
+
+| 层 | 消费的配置 | 不消费的配置 | 请求发起方 |
+|---|---------|------------|---------|
+| ModelCallRetrier (inner) | `maxRetries` + `retryOnRateLimit` + `retryOnTemporary`（三项全消费）| — | 自己发 HTTP |
+| ClassifiedModelFailureRail (outer guardrail) | `maxRetries>0` 作 gate（仅 presence 判定）| `retryOnRateLimit` + `retryOnTemporary`（**不消费**，这是 L2 §2.3 既定事实）| 通过 `context.requestRetry(delay)` 请求 agent 主循环**重调** model |
+
+### 1.5.2 场景化 stub 调用次数预期（**r5 strong-eq 口径锁定**）
+
+> **r5 判据重锁**：按 L2 §2.3 原文「全程调用上限 = (maxRetries+1)×(护栏重试次数+1) = 3×2 = 6」，§3.1/§3.5 持续可重试类 strong-eq `stub=6 / retry 日志=4`（r4 区间 `[3,6]/[2,4]` 作废）；§3.10/§3.11 开关 OFF strong-eq `stub=2`（Retrier 关短路 1 次 + Rail `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 不消费开关仍整轮一次再 1 次；r4 区间 `[1,2]` 作废）；§3.12 maxRetries=0 strong-eq `stub=1`（两层通过 `maxRetries>0` gate 全关）；永久类 strong-eq `stub=1`。原 "待开发裁定" 段废弃，`assertStubCallCountBetween` fixture 弃用（见 §2.2 Fixture 清单）。
+
+| 场景 | Retrier 消费 | Rail 消费 | stub 实际收到次数（r5 strong-eq）| 对应 TC |
+|------|---------|---------|-----------------|---------|
+| 默认 profile + 可重试类耗尽 | 2 次重试 | Rail 整轮重试 1 次（Retrier 耗尽后 Rail requestRetry 再触发整轮 Retrier）| **6**（`(maxRetries+1)×(railRetries+1) = 3×2`）| TC-RATE-LIMITED-PERSISTENT / TC-TEMPORARY-EXHAUSTED |
+| 默认 profile + 可重试类恢复 | 1 次重试即成功 | 不触发（成功路径）| **2**（1 首发 + 1 Retrier 重试，Rail 不触发）| TC-RATE-LIMITED-RECOVER / TC-STREAM-RECOVER-BEFORE-FIRST / TC-NON-STREAM-RATE-LIMITED-RECOVER |
+| 默认 profile + 永久类 | 0（永久类短路）| 0（Rail 对永久类 return）| **1** | TC-QUOTA-EXCEEDED / TC-AUTH-FAILED / TC-CONTEXT-LENGTH-EXCEEDED / TC-REAL-ENDPOINT-AUTH-FAILED / TC-REAL-ENDPOINT-CONTEXT-LENGTH |
+| 开关 OFF (s14/s15) + `maxRetries>0` | 0（开关关 Retrier 内层短路）| Rail 不消费开关仍整轮一次（`DEFAULT_MAX_GUARDRAIL_RETRIES=1` 独立消费 `maxRetries>0` gate）| **2**（1 首发 Retrier 短路 + 1 Rail requestRetry 整轮）| TC-RATE-LIMITED-SWITCH-OFF / TC-TEMPORARY-SWITCH-OFF |
+| maxRetries=0 (s16) | 0（预算关断）| 0（Rail gate `maxRetries>0` 不通过）| **1** | TC-MAX-RETRIES-ZERO-NO-RETRY |
+| 成功路径（stub `ok` 或真实端点 200）| 0（无需重试）| 不触发 | **1** | TC-SUCCESS-NO-INTERFERENCE / TC-REAL-ENDPOINT-OK / TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK |
+
+### 1.5.3 为什么 "retry 日志零条" 单条判据可能假阴性
+
+Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**不经过** `ModelCallRetrier.publishRetry()`，所以不出 `Model call will retry.` 行。开关 OFF 场景（s14/s15）如果只断 "retry 日志零条"，看起来通过，但 Rail 不消费开关仍走 requestRetry，stub 实际会被打 2 次（偷跑）。因此 s14/s15/s16 **必须** 用 `assertStubCallCount` 作为主判据之一，retry 日志零条作辅判据。r5 已锁定 strong-eq：s14/s15 `stub=2`、s16 `stub=1`，不再走区间判据。
+
+### 1.5.4 `assertStubCallCount` 的通道
+
+依赖 llm-stub-server 开放 request-count 可观测接口（`GET /__stats` + `POST /__stats/reset`，demo 侧已落地），SIT 侧 asserter 封装 `assertStubCallCount(stubMode, int expected)` strong-equality helper。r5 口径下所有场景均 strong-eq 可断，不再提供 `assertStubCallCountBetween` 区间 helper（r4 曾引入，r5 弃用）。
 
 ---
 
@@ -105,11 +189,11 @@ related_docs:
 
 | Fixture | 职责 | 位置建议（SIT 仓） |
 |---|---|---|
-| `TimeoutDemoLauncher` | 启停两个 fat jar；端口 ready probe；FEAT-064 TC 注入 `LLM_STUB_DEFAULT_MODE` + **不传** `--spring.profiles.active`（默认 profile） | `src/test/java/com/huawei/ascend/sit/fixture/.../TimeoutDemoLauncher.java`（FEAT-058 已设计，复用） |
-| `TimeoutProbeHttpClient` | 底层 `java.net.http.HttpClient` 直发 `POST /v1/query`，body `{"conversation_id":"sit-<uuid>","message":"<prompt>"}`；SSE / 单 JSON 双形态解析；暴露 `resultType()` / `output()` / `errorStatusCode()` / `errorDetails()` 等；**wire 层升级（2026-10-27）**：读 SSE `type=error` 事件 `payload.failure.{code,numericCode,isRetryable}`（新 wire schema），把 `failure.numericCode` 映射到 `errorStatusCode`，把 `failure.code`（如 `MODEL_CALL_FAILED`）映射回老判据预期的 `details.category`（如 `TEMPORARY`）字段，保持 TC 层判据不变 | `src/test/java/.../TimeoutProbeHttpClient.java`（FEAT-058 已设计，**本档扩展**） |
-| `StubStatsClient` | **FEAT-064 新增**：读 llm-stub-server 侧通道 `GET /__stats` 的调用计数，键为 `LLM_STUB_DEFAULT_MODE` 模式名；用于区分 Retrier 内层重试（会写 `"Model call will retry."` 日志）与 Rail 外层整轮重试（不写该日志但仍发出 wire 调用） | `src/test/java/.../StubStatsClient.java`（FEAT-064 本档新增） |
-| `SutLogTailer` | tail probe-agent 日志，解析 `[181009/181010/181011/181012/181001] ... category=<CAT> ...` 行；新增 API：`countOfRetryLog()` 匹配 `"Model call will retry."` 行、`countOfStatusCode(int)` 匹配各错误码、`categoryOfLastError()` 从日志行解析 category 字段 | `src/test/java/.../SutLogTailer.java`（FEAT-058 已设计，**本档扩展**） |
-| `ErrorEnvelopeAsserter` | 对 HTTP response body error payload 做结构化断言；新增 API：`assertCategory(String expected)` / `assertStatusCode(int)` 覆盖 181009/181010/181011/181012/181001；`assertRetryLogCount(SutLogTailer, int expected)` / `assertNoRetryLog(SutLogTailer)`；**FEAT-064 继续扩展**：`assertStubCallCount(StubStatsClient, String mode, int expected)` 用于两层重试次数验证 | `src/test/java/.../ErrorEnvelopeAsserter.java`（FEAT-058 已设计，**本档扩展**） |
+| `TimeoutDemoLauncher` | 启停两个 fat jar；端口 ready probe；FEAT-064 TC 注入 `LLM_STUB_DEFAULT_MODE` + **不传** `--spring.profiles.active`（默认 profile）；**r5 新增**：probe-agent env map 允许 TC 侧覆写 `LLM_PROVIDER`（默认 `OpenAI`，§3.21 ST-O01 两族切换到 `DeepSeek` 时覆写） | `src/test/java/com/huawei/ascend/sit/fixture/.../TimeoutDemoLauncher.java`（FEAT-058 已设计，复用） |
+| `TimeoutProbeHttpClient` | 底层 `java.net.http.HttpClient` 直发 `POST /v1/query`，body `{"conversation_id":"sit-<uuid>","message":"<prompt>"}`（**r5 新增** `query(prompt, timeout, stream=true)` 重载以支持 §3.15/§3.20 流式 TC）；解析 /v1/query SSE 事件流（含 `data:` 行拼接 + `type=error` 事件内 `failure.{code,numericCode,isRetryable}` 字段）；返回 `QueryResponse` 暴露 `resultType()` / `output()` / `errorStatusCode()`（即 `failure.numericCode`）/ `errorCode()`（即 `failure.code` 枚举字串）/ `category()`（经 `mapFailureCodeToCategory` 从 `failure.code` 映射） | `src/test/java/.../TimeoutProbeHttpClient.java`（FEAT-058 已设计，**r5 扩展**） |
+| `SutLogTailer` | tail probe-agent 日志，解析 `[181009/181010/181011/181012/181001] ... category=<CAT> ...` 行；API：`countOfRetryLog()` 匹配 `"Model call will retry."` 行、`countOfStatusCode(int)` 匹配各错误码、`categoryOfLastError()` 从日志行解析 category 字段 | `src/test/java/.../SutLogTailer.java`（FEAT-058 已设计，**本档扩展**） |
+| `ErrorEnvelopeAsserter` | 对 SSE `failure` 事件做结构化断言；API：`assertStatusCode(int)` 覆盖 181009/181010/181011/181012/181001；`assertCategory(ModelErrorCategory)` 读 `failure.code` 经 fixture 映射到 category 字串（**非** 老的 HTTP body `details.category` 字段，老路径 r2 已 deprecate，r5 彻底清理）；`assertRetryLogCount(SutLogTailer, int)` / `assertNoRetryLog(SutLogTailer)`；`assertStubCallCount(StubStatsClient, String, int)` strong-eq。**r5 清理**：移除 `errorDetails()` 老路径的 category 返回残留；移除 `assertStubCallCountBetween` 区间 helper（§1.5.4 已 strong-eq 全锁） | `src/test/java/.../ErrorEnvelopeAsserter.java`（FEAT-058 已设计，**r5 清理 + 扩展**） |
+| `StubStatsClient` | 对接 llm-stub-server `GET /__stats` + `POST /__stats/reset`，提供 `countOf(stubMode)` + `reset()` | `src/test/java/.../StubStatsClient.java`（r4 新增） |
 
 ### 2.3 Stub 模式到 TC 映射（**SIT 复用 demo stub 模式，不新造**）
 
@@ -123,45 +207,19 @@ related_docs:
 | TC-CONTEXT-LENGTH-EXCEEDED | `context-length-exceeded` | 默认 | `maxRetries` 默认 2 |
 | TC-STREAM-ERROR-FRAME | `stream-error-frame` | 默认 | `maxRetries` 默认 2 |
 | TC-MAX-RETRIES-NEGATIVE-REJECTED | n/a（不启动 stub） | **临时 yaml** `max-retries: -1`（SIT 侧 `application-sit-feat064-neg.yml`，**不改 demo 内容**） | 期望 probe-agent 启动失败 |
-| TC-DETAILS-CATEGORY-FIELD | 聚合上述 5 个分类 stub mode | 默认 | 跨 TC 聚合断言 |
+| TC-NUMERIC-CODE-FIELD | 聚合上述 5 个分类 stub mode | 默认 | 跨 TC 聚合断言（`metadata.numericCode` + T2/T3 日志通道，r3 重命名自 TC-DETAILS-CATEGORY-FIELD）|
 | TC-RATE-LIMITED-SWITCH-OFF | `rate-limited-persistent` | **s14** | `demo.timeout-probe.retry-on-rate-limited: false`（demo 新 jar 自带绑定） |
 | TC-TEMPORARY-SWITCH-OFF | `server-5xx` | **s15** | `demo.timeout-probe.retry-on-temporary: false`（demo 新 jar 自带绑定） |
 | TC-MAX-RETRIES-ZERO-NO-RETRY | `server-5xx` | **s16** | `demo.timeout-probe.max-retries-override: 0`（demo 新 jar 自带绑定） |
 | TC-CROSS-PROVIDER-CLASSIFICATION | `auth-failed` | **s17** | stub env `LLM_STUB_RESPONSE_SCHEMA=dashscope`（demo 新 stub jar 自带） |
-| TC-SUCCESS-NO-INTERFERENCE | `ok` | 默认 | 实证 FEAT-064 不干扰 happy path |
-| TC-STREAM-RECOVER-BEFORE-FIRST | `rate-limited-recover` | 默认 | 与 TC-RATE-LIMITED-RECOVER 共用 stub 配置，断言面不同（stream 数据完整性） |
-| TC-REAL-ENDPOINT-OK | n/a（不启动 stub） | 默认 | 真实 LLM；SIT driver 从 shell `~/.llmrc` 继承 `LLM_API_BASE/LLM_API_KEY/LLM_MODEL` |
-| TC-REAL-ENDPOINT-AUTH-FAILED | n/a（不启动 stub） | 默认 | 真实 LLM endpoint + 故意无效 `LLM_API_KEY` |
-
-### 2.4 两层重试次数口径（**2026-10-28 评审修正**）
-
-FEAT-064 默认配置下**同时存在两层重试**：
-
-- **Retrier 内层**（`ModelCallRetrier`）：由 `ModelClientConfig.maxRetries`（默认 2）控制；可被 `retryOnRateLimit` / `retryOnTemporary` 开关关闭（仅针对相应分类）。只有 Retrier 会写 `"Model call will retry."` 日志行。
-- **Rail 外层**（`ClassifiedModelFailureRail`）：由 `DEFAULT_MAX_GUARDRAIL_RETRIES`（默认 1）控制；只检查错误分类 + `maxRetries>0`，**不消费** `retryOnRateLimit` / `retryOnTemporary` 开关。不写 `"Model call will retry."` 日志，但每次仍发出 wire 调用。
-
-**可重试类（RATE_LIMITED / TEMPORARY）持续失败场景下的默认两层次数**：
-- stub 调用次数 = `(maxRetries+1) × (railRetries+1) = (2+1) × (1+1) = 6`
-- 内层 retry 日志次数 = `maxRetries × (railRetries+1) = 2 × 2 = 4`
-
-**永久类（QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED）**：
-- Retrier 内层：`PermanentModelError.defaultRecoverable=false` → 不重试
-- Rail 外层：按分类不是 RATE_LIMITED/TEMPORARY → 不重试
-- stub 调用次数 = **1**；retry 日志次数 = 0
-
-**首段分界（STREAM_ERROR_FRAME）**：
-- `FirstSegmentRetryIterator` 已跨首段 → 不整次重试
-- stub 调用次数 = **1**；retry 日志次数 = 0
-
-**开关 OFF 分支（s14 `retry-on-rate-limited=false` / s15 `retry-on-temporary=false`）**：
-- Retrier 内层：开关 OFF → 不重试，retry 日志 0 条
-- Rail 外层：**不消费这两个开关** → 可能仍按分类规则重试 1 次
-- **本轮 TC 暂不断言 stub 调用数**，等开发侧裁定"开关 OFF 时 Rail 是否也应短路"后再定稿（见 `docs/bugs` 或开发侧答复）
-
-**maxRetries=0 场景（s16）**：
-- Retrier 内层：`maxRetries=0` → 不重试
-- Rail 外层：`maxRetries>0` 条件不满足 → 不重试
-- stub 调用次数 = **1**；retry 日志次数 = 0
+| TC-SUCCESS-NO-INTERFERENCE | `ok`（stub 正常返回 200 + answer） | 默认 | 无额外配置；证明错误分类/重试栈对成功路径零干扰 |
+| TC-STREAM-RECOVER-BEFORE-FIRST | `rate-limited-recover` | 默认 | `LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`；代表性 "首段**前**可重试错误 → 恢复" 场景（与 §3.7 首段**后**不重试互补） |
+| TC-REAL-ENDPOINT-OK (ST-R01) | **不启动 stub** | 默认 | `assumeTrue(LLM_API_BASE / LLM_API_KEY / LLM_MODEL env 非空)`；真实服务商 happy path |
+| TC-REAL-ENDPOINT-AUTH-FAILED (ST-C01) | **不启动 stub** | 默认 | 覆写 `LLM_API_KEY` 为无效值；真实服务商 401 → 181011 |
+| TC-NON-STREAM-RATE-LIMITED-RECOVER (ST-R02) | `rate-limited-recover` | 默认 | **不带** `stream:true`（blocking 单 JSON 路径）；1 首发 429 + Retrier 1 次重试 200 恢复 |
+| TC-REAL-ENDPOINT-CONTEXT-LENGTH (ST-C02) | **不启动 stub** | 默认 | 构造超长 prompt（≥ 200K 字符）触发真实服务商 `context_length_exceeded` → 181012 |
+| TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (ST-S02) | `stream-rate-limited-first-segment-after`（demo S21）| 默认 | `stream:true` body；首段正常 chunk 后 429 关闭连接；首段分界合同 "首段**后** 429 不整次重试" 分支 |
+| TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK (ST-O01) | `auth-failed` | 默认 | **两跑**：第 1 跑 `LLM_PROVIDER=OpenAI`、第 2 跑 `LLM_PROVIDER=DeepSeek`（DeepSeek 走 OpenAI 兼容 wire，llm-stub-server 可用）；两族各自 strong-eq numericCode==181011 + stub==1 |
 
 ---
 
@@ -173,9 +231,9 @@ FEAT-064 默认配置下**同时存在两层重试**：
 |---|---|
 | Given | probe-agent 启动于默认 profile（`maxRetries=2` 默认）；stub-server 启动于 `rate-limited-persistent` 模式（持续返 HTTP 429 + `rate_limit_exceeded` 错误体 + `Retry-After: 1` 响应头） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181009]` + `category=RATE_LIMITED`；**内层 `"Model call will retry."` 恰 4 次**（见 §2.4 两层口径：`maxRetries × (railRetries+1) = 2×2 = 4`）；**stub 调用恰 6 次**（`(maxRetries+1)×(railRetries+1) = 3×2 = 6`）；最终以 181009 落盘；禁 181010/181011/181012；禁 181008；HTTP response body error payload `details.category=="RATE_LIMITED"` + `details.status_code==181009` |
-| PASS | 五项全满足（错误码 + category + 内层 retry 日志 4 条 + stub 调用 6 次 + payload 字段齐） |
-| FAIL | 任一偏离：错误码非 181009 / category 非 RATE_LIMITED / 内层 retry 日志 ≠ 4 / stub 调用 ≠ 6 / 缺 details.category 字段 / 出现其他分类错误码 |
+| Then | **T1**：`/v1/query` SSE `failure.numericCode == 181009` + `failure.code == MODEL_CALL_RATE_LIMITED`；**T2**：SUT retry 日志 `Model call will retry. {category=RATE_LIMITED, ...}` **strong-eq 4 行**（`maxRetries×(railRetries+1) = 2×2 = 4`，L2 §2.3 双层事实：Retrier 内层 2 次 + Rail 整轮再 2 次）；**stub 调用计数**：`assertStubCallCount("rate-limited-persistent", 6)`（`(maxRetries+1)×(railRetries+1) = 3×2 = 6`）；禁 `[181001/181010/181011/181012/181008]` numericCode |
+| PASS | T1 numericCode 181009 + T2 retry 行 strong-eq 4 + stub 次数 strong-eq 6 |
+| FAIL | 任一偏离：numericCode 非 181009 / retry 行 category ≠ RATE_LIMITED / retry 次数 ≠ 4 / stub 次数 ≠ 6 / 出现其他分类 numericCode |
 | INCONCLUSIVE | probe-agent 或 stub-server 启动失败（端口冲突 / JDK 版本错 / stub 不识别 `rate-limited-persistent` 模式） |
 
 ### 3.2 TC-RATE-LIMITED-RECOVER（S8 / 限流一次恢复）
@@ -184,30 +242,30 @@ FEAT-064 默认配置下**同时存在两层重试**：
 |---|---|
 | Given | probe-agent 启动于默认 profile；stub-server 启动于 `rate-limited-recover` 模式（首次 429，之后 200；`LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | `"Model call will retry."` 恰 **1 次** + `category=RATE_LIMITED`；**stub 调用恰 2 次**（首发 429 → retry → 200）；**无** `[181009]`（最终成功）；HTTP 200 + `result_type==answer`；禁 `[181010]/[181011]/[181012]/[181001]/[181008]` |
-| PASS | 单次重试日志 + stub 调用 2 次 + 最终成功 + 无任何分类错误码 |
-| FAIL | 重试次数 ≠ 1 / stub 调用 ≠ 2 / 最终失败（出现 181009）/ 出现其他错误码 |
+| Then | **T1**：HTTP 200 + `result_type==answer`（无 `failure` 事件）；**T2**：SUT retry 日志 `Model call will retry. {category=RATE_LIMITED, ...}` **恰 1 次**；**stub 调用计数**：`assertStubCallCount("rate-limited-recover", 2)`（见 §1.5.2 "默认 profile + 可重试类恢复"）；禁出任何 numericCode ∈ {181001/181009/181010/181011/181012/181008} |
+| PASS | HTTP 200 + T2 retry 行恰 1 次 + stub 次数 == 2 |
+| FAIL | 重试次数 ≠ 1 / 最终失败（出现 numericCode）/ stub 次数 ≠ 2 |
 | INCONCLUSIVE | stub 的 recover 计数不生效（二次仍返 429）；重跑一次仍不恢复则 INCONCLUSIVE |
 
-### 3.3 TC-QUOTA-EXCEEDED（S9 / 欠费永久类）
+### 3.3 TC-QUOTA-EXCEEDED（S9 / 欠费永久类，**r5 partial**：T3 category 待通道开放）
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于默认 profile（`maxRetries=2`）；stub-server 启动于 `quota-exceeded` 模式（HTTP 402 + `insufficient_quota`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181010]`；**无** `"Model call will retry."`（PermanentModelError 短路，Retrier 和 Rail 都不重试）；**stub 调用恰 1 次**；禁 `[181009]/[181011]/[181012]/[181001]/[181008]`；HTTP response body error payload `details.category=="QUOTA_EXCEEDED"` + `details.status_code==181010` |
-| PASS | 181010 + 无重试日志 + stub 调用 1 次 + payload 字段齐 |
-| FAIL | 任一偏离：错误码非 181010 / 出现重试日志（表明 PermanentModelError 未短路）/ stub 调用 ≠ 1 / category 字段错位 |
+| Then | **T1**：SSE `failure.numericCode == 181010` + `failure.code == MODEL_CALL_QUOTA_EXCEEDED`；**T2**：**无** `Model call will retry.` 行（PermanentModelError 短路，次数不消耗）；**T3**（**平台层结构化终态日志通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=QUOTA_EXCEEDED, ...}` 行恰 1 次；**stub 调用计数**：`assertStubCallCount("quota-exceeded", 1)`；禁 `[181001/181009/181011/181012/181008]` numericCode |
+| PASS | T1 + T2 零 retry 行 + stub 次数 == 1；T3 待通道开放后转必断（当前 **partial** 不断 T3） |
+| FAIL | 任一偏离：numericCode 非 181010 / 出现 retry 日志（表明 PermanentModelError 未短路）/ stub 次数 ≠ 1 |
 | INCONCLUSIVE | stub 启动失败 |
 
-### 3.4 TC-AUTH-FAILED（S10 / 认证失效永久类）
+### 3.4 TC-AUTH-FAILED（S10 / 认证失效永久类，**r5 partial**：T3 category 待通道开放）
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于默认 profile；stub-server 启动于 `auth-failed` 模式（HTTP 401 + `invalid_api_key`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181011]`；**无** `"Model call will retry."`；**stub 调用恰 1 次**；禁 `[181009]/[181010]/[181012]/[181001]/[181008]`；HTTP response body error payload `details.category=="AUTH_FAILED"` + `details.status_code==181011` |
-| PASS | 181011 + 无重试日志 + stub 调用 1 次 + payload 字段齐 |
+| Then | **T1**：SSE `failure.numericCode == 181011` + `failure.code == MODEL_CALL_AUTH_FAILED`；**T2**：**无** `Model call will retry.` 行；**T3**（**平台层通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=AUTH_FAILED, ...}`；**stub 调用计数**：`assertStubCallCount("auth-failed", 1)`；禁 `[181001/181009/181010/181012/181008]` numericCode |
+| PASS | T1 + T2 零 retry 行 + stub 次数 == 1；T3 待通道开放后转必断（当前 **partial** 不断 T3） |
 | FAIL | 任一偏离 |
 | INCONCLUSIVE | stub 启动失败 |
 
@@ -217,34 +275,36 @@ FEAT-064 默认配置下**同时存在两层重试**：
 |---|---|
 | Given | probe-agent 启动于默认 profile；**不显式配置 `maxRetries`**（裸跑 SDK 默认值）；stub-server 启动于 `server-5xx` 模式（持续 HTTP 500 + `server_error`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181001]` + `category=TEMPORARY`；**内层 `"Model call will retry."` 恰 4 次**（见 §2.4 两层口径：`maxRetries × (railRetries+1) = 2×2 = 4`——既证重试路径也证默认 `maxRetries` 已切为 2）；**stub 调用恰 6 次**；禁 `[181008]/[181009]/[181010]/[181011]/[181012]`；HTTP response body error payload `details.category=="TEMPORARY"` + `details.status_code==181001` |
-| PASS | 181001 + category=TEMPORARY + 内层 retry 日志 4 条 + stub 调用 6 次 |
-| FAIL | 任一偏离：错误码非 181001 / category 错位 / 内层 retry 日志 ≠ 4（若为 6 则证明默认值仍为 3，是 L2 §1.2.9 FAIL；若为 0 则证明 TEMPORARY 未走重试路径，是 L2 §1.2.6 FAIL）/ stub 调用 ≠ 6 |
+| Then | **T1**：SSE `failure.numericCode == 181001` + `failure.code == MODEL_CALL_ERROR`；**T2**：SUT retry 日志 `Model call will retry. {category=TEMPORARY, ...}` **strong-eq 4 行**（Retrier 内层 2 + Rail 整轮再 2，L2 §2.3 双层事实；4 行既证重试路径也证默认 `maxRetries=2`）；**stub 调用计数**：`assertStubCallCount("server-5xx", 6)`（`(maxRetries+1)×(railRetries+1) = 3×2 = 6`）；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 + T2 retry 行 category=TEMPORARY strong-eq 4 + stub 次数 strong-eq 6 |
+| FAIL | 任一偏离：numericCode 非 181001 / category 错位 / 重试次数 ≠ 4（≠2 证明 Retrier 内层层级异常或默认值未切换；≠4 整体证明双层事实破坏）/ stub 次数 ≠ 6 |
 | INCONCLUSIVE | stub 启动失败 / 日志抓取窗口不够长 |
 
-> **本 TC 的双重作用**：default maxRetries 3→2（L2 §1.2.9）是外部可观察行为变化，但没有直接 getter 可读；通过 "不显式配置 + 观察重试日志行数恰等于 2" 以**单一 TC 同时证明 TEMPORARY 走重试路径（L2 §1.2.6）+ 默认值已切换（L2 §1.2.9）**，与 demo README S11 定位一致。
+> **本 TC 的双重作用**：default maxRetries 3→2（L2 §1.2.9）是外部可观察行为变化，但没有直接 getter 可读；通过 "不显式配置 + 观察重试日志行数恰等于 4"（= 2×2，内层 maxRetries=2 × Rail 整轮一次）以**单一 TC 同时证明 TEMPORARY 走重试路径（L2 §1.2.6）+ 默认值已切换（L2 §1.2.9）**。
 
-### 3.6 TC-CONTEXT-LENGTH-EXCEEDED（S12 / 上下文超限永久类，扩展分类）
+### 3.6 TC-CONTEXT-LENGTH-EXCEEDED（S12 / 上下文超限永久类，扩展分类，**r5 partial**：T3 category 待通道开放）
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于默认 profile；stub-server 启动于 `context-length-exceeded` 模式（HTTP 400 + `code=context_length_exceeded`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181012]`；**无** `"Model call will retry."`；**stub 调用恰 1 次**；禁 `[181009]/[181010]/[181011]/[181001]/[181008]`；HTTP response body error payload `details.category=="CONTEXT_LENGTH_EXCEEDED"` + `details.status_code==181012` |
-| PASS | 181012 + 无重试日志 + stub 调用 1 次 + payload 字段齐 |
+| Then | **T1**：SSE `failure.numericCode == 181012` + `failure.code == MODEL_CONTEXT_LENGTH_EXCEEDED`；**T2**：**无** `Model call will retry.` 行；**T3**（**平台层通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=CONTEXT_LENGTH_EXCEEDED, ...}`；**stub 调用计数**：`assertStubCallCount("context-length-exceeded", 1)`；禁 `[181001/181009/181010/181011/181008]` numericCode |
+| PASS | T1 + T2 零 retry 行 + stub 次数 == 1；T3 待通道开放后转必断（当前 **partial** 不断 T3） |
 | FAIL | 任一偏离 |
 | INCONCLUSIVE | stub 启动失败 |
 
-### 3.7 TC-STREAM-ERROR-FRAME（S13 / 流中错误帧 → 首段后不整次重试）
+### 3.7 TC-STREAM-ERROR-FRAME（S13 / 流中错误帧 → 首段**后**不整次重试，**r5 ST 订正** ST-S02→ST-S03）
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于默认 profile；stub-server 启动于 `stream-error-frame` 模式（SSE 首段正常返回，首段后发 `data: {"error":...}` 帧） |
-| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181001]`；**无** `"Model call will retry."`（首段已到达，`FirstSegmentRetryIterator` 不整次重试；Rail 也被首段分界 bypass）；**stub 调用恰 1 次**；禁 `[181008]/[181009]/[181010]/[181011]/[181012]` |
-| PASS | 181001 + 无重试日志 + stub 调用 1 次（证明首段分界合同生效） |
-| FAIL | 出现 `"Model call will retry."`（表明首段分界破坏，违反 L2 §1.2.7 流式重试判定线）/ stub 调用 ≠ 1 / 错误码非 181001 |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping","stream":true}` |
+| Then | **T1**：SSE `failure.numericCode == 181001` + `failure.code == MODEL_CALL_ERROR`；**T2**：**无** `Model call will retry.` 行（首段已到达，`FirstSegmentRetryIterator` 不整次重试）；**stub 调用计数**：`assertStubCallCount("stream-error-frame", 1)`；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181001 + T2 零 retry 行（证明首段分界合同生效）+ stub strong-eq 1 |
+| FAIL | 出现 `Model call will retry.`（表明首段分界破坏，违反 L2 §1.2.7 流式重试判定线）/ numericCode 非 181001 / stub ≠ 1 |
 | INCONCLUSIVE | stub 不发错误帧（流直接完成）/ 流被底层超时截断为 181008 |
+
+> **r5 ST 订正**：本 TC 对应 L1 §8.3 **ST-S03**（r4 曾写 ST-S02，已订正）；ST-S02 的 "首段**后** `rate_limited` 等语义不整次重试" 由新增 §3.20 承接。
 
 ### 3.8 TC-MAX-RETRIES-NEGATIVE-REJECTED（增量 / setter 启动期 fail-fast）
 
@@ -257,120 +317,184 @@ FEAT-064 默认配置下**同时存在两层重试**：
 | FAIL | 启动成功（校验被绕过，Rail 用负值 `maxRetries` 跑起来）/ 启动失败但错误原因不是 setter 校验 |
 | INCONCLUSIVE | 启动失败但错误日志抓取失败（Spring Boot 吞异常） |
 
-### 3.9 TC-DETAILS-CATEGORY-FIELD（增量 / 错误 payload `details.category` 字段聚合）
+### 3.9 TC-NUMERIC-CODE-FIELD（原 TC-DETAILS-CATEGORY-FIELD / 聚合 5 类 numericCode + category ↔ numericCode 1:1 映射）
+
+> **r3 重命名理由**：原 `TC-DETAILS-CATEGORY-FIELD` 命名假设 HTTP body 内有 `details.category` 字段。按 L2 §2.5「BaseError details 不上浮客户端 (现状保留)」，该字段结构性不存在；聚合判据改为 `/v1/query` SSE `failure.numericCode` 的 5 类齐备 + category ↔ numericCode 的 1:1 映射（映射矩阵固化在 L2 §5.1 R6 规则表）。
+>
+> **r5 字段路径订正**：T1 主通道从 `metadata.openjiuwen.error.numericCode` 订正为 SSE 事件 `failure.numericCode`（PR!242+PR!449 2026-10-27 落地）；同口径 A2A Task `message.metadata["openjiuwen.error"]` 由 FEAT-053 承接，本档不改走 A2A entry。
 
 | 字段 | 内容 |
 |---|---|
 | Given | 已跑完 TC-RATE-LIMITED-PERSISTENT + TC-QUOTA-EXCEEDED + TC-AUTH-FAILED + TC-TEMPORARY-EXHAUSTED + TC-CONTEXT-LENGTH-EXCEEDED 五条 trace（覆盖 5 类分类） |
-| When | 聚合五条 trace 的 HTTP response body error payload |
-| Then | 每条 payload 的 `details.category` 字段**必填齐备**；取值 ∈ {RATE_LIMITED, QUOTA_EXCEEDED, AUTH_FAILED, TEMPORARY, CONTEXT_LENGTH_EXCEEDED}；category ↔ StatusCode 1:1 对应（RATE_LIMITED↔181009 / QUOTA_EXCEEDED↔181010 / AUTH_FAILED↔181011 / TEMPORARY↔181001 / CONTEXT_LENGTH_EXCEEDED↔181012）；程序方可按 `details.category` 做分支判定 |
-| PASS | 五 trace 均满足 category 字段齐备 + 1:1 对应 |
-| FAIL | 任一 trace 缺字段 / 取值不在枚举 / category ↔ StatusCode 错位 |
-| INCONCLUSIVE | 任一上游 TC 自己是 INCONCLUSIVE（本 TC 相应降级） |
+| When | 聚合五条 trace 的 `/v1/query` SSE `failure.numericCode` 字段 + SUT 日志通道（T2 或 T3）内的 `category=X` 字段 |
+| Then | 每条 trace 的 `failure.numericCode` 字段**必填齐备**；取值 ∈ {181009, 181010, 181011, 181001, 181012}；每条 trace 的 T2 或 T3 日志行内 `category` 字段取值 ∈ {RATE_LIMITED, QUOTA_EXCEEDED, AUTH_FAILED, TEMPORARY, CONTEXT_LENGTH_EXCEEDED}；category ↔ numericCode 1:1 对应（RATE_LIMITED↔181009 / QUOTA_EXCEEDED↔181010 / AUTH_FAILED↔181011 / TEMPORARY↔181001 / CONTEXT_LENGTH_EXCEEDED↔181012）；程序方可按 `failure.numericCode` 做分支判定 |
+| PASS | 五 trace 均满足 numericCode 齐备 + 日志 category 齐备 + 1:1 对应 |
+| FAIL | 任一 trace 缺 numericCode / 日志 category 字段缺失（可重试类走 T2 无、永久类待 T3 通道开放）/ 1:1 映射错位 |
+| INCONCLUSIVE | 任一上游 TC 自己是 INCONCLUSIVE（本 TC 相应降级）；永久类三条（181010/181011/181012）的 category 字段部分在 T3 通道开放前仅能验 numericCode，整体结论降为 PARTIAL |
 
 ### 3.10 TC-RATE-LIMITED-SWITCH-OFF（增量 s14 / 限流开关 OFF 分支，L2 §1.2.9）
 
-> **2026-10-28 评审暴露的 Rail 开关消费问题（pending dev 裁定）**：`ClassifiedModelFailureRail` **不消费** `retryOnRateLimit` 开关，所以在 Retrier 内层关闭的情况下，Rail 外层仍可能按分类规则整轮重试 1 次（`DEFAULT_MAX_GUARDRAIL_RETRIES=1`）。本轮 TC **暂不断言 stub 调用数**（§2.4 已标注），只保留 "`"Model call will retry."` 零条" 的判据（该判据无论 Rail 行为如何都成立）。待开发裁定 "开关 OFF 时 Rail 是否也应短路" 后再定稿：若判为设计则补 `assertStubCallCount == 2`；若认同是缺陷则改为 `== 1` 并开 bug。
+> **r5 strong-eq 口径**：按 §1.5「双层重试与 stub 调用次数判据」，`ClassifiedModelFailureRail` **不消费** `retryOnRateLimit` 开关（L2 §2.3 既定事实），仅检查 `maxRetries>0` 作 presence gate；Rail `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 整轮一次。因此开关 OFF 场景 strong-eq `stub=2`（1 首发 Retrier 内层开关 OFF 短路 + 1 Rail requestRetry 整轮）。r4 待开发裁定点 + 区间判据作废。
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于 **s14 profile**（`demo.timeout-probe.retry-on-rate-limited: false`，由 demo 新 jar 的 `TimeoutProbeAgentProperties` 绑定到 `ModelClientConfig.Builder.retryOnRateLimit(false)`）；stub-server 启动于 `rate-limited-persistent` 模式 |
+| Given | probe-agent 启动于 **s14 profile**（`demo.timeout-probe.retry-on-rate-limited: false`，绑定到 `ModelClientConfig.Builder.retryOnRateLimit(false)`）；stub-server 启动于 `rate-limited-persistent` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181009]`；`"Model call will retry."` **零次**（Retrier 内层开关 OFF 绕过重试循环；Rail 外层仍可能重试 1 次但不写该日志）；禁 `[181001]/[181010]/[181011]/[181012]`；HTTP response body error payload `details.status_code==181009`（不断言 `details.category` 字串，因为开关 OFF 时平台 "Model call will retry" 日志行不出现，category 字串随之不在日志中；错误码 181009 ↔ RATE_LIMITED 1:1 对应已由 §5.1 R6 规则确定） |
-| PASS | 181009 + Retrier 内层无重试日志 |
-| FAIL | 出现 Retrier 内层重试日志（证明开关 OFF 未生效，§1.2.9 FAIL）/ 错误码非 181009 |
-| INCONCLUSIVE | s14 profile 未被识别（demo 新 jar 的 `demo.timeout-probe.*` 绑定没到位） |
+| Then | **T1**：SSE `failure.numericCode == 181009` + `failure.code == MODEL_CALL_RATE_LIMITED`；**T2**：`Model call will retry.` **零次**（Retrier 开关 OFF 绕过内层重试循环；Rail requestRetry 不走 publishRetry）；**stub 调用计数**：`assertStubCallCount("rate-limited-persistent", 2)`；禁 `[181001/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181009 + T2 零 retry 行 + stub strong-eq 2 |
+| FAIL | 出现 retry 日志（证明 Retrier 开关 OFF 未生效，L2 §1.2.9 FAIL）/ numericCode 非 181009 / stub ≠ 2 |
+| INCONCLUSIVE | s14 profile 未被 probe-agent 识别（载体层 `demo.timeout-probe.*` 绑定未到位） |
 
 ### 3.11 TC-TEMPORARY-SWITCH-OFF（增量 s15 / 临时故障开关 OFF 分支，L2 §1.2.9）
 
-> **2026-10-28 评审暴露的 Rail 开关消费问题（pending dev 裁定）**：同 §3.10——`ClassifiedModelFailureRail` 不消费 `retryOnTemporary` 开关。本轮 TC 暂不断言 stub 调用数，等裁定后补。
+> **r5 strong-eq 口径**：同 §3.10，`retryOnTemporary` 开关也不被 Rail 消费；strong-eq `stub=2`。
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于 **s15 profile**（`demo.timeout-probe.retry-on-temporary: false`，绑定到 `ModelClientConfig.Builder.retryOnTemporary(false)`）；stub-server 启动于 `server-5xx` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181001]`；`"Model call will retry."` **零次**（Retrier 内层开关 OFF 绕过重试循环；Rail 外层仍可能重试 1 次但不写该日志）；禁 `[181008]/[181009]/[181010]/[181011]/[181012]`；HTTP response body error payload `details.status_code==181001`（不断言 `details.category` 字串，原因同 §3.10） |
-| PASS | 181001 + Retrier 内层无重试日志 |
-| FAIL | 出现 Retrier 内层重试日志（§1.2.9 FAIL）/ 错误码非 181001 |
+| Then | **T1**：SSE `failure.numericCode == 181001`；**T2**：`Model call will retry.` **零次**；**stub 调用计数**：`assertStubCallCount("server-5xx", 2)`；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181001 + T2 零 retry 行 + stub strong-eq 2 |
+| FAIL | 出现 retry 日志（L2 §1.2.9 FAIL）/ numericCode 非 181001 / stub ≠ 2 |
 | INCONCLUSIVE | s15 profile 未被识别 |
 
 ### 3.12 TC-MAX-RETRIES-ZERO-NO-RETRY（增量 s16 / maxRetries=0 预算关断 wire-observable，L2 §1.2.9）
 
-> **归属校正**：开发侧 2026-10-26 答复把本 TC 从"§1.2.11 Rail 装配事实"剥到"§1.2.9 wire-observable 后果"。L2 §2.3 原文：`maxRetries=0 等价于关闭全部自动重试（客户端包装层与主循环护栏两层同时关闭）`。SIT 侧测的是 **wire-observable 后果**（无重试日志 + 首次失败即终错误码），不验证 Rail 装配事实本身（后者 UT 承接）。
+> **r3 补注**：按 L2 §2.3「maxRetries=0 等价于关闭全部自动重试（客户端包装层与主循环护栏两层同时关闭）」—— Rail gate `maxRetries>0` 不通过，Retrier 预算关断，两层全关。SIT 侧验证 **wire-observable 后果**（stub 调用次数 == 1 + 无重试日志 + 首次失败即终 numericCode），不验证 Rail 装配事实本身（后者 UT 承接）。
 
 | 字段 | 内容 |
 |---|---|
 | Given | probe-agent 启动于 **s16 profile**（`demo.timeout-probe.max-retries-override: 0`，绑定到 `ModelClientConfig.Builder.maxRetries(0)`）；stub-server 启动于 `server-5xx` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181001]` + `max_retries=0` 字段；`"Model call will retry."` **零次**（预算关断，首次失败即终错误码）；**stub 调用恰 1 次**（Rail 的 `maxRetries>0` gate 不满足也不重试）；禁 `[181008]/[181009]/[181010]/[181011]/[181012]` |
-| PASS | 181001 + max_retries=0 + 无重试日志 + stub 调用 1 次 |
-| FAIL | 出现重试日志（证明预算关断未生效）/ stub 调用 ≠ 1 / 错误码非 181001 / `max_retries` 字段 ≠ 0 |
-| INCONCLUSIVE | s16 profile 未被识别 |
+| Then | **T1**：SSE `failure.numericCode == 181001` + 日志 `max_retries=0` 字段；**T2**：`Model call will retry.` **零次**（预算关断，首次失败即终 numericCode）；**stub 调用计数**：`assertStubCallCount("server-5xx", 1)`（两层全关）；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181001 + `max_retries=0` 字段 + T2 零 retry 行 + stub 次数 == 1 |
+| FAIL | 出现 retry 日志（证明预算关断未生效）/ numericCode 非 181001 / `max_retries` 字段 ≠ 0 / stub 次数 ≠ 1（2 次表明 Rail gate 未阻断，证明装配偏离 L2 §2.3） |
+| INCONCLUSIVE | s16 profile 未被识别；或 stub 调用计数通道未开放时降级 |
 
-### 3.13 TC-CROSS-PROVIDER-CLASSIFICATION（增量 s17 / 跨 provider 分类挂点覆盖，L2 §1.2.1）
+### 3.13 TC-CROSS-PROVIDER-CLASSIFICATION（增量 s17 / OpenAI 挂点 schema-agnostic R6 验证，L2 §1.2.1）
 
-| 字段 | 内容 |
-|---|---|
-| Given | probe-agent 启动于默认 profile（与 s10 共用 probe-agent 配置）；stub-server 启动于 `auth-failed` mode + env `LLM_STUB_RESPONSE_SCHEMA=dashscope`（HTTP 401 + DashScope 风格响应体 `{"code":"InvalidApiKey","message":"...","request_id":"..."}`） |
-| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181011]` + `category=AUTH_FAILED`；`"Model call will retry."` 零次（永久类短路）；**stub 调用恰 1 次**；HTTP response body error payload `details.category=="AUTH_FAILED"` + `details.status_code==181011` |
-| PASS | 181011 + AUTH_FAILED + 无重试日志 + stub 调用 1 次 + payload 字段齐 |
-| FAIL | 挂点吞掉状态码退化为 181001（挂点漏接证据） / category 非 AUTH_FAILED / 错误码非 181011 |
-| INCONCLUSIVE | stub schema 开关未被识别（新 stub jar 的 `LLM_STUB_RESPONSE_SCHEMA` 环境变量未绑定） |
-
-> **覆盖面声明**：本 TC 以 AUTH_FAILED (401) 为代表性场景——R6 规则按状态码直判，天然 schema-agnostic；证明"挂点不会在陌生 schema body 上崩溃或静默吞掉状态码"。更强的 schema-dependent 场景（如 CONTEXT_LENGTH_EXCEEDED 需从错误体关键词 R7 识别）由 UT `RuleBasedModelErrorClassifierTest` provider 分支承接（开发侧 2026-10-26 ack 的覆盖面取舍）。
-
-### 3.14 TC-SUCCESS-NO-INTERFERENCE（新增 ST-R01 / 成功零干扰，L1 §8.3）
+> **r3 定位修正**（回应评审 C4）：本 TC **不认领** L1 §8.3 ST-O01「两族覆盖」。L2 版本口径明确两族 = OpenAI 族（含 OpenAiCompatible、DashScope chat 反射委托 OpenAIModelClient）× SiliconFlow 族（`BaseModelClient` 直接子类，独立 HTTP/SSE 栈，L2 §4.1 独立改）；本 TC 固定 `LLM_PROVIDER=OpenAI`，仅覆盖 OpenAI 挂点在陌生 schema body 下的 **R6 规则 schema-agnostic 鲁棒性**（R6 按 HTTP status 直判），不触发 SiliconFlowModelClient 代码路径。SiliconFlow 挂点覆盖缺口归 L1 §8.3 ST-O01 跟踪项（见 §4 跟踪表）。
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于默认 profile；stub-server 启动于 `ok` 模式（HTTP 200 + SSE 应答流 + 真实 LLM 风格 completion body） |
+| Given | probe-agent 启动于默认 profile（固定 `LLM_PROVIDER=OpenAI`）；stub-server 启动于 `auth-failed` mode + env `LLM_STUB_RESPONSE_SCHEMA=dashscope`（HTTP 401 + DashScope 风格响应体 `{"code":"InvalidApiKey","message":"...","request_id":"..."}`） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | HTTP 200 + `result_type==answer` + `output` 非空；`"Model call will retry."` 零次；**stub 调用恰 1 次**；SUT 日志无任何分类错误码（禁 181001/181008/181009/181010/181011/181012） |
-| PASS | 全绿路径：成功 + 无重试 + 无错误码 + stub 单次调用 |
-| FAIL | HTTP ≠ 200 / `result_type` ≠ answer / `output` 空 / 出现任何分类错误码 / 出现重试日志（FEAT-064 代码意外干扰 happy path）|
-| INCONCLUSIVE | stub 启动失败 |
+| Then | **T1**：SSE `failure.numericCode == 181011` + `failure.code == MODEL_CALL_AUTH_FAILED`；**T2**：**无** `Model call will retry.` 行（永久类短路）；**T3**（**平台层通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=AUTH_FAILED, ...}`；**stub 调用计数**：`assertStubCallCount("auth-failed", 1)`；禁 `[181001/181009/181010/181012]` numericCode |
+| PASS | T1 numericCode 181011 + T2 零 retry 行 + stub 次数 == 1；T3 待通道开放后转必断 |
+| FAIL | OpenAI 挂点吞掉 401 退化为 181001（R6 挂点漏接证据）/ numericCode 非 181011 / 出现 retry 日志（永久类未短路）|
+| INCONCLUSIVE | stub schema 开关未被识别（载体层 `LLM_STUB_RESPONSE_SCHEMA` 环境变量未绑定） |
 
-> **本 TC 的作用**：L1 §8.3 ST-R01 的 "FEAT-064 不干扰 happy path" 回归基线，防止未来 FEAT-064 代码修改意外把成功路径打成错误码或引入不必要的重试。
+> **覆盖面声明**：本 TC 以 AUTH_FAILED (401) 为代表性场景——R6 规则按状态码直判，天然 schema-agnostic；证明"挂点不会在陌生 schema body 上崩溃或静默吞掉状态码"。更强的 schema-dependent 场景（如 CONTEXT_LENGTH_EXCEEDED 需从错误体关键词 R7 识别）由 UT `RuleBasedModelErrorClassifierTest` provider 分支承接。
 
-### 3.15 TC-STREAM-RECOVER-BEFORE-FIRST（新增 ST-S01 / 流式首段前失败重试恢复，L1 §8.3）
+### 3.14 TC-SUCCESS-NO-INTERFERENCE（stub CI 补充 / 成功路径零干扰）
+
+> **r5 定位订正**：本 TC **不再认领** L1 §8.3 ST-R01（后者已由 §3.16 真实端点 happy path 承接）；本档保留作 **"stub CI 补充"**——FEAT-064 合同的 negative-branch 承诺（错误分类/重试栈不干扰成功路径）在 stub 上的 CI 可执行回归锚点，与 §3.16 real-endpoint happy path 互补：stub 可无凭据地在 CI 中跑，real-endpoint 需手动 `source ~/.llmrc`。
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于默认 profile；stub-server 启动于 `rate-limited-recover` 模式（首发 HTTP 429 → 重试 HTTP 200 + 完整 SSE 应答流；`LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`） |
+| Given | probe-agent 启动于默认 profile；stub-server 启动于 `ok` 模式（HTTP 200 + 正常 OpenAI chat completion 响应） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | HTTP 200 + `result_type==answer` + `output` 非空（**首段前失败后流数据完整性保持**）；`"Model call will retry."` 恰 1 次；**stub 调用恰 2 次**；SUT 日志无 `[181009]`（最终成功）|
-| PASS | 成功 + 重试 1 次 + stub 2 次 + stream 数据完整 |
-| FAIL | 最终失败 / 重试次数 ≠ 1 / stub 调用 ≠ 2 / `output` 空（流数据在重试过程中丢失）|
-| INCONCLUSIVE | stub 的 recover 计数不生效 |
+| Then | **T1**：HTTP 200 + `result_type == "answer"` + `output` 非空；**T2**：零 `Model call will retry.` 行；**stub 调用计数**：`assertStubCallCount("ok", 1)`（首次即成功，重试栈不触发）；**禁出**：任何分类 numericCode（181001/181008/181009/181010/181011/181012）在 SSE 事件和日志中都不得出现 |
+| PASS | HTTP 200 + answer 非空 + 零 retry 行 + stub 次数 == 1 + 零分类错误码 |
+| FAIL | HTTP 非 200 / result_type ≠ answer / output 空 / 出现任何分类 numericCode（证明错误分类栈干扰了成功路径）/ 出现 retry 日志（证明重试栈在无错时误触发）/ stub 次数 ≠ 1 |
+| INCONCLUSIVE | stub `ok` 模式未就绪（HANDOFF 冒烟 `ok` 分支 FAIL）/ probe-agent 启动失败 |
 
-> **本 TC 与 §3.2 TC-RATE-LIMITED-RECOVER 的差异**：共用 stub 配置，但判据面不同——§3.2 锚定 L2 §1.2.6 的重试次数合同（Retrier M-系列），本 TC 锚定 L1 §8.3 ST-S01 的 stream-data-integrity 合同（流式首段分界后 `output` 完整性）。两条 TC 并存使得只有一条判据被破坏时能明确指认故障面。
+### 3.15 TC-STREAM-RECOVER-BEFORE-FIRST（L1 §8.3 ST-S01 / 流式首段**前**可重试错误 → 整次重试恢复）
 
-### 3.16 TC-REAL-ENDPOINT-OK（新增 ST-C01 / 真实端点 happy path，L1 §8.3）
+> **r4 新增**（原 r3 §4 跟踪项 ST-S01 收回）：L1 §8.3 ST-S01 要求验证"流式入口在**首段到达前**遇到可重试错误时，`FirstSegmentRetryIterator` 允许整次重试"。本档以 stub `rate-limited-recover` 模式作代表性场景（首次 429 + Retrier 整次重试 + 二次 200 恢复），与 §3.7 TC-STREAM-ERROR-FRAME（首段**后**错误帧不重试）互补——两者共同覆盖首段分界合同的双侧。
+>
+> **r5 请求 body 更新**：加 `"stream":true` 并断言 answer 以 SSE `data:` 流式帧返回（证明走的是流式路径而非 blocking 单 JSON 路径）；§3.18（新增 ST-R02）承接 blocking 单 JSON 路径的一次恢复测试。
 
 | 字段 | 内容 |
 |---|---|
-| Given | 本机已 `source ~/.llmrc`（`LLM_API_BASE` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_PROVIDER` 已 export 到 shell）；probe-agent 启动于默认 profile；**不启动 stub-server**，probe 直连真实 LLM endpoint |
-| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | HTTP 200 + `result_type==answer` + `output` 非空；SUT 日志无任何分类错误码 |
-| PASS | 真实 LLM 返回 answer 应答 + 无错误码 |
-| FAIL | HTTP ≠ 200 / 出现分类错误码 / `output` 空 |
-| INCONCLUSIVE | `LLM_API_*` env 未设置（本 TC 走 `assumeTrue` → SKIP，非 FAIL）/ 真实 LLM endpoint 本身不可达 |
+| Given | probe-agent 启动于默认 profile；stub-server 启动于 `rate-limited-recover` 模式（首次 429，之后 200；`LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`） |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping","stream":true}` |
+| Then | **T1**：HTTP 200 + `result_type == "answer"` + `output` 非空 + 响应为 **SSE 流式帧**（≥ 1 条 `data:` 行，非单条 JSON 整体返回）；**T2**：SUT retry 日志 `Model call will retry. {category=RATE_LIMITED, ...}` **恰 1 次**（首段尚未到达，重试合法）；**stub 调用计数**：`assertStubCallCount("rate-limited-recover", 2)`（1 首发 429 + 1 Retrier 重试 200）；**禁出**：任何分类 numericCode（181001/181008/181009/181010/181011/181012） |
+| PASS | HTTP 200 + answer 非空 + SSE 流式帧确认 + T2 retry 行恰 1 次 + category=RATE_LIMITED + stub 次数 == 2 |
+| FAIL | HTTP 非 200 / 最终失败（出现 numericCode）/ retry 次数 ≠ 1 / category 错位 / stub 次数 ≠ 2 / 响应非流式帧（走到了 blocking 路径，证明 `stream:true` 未被识别） |
+| INCONCLUSIVE | stub recover 计数不生效（二次仍返 429）；重跑一次仍不恢复则 INCONCLUSIVE |
 
-> **本 TC 的作用**：L1 §8.3 ST-C01 实证——FEAT-064 的分类/重试逻辑在真实 provider（不是 stub）下也不破坏成功路径。gate 后面于 `~/.llmrc` env 存在，缺 env 时 SKIP。
+### 3.16 TC-REAL-ENDPOINT-OK（L1 §8.3 **ST-R01** / 真实端点成功路径抽样）
 
-### 3.17 TC-REAL-ENDPOINT-AUTH-FAILED（新增 ST-C02 / 真实端点认证失败分类，L1 §8.3）
+> **r5 ST 订正**：从 r4 的 ST-C01 订正为 **ST-R01**（L1 §8.3 ST 编号中 R-series 是 real-endpoint happy-path/recover 抽样，C-series 是 real-endpoint classification 抽样；happy-path 归 R01 而非 C01）。TC 走 `@Tag("real-endpoint")` + `@Tag("manual")`，通过 `assumeTrue(LLM_API_BASE / LLM_API_KEY / LLM_MODEL env 非空)` 门控凭据——未配置则 SKIP 不 FAIL。配置来源 `~/.llmrc`（见仓侧 memory `reference_llmrc.md`）。
 
 | 字段 | 内容 |
 |---|---|
-| Given | 本机已 `source ~/.llmrc`；probe-agent 启动于默认 profile；**不启动 stub**；驱动侧覆写 `LLM_API_KEY=sk-sit-feat064-intentionally-invalid-key`（故意无效）；其他 `LLM_API_BASE` / `LLM_MODEL` 保留真实值 |
+| Given | probe-agent 启动于默认 profile；shell 已 `source ~/.llmrc` 使 `LLM_API_BASE` / `LLM_API_KEY` / `LLM_MODEL` 从真实服务商环境变量注入；**不启动 stub**；corporate proxy 已 unset（内网 LLM 端点避开 HIS 代理 504） |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | 日志出现 `[181011]` + `category=AUTH_FAILED`；`"Model call will retry."` 零次（永久类短路）；HTTP response body error payload `details.category=="AUTH_FAILED"` + `details.status_code==181011` |
-| PASS | 真实 LLM 返回 401 → SUT 分类为 AUTH_FAILED + 181011 + 无重试日志 |
-| FAIL | 分类错位（非 AUTH_FAILED）/ 错误码非 181011 / 出现重试日志（永久类未短路）/ 挂点吞掉状态码退化为 181001 |
-| INCONCLUSIVE | `LLM_API_*` env 未设置 → SKIP / 真实 LLM 对无效 key 返回非 401（如 403 Forbidden）|
+| Then | **T1**：HTTP 200 + `result_type == "answer"` + `output` 非空；**T2**：零 `Model call will retry.` 行；**禁出**：任何分类 numericCode（181001/181008/181009/181010/181011/181012）；（无 stub 侧通道，不断 stub 调用数） |
+| PASS | HTTP 200 + answer 非空 + 零 retry 行 + 零分类错误码 |
+| FAIL | HTTP 非 200 / result_type ≠ answer / output 空 / 出现分类错误码（证明真实端点上分类栈误触发）/ 出现 retry 行 |
+| INCONCLUSIVE | 任一 `LLM_API_*` env 未设置（SKIP via `assumeTrue`，不计入 FAIL）；或企业代理未清，内网端点返 504 HTML |
 
-> **本 TC 的作用**：L1 §8.3 ST-C02 实证——R6 state-code 规则在真实 provider 的 401 响应上和 stub 401 行为一致，证明分类挂点真的 schema-agnostic。
+### 3.17 TC-REAL-ENDPOINT-AUTH-FAILED（L1 §8.3 **ST-C01** / 真实端点认证失败抽样，**r5 partial**：T3 category 待通道开放）
+
+> **r5 ST 订正**：从 r4 的 ST-C02 订正为 **ST-C01**（L1 §8.3 ST 编号中 C-series 是 real-endpoint classification 抽样，C01 是 auth-failed 为 bad-key 抽样代表，C02 是 context-length-exceeded 由新增 §3.19 承接）。TC 使用真实 `LLM_API_BASE` + `LLM_MODEL`，但强制覆写 `LLM_API_KEY` 为无效值 `sk-sit-feat064-intentionally-invalid-key`，期望真实服务商回 HTTP 401 → OpenAI 挂点分类为 AUTH_FAILED → 181011。
+
+| 字段 | 内容 |
+|---|---|
+| Given | probe-agent 启动于默认 profile；shell 已 `source ~/.llmrc`（提供 `LLM_API_BASE` / `LLM_MODEL`）；**但覆写 `LLM_API_KEY=sk-sit-feat064-intentionally-invalid-key`**（强制触发真实服务商 401）；**不启动 stub**；corporate proxy 已 unset |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
+| Then | **T1**：SSE `failure.numericCode == 181011` + `failure.code == MODEL_CALL_AUTH_FAILED`；**T2**：零 `Model call will retry.` 行（永久类短路）；**T3**（**平台层通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=AUTH_FAILED, ...}`；**禁出**：`[181001/181009/181010/181012/181008]` numericCode（证明挂点正确识别真实 401，而非误判为其他类）|
+| PASS | T1 numericCode 181011 + T2 零 retry 行；T3 待通道开放后转必断（当前 **partial** 不断 T3） |
+| FAIL | numericCode 非 181011（OpenAI 挂点在真实 401 上退化为 181001 / 其他码 = R6 挂点漏接证据）/ 出现 retry 日志（永久类未短路）|
+| INCONCLUSIVE | 任一 `LLM_API_*` env 未设置（SKIP via `assumeTrue`）；或真实服务商对无效 key 返非 401（如网关 403 / 502）—— 这反映服务商侧而非 FEAT-064 合同问题 |
+
+> **覆盖面声明**（§3.16 + §3.17 + §3.19 合流）：三条 real-endpoint TC 构成 FEAT-064 分类合同在真实端点上的最小闭环——正向抽样（§3.16 ST-R01 happy path）证明分类/重试栈不干扰 200，反向抽样（§3.17 ST-C01 bad-key 401 + §3.19 ST-C02 context-length 400）证明 R6 分类规则 schema-agnostic。更丰富的真实端点场景（真实 429 限流等）由 FEAT-064 发布前的手动抽样承接，不入 testplan 骨架。
+
+### 3.18 TC-NON-STREAM-RATE-LIMITED-RECOVER（L1 §8.3 **ST-R02** / 非流式一次恢复，**r5 新增**）
+
+> **r5 新增背景**：L1 §8.3 ST-R02 要求验证"非流式入口在遇到可重试错误后一次重试即恢复"。与 §3.15 TC-STREAM-RECOVER-BEFORE-FIRST（流式路径）互补，证明 Retrier 对 **blocking 单 JSON 路径**同样支持一次 recover。承载载体 stub `rate-limited-recover` 已就绪（demo 侧 FEAT-058 S8 共用），无阻塞。
+
+| 字段 | 内容 |
+|---|---|
+| Given | probe-agent 启动于默认 profile；stub-server 启动于 `rate-limited-recover` 模式（首次 429，之后 200；`LLM_STUB_RATE_LIMITED_RECOVER_AFTER=1`） |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}`（**不带** `"stream":true`，走 blocking 单 JSON 路径） |
+| Then | **T1**：HTTP 200 + `result_type == "answer"` + `output` 非空 + 响应为 **单条 JSON**（非 SSE 流式帧，证明走的是 blocking 路径）；**T2**：SUT retry 日志 `Model call will retry. {category=RATE_LIMITED, ...}` **恰 1 次**；**stub 调用计数**：`assertStubCallCount("rate-limited-recover", 2)`（1 首发 429 + 1 Retrier 重试 200）；**禁出**：任何分类 numericCode |
+| PASS | HTTP 200 + answer 非空 + 单条 JSON 响应确认 + T2 retry 行恰 1 次 + category=RATE_LIMITED + stub 次数 == 2 |
+| FAIL | HTTP 非 200 / 最终失败 / retry 次数 ≠ 1 / category 错位 / stub 次数 ≠ 2 / 响应为 SSE 流式帧（走到了流式路径，证明 blocking 路径未被识别） |
+| INCONCLUSIVE | stub recover 计数不生效 |
+
+### 3.19 TC-REAL-ENDPOINT-CONTEXT-LENGTH（L1 §8.3 **ST-C02** / 真实端点上下文超窗抽样，**r5 新增**，**partial**）
+
+> **r5 新增背景**：L1 §8.3 ST-C02 要求验证"R6 分类规则对真实服务商 400 context_length_exceeded 响应仍成立"。TC 使用真实 `LLM_API_BASE` + `LLM_API_KEY` + `LLM_MODEL`，构造超长 prompt（≥ 200K 字符）触发真实服务商的 context-length 校验，期望响应为 HTTP 400 + code=`context_length_exceeded` → OpenAI 挂点分类为 CONTEXT_LENGTH_EXCEEDED → 181012。
+
+| 字段 | 内容 |
+|---|---|
+| Given | probe-agent 启动于默认 profile；shell 已 `source ~/.llmrc`（提供 `LLM_API_BASE` / `LLM_API_KEY` / `LLM_MODEL`）；**不启动 stub**；corporate proxy 已 unset；构造 prompt = `"ping ".repeat(50000)`（≥ 200K 字符，远超模型 context window） |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"<超长 prompt>"}` |
+| Then | **T1**：SSE `failure.numericCode == 181012` + `failure.code == MODEL_CONTEXT_LENGTH_EXCEEDED`；**T2**：零 `Model call will retry.` 行（永久类短路）；**T3**（**平台层通道开放后启用**）：SUT terminal 日志 `Model call failed. {category=CONTEXT_LENGTH_EXCEEDED, ...}`；**禁出**：`[181001/181009/181010/181011/181008]` numericCode（证明挂点正确识别真实 400 context-length，而非误判为其他类）|
+| PASS | T1 numericCode 181012 + T2 零 retry 行；T3 待通道开放后转必断（当前 **partial** 不断 T3） |
+| FAIL | numericCode 非 181012（OpenAI 挂点在真实 context-length 响应上退化 = R6/R7 挂点漏接证据）/ 出现 retry 日志（永久类未短路）|
+| INCONCLUSIVE | 任一 `LLM_API_*` env 未设置（SKIP via `assumeTrue`）；或真实服务商对超长 prompt 返非 400（如网关 413 / 504）—— 这反映服务商侧而非 FEAT-064 合同问题；或模型实际 context window ≥ 200K，prompt 没触发超窗（需增大 prompt 长度重跑） |
+
+### 3.20 TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER（L1 §8.3 **ST-S02** / 流式首段**后**可重试错误不整次重试，**r5 新增**）
+
+> **r5 新增背景**：L1 §8.3 ST-S02 的 "`rate_limited` 等语义不整次重试" 分支（首段**后**遇可重试错误，`FirstSegmentRetryIterator` 不触发整次重试，与 §3.7 ST-S03 "首段**后**错误帧" 分支互补）。承载载体 demo S21 新增 stub mode `stream-rate-limited-first-segment-after`（首段正常 chunk 后发 429 关闭连接）。
+
+| 字段 | 内容 |
+|---|---|
+| Given | probe-agent 启动于默认 profile；stub-server 启动于 `stream-rate-limited-first-segment-after` 模式（demo S21：SSE 首段正常 chunk 返回后，连接按 429 等语义关闭） |
+| When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping","stream":true}` |
+| Then | **T1**：SSE `failure.numericCode == 181009`（或 `181001` 若 stub 的关闭动作被下游归类为 TEMPORARY——以 stub 实际行为为准，两种编号都可接受只要不整次重试）；**T2**：**无** `Model call will retry.` 行（首段已到达，`FirstSegmentRetryIterator` 不整次重试，L2 §1.2.7 流式重试判定线首段**后**分支）；**stub 调用计数**：`assertStubCallCount("stream-rate-limited-first-segment-after", 1)`（strong-eq 1，证明没有整次重试）；禁 `[181010/181011/181012/181008]` numericCode |
+| PASS | T1 numericCode ∈ {181009, 181001} + T2 零 retry 行 + stub strong-eq 1 |
+| FAIL | 出现 `Model call will retry.`（首段分界破坏，违反 L2 §1.2.7）/ numericCode ∈ {181010/181011/181012/181008} / stub ≠ 1 |
+| INCONCLUSIVE | stub 不发首段（流直接以 429 响应，退化为 ST-S01 场景）/ stub mode S21 未就绪 |
+
+### 3.21 TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK（L1 §8.3 **ST-O01** / 跨族挂点覆盖，OpenAI × DeepSeek，LLM_PROVIDER 切换，**r5 新增**）
+
+> **r5 新增背景**：L1 §8.3 ST-O01 要求"两族挂点均能分类"。L2 版本口径下 OpenAI 族（含 OpenAiCompatible、DashScope chat 反射委托 OpenAIModelClient）× SiliconFlow 族（`BaseModelClient` 直接子类）是 "两族"的一种定义，但 SiliconFlow 栈 wire 协议独立、llm-stub-server 不吃；DeepSeek 则是 `BaseModelClient` 的另一子类，但 OpenAI 兼容 wire（llm-stub-server 可用），作为"第二族"更接近 **实际能跑** 的 ST-O01 覆盖范围。本 TC 以 OpenAI × DeepSeek **双挂点代码路径**验证分类合同在两族均成立。
+>
+> **载体层新增**：`TimeoutDemoLauncher.probeAgent()` 默认 env 允许 TC 侧覆写 `LLM_PROVIDER`，支撑 OpenAI → DeepSeek 两族切换（见 §2.2 Fixture 清单 r5 变更）。
+
+| 字段 | 内容 |
+|---|---|
+| Given | **两跑配对**：第 1 跑 probe-agent env `LLM_PROVIDER=OpenAI`、第 2 跑 `LLM_PROVIDER=DeepSeek`；两跑均启动 stub-server 于 `auth-failed` 模式（HTTP 401 + `invalid_api_key`）；两跑共用默认 profile |
+| When | 两跑各发 SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
+| Then | **两跑各自**：**T1**：SSE `failure.numericCode == 181011` + `failure.code == MODEL_CALL_AUTH_FAILED`；**T2**：零 `Model call will retry.` 行；**stub 调用计数**：`assertStubCallCount("auth-failed", 1)`；禁 `[181001/181009/181010/181012]` numericCode |
+| PASS | 两跑均 strong-eq numericCode==181011 + 零 retry + stub==1 |
+| FAIL | 任一族偏离（OpenAI 挂点正常但 DeepSeek 挂点吞 401 退化 / 反之；或两族 numericCode 不一致）|
+| INCONCLUSIVE | probe-agent `LLM_PROVIDER=DeepSeek` 启动失败（DeepSeek 挂点代码路径不可达，归载体层缺口）；或 stub-server 对 DeepSeek wire 的处理与 OpenAI 不一致（llm-stub-server 侧 bug，归载体层） |
 
 ---
 
@@ -378,28 +502,48 @@ FEAT-064 默认配置下**同时存在两层重试**：
 
 | TC | 当前状态 | 阻塞 | 待办 |
 |---|---|---|---|
-| TC-RATE-LIMITED-PERSISTENT | runnable | — | fixture 落地 + 实现 |
-| TC-RATE-LIMITED-RECOVER | runnable | — | fixture 落地 + 实现 |
-| TC-QUOTA-EXCEEDED | runnable | — | fixture 落地 + 实现 |
-| TC-AUTH-FAILED | runnable | — | fixture 落地 + 实现 |
-| TC-TEMPORARY-EXHAUSTED | runnable | — | fixture 落地 + 实现 + 确认 probe 不显式配 `max-retries` |
-| TC-CONTEXT-LENGTH-EXCEEDED | runnable | — | fixture 落地 + 实现 |
-| TC-STREAM-ERROR-FRAME | runnable | — | fixture 落地 + 实现 |
-| TC-MAX-RETRIES-NEGATIVE-REJECTED | runnable | — | fixture 落地 + 临时 yaml `application-sit-feat064-neg.yml` 制造负值 |
-| TC-DETAILS-CATEGORY-FIELD | runnable | — | 依赖 5 条前置 TC 完成 |
-| TC-RATE-LIMITED-SWITCH-OFF | runnable（等 demo s14 jar） | demo 下一轮 push（新增 `demo.timeout-probe.retry-on-rate-limited` 绑定） | fixture 落地 + 实现 + 等 demo s14 fat jar + scripts 到位 |
-| TC-TEMPORARY-SWITCH-OFF | runnable（等 demo s15 jar） | demo 下一轮 push（新增 `demo.timeout-probe.retry-on-temporary` 绑定） | fixture 落地 + 实现 + 等 demo s15 fat jar + scripts 到位 |
-| TC-MAX-RETRIES-ZERO-NO-RETRY | runnable（等 demo s16 jar） | demo 下一轮 push（新增 `demo.timeout-probe.max-retries-override` 绑定） | fixture 落地 + 实现 + 等 demo s16 fat jar + scripts 到位 |
-| TC-CROSS-PROVIDER-CLASSIFICATION | runnable（等 demo s17 stub jar） | demo 下一轮 push（新增 stub env `LLM_STUB_RESPONSE_SCHEMA=dashscope` 绑定） | fixture 落地 + 实现 + 等 demo s17 stub fat jar + scripts 到位 |
-| TC-SUCCESS-NO-INTERFERENCE | runnable | — | 使用 stub `ok` 模式（已就绪） |
-| TC-STREAM-RECOVER-BEFORE-FIRST | runnable | — | 共用 §3.2 stub 配置 |
-| TC-REAL-ENDPOINT-OK | runnable（gate 后面于 shell env） | — | 需 `source ~/.llmrc` + unset HTTP_PROXY HTTPS_PROXY；env 缺失则 SKIP |
-| TC-REAL-ENDPOINT-AUTH-FAILED | runnable（gate 后面于 shell env） | — | 同 ST-C01，env 缺失 SKIP |
+| TC-RATE-LIMITED-PERSISTENT | **runnable（r5 strong-eq 6/4）** | 无（r4 待裁定点已废弃；L2 §2.3 双层事实为锚） | SIT 侧 `Feat064ErrorTaxonomyAndRetryTest.rateLimitedPersistentExhaustsRetryBudget` 已落地，r5 更新 strong-eq 常量 |
+| TC-RATE-LIMITED-RECOVER | runnable | 无 | SIT 侧 `rateLimitedRecoverSucceedsAfterRetry` 已落地 |
+| TC-QUOTA-EXCEEDED | **partial（r5：T3 category 待通道开放）** | T3 平台层结构化终态日志通道（§1.4.2）落地解锁永久类 category 断言；partial 下仅断 T1 numericCode | SIT 侧 `quotaExceededShortCircuitsWithoutRetry` 已落地 |
+| TC-AUTH-FAILED | **partial（r5：T3 category 待通道开放）** | 同 QUOTA | SIT 侧 `authFailedShortCircuitsWithoutRetry` 已落地 |
+| TC-TEMPORARY-EXHAUSTED | **runnable（r5 strong-eq 6/4）** | 无（r4 待裁定点已废弃） | SIT 侧 `temporaryExhaustsRetryBudgetProvingDefaultMaxRetriesTwo` 已落地，r5 更新 strong-eq 常量 |
+| TC-CONTEXT-LENGTH-EXCEEDED | **partial（r5：T3 category 待通道开放）** | 同 QUOTA | SIT 侧 `contextLengthExceededShortCircuitsWithoutRetry` 已落地 |
+| TC-STREAM-ERROR-FRAME | **runnable（r5 ST-S03）** | — | SIT 侧 `streamErrorFrameAfterFirstSegmentShortCircuits` 已落地，r5 更新 ST 编号 S02→S03 |
+| TC-MAX-RETRIES-NEGATIVE-REJECTED | runnable | — | SIT 侧 `maxRetriesNegativeIsRejectedAtStartup` 已落地 |
+| TC-NUMERIC-CODE-FIELD | runnable | 永久类 category 字段部分待 T3 通道开放 | SIT 侧 `numericCodeFieldIsPresentForAllCategories` 已落地（跨 TC 聚合），r5 更新字段路径 metadata→SSE failure |
+| TC-RATE-LIMITED-SWITCH-OFF | **runnable（r5 strong-eq 2）** | 无（r4 待裁定点已废弃；Rail 不消费开关 + `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 为锚） | SIT 侧 `Feat064RetryConfigAndCrossProviderTest.rateLimitedSwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量 |
+| TC-TEMPORARY-SWITCH-OFF | **runnable（r5 strong-eq 2）** | 同 s14 | SIT 侧 `temporarySwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量 |
+| TC-MAX-RETRIES-ZERO-NO-RETRY | runnable | — | SIT 侧 `maxRetriesZeroShutsDownRetryBudget` 已落地 |
+| TC-CROSS-PROVIDER-CLASSIFICATION | runnable | — | SIT 侧 `crossProviderSchemaHookpointCoverage` 已落地（s17 schema=dashscope） |
+| TC-SUCCESS-NO-INTERFERENCE | runnable | — | SIT 侧 `successPathIsNotInterferedWith` 已落地，r5 Javadoc 更新为 "stub CI 补充" 不认领 ST-R01 |
+| TC-STREAM-RECOVER-BEFORE-FIRST | **runnable（r5 加 stream:true body + stream-answer 断言）** | — | SIT 侧 `streamRecoverBeforeFirstSegmentPreservesAnswer` 已落地，r5 更新请求 body + 响应断言 |
+| TC-REAL-ENDPOINT-OK | **runnable（r5 ST-R01，manual tag）** | `@Tag("real-endpoint","manual")`，CI 不自动跑；需 shell `source ~/.llmrc` + unset proxy | SIT 侧 `Feat064RealEndpointSamplingTest.realEndpointHappyPath` 已落地，r5 更新 Javadoc ST 编号 C01→R01 |
+| TC-REAL-ENDPOINT-AUTH-FAILED | **partial（r5 ST-C01，manual tag，T3 待通道开放）** | 同 ST-R01；T3 待通道开放 | SIT 侧 `realEndpointAuthFailureClassifiesAs181011` 已落地，r5 更新 ST 编号 C02→C01 + 降 partial |
+| TC-NON-STREAM-RATE-LIMITED-RECOVER | **runnable（r5 新增 ST-R02）** | — | **SIT 待新增**：§3.18 新 TC `nonStreamRateLimitedRecoverSucceedsAfterRetry` |
+| TC-REAL-ENDPOINT-CONTEXT-LENGTH | **partial（r5 新增 ST-C02，manual tag，T3 待通道开放）** | 同 ST-C01 real-endpoint；T3 待通道开放 | **SIT 待新增**：§3.19 新 TC `realEndpointContextLengthClassifiesAs181012` |
+| TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER | **runnable（r5 新增 ST-S02）** | demo S21 stub mode `stream-rate-limited-first-segment-after` 需 demo-handoff 冒烟确认 | **SIT 待新增**：§3.20 新 TC `streamRateLimitedFirstSegmentAfterShortCircuits` |
+| TC-CROSS-FAMILY-OPENAI-VS-DEEPSEEK | **runnable（r5 新增 ST-O01）** | 载体层：`TimeoutDemoLauncher.probeAgent()` 需支持 TC 侧覆写 `LLM_PROVIDER`（r5 新增，见 §2.2） | **SIT 待新增**：§3.21 新 TC `crossFamilyOpenAIAndDeepSeekClassifyAuthFailureIdentically` + fixture `LLM_PROVIDER` override 开孔 |
+
+### 跟踪项（L1 §8.3 ST-O02 两族 real-endpoint 跨族抽样，r5 唯一剩项）
+
+> r5 ST-R01/R02/C01/C02/S01/S02/S03/O01 已全部收回入 §3.14-§3.21。唯一剩项为 ST-O02 "两族 real-endpoint 跨族抽样"——要求 OpenAI × DeepSeek 两族各挂真实端点凭据跑同一 happy-path/bad-key 组合，需两套真实凭据并行配置。不入 r5 TC 骨架，归跟踪项。
+
+| L1 ST | 承接策略 | 阻塞 |
+|---|---|---|
+| **ST-O02**（两族 real-endpoint 跨族抽样）| 需 OpenAI + DeepSeek 两套真实凭据并行配置，手动抽样执行；不入 CI 骨架 | 凭据层：需 CI 侧或开发侧配置两套真实 LLM 凭据，并提供手动抽样流程 |
 
 ### 保留项（deferred，暂不构造）
 
 - **TC-USER-CANCELLED-\***（L2 §1.2.8 用户取消不重试 + §1.2.14 取消识别规则显式定义 的 C1-C5 cancellation）：**2026-10-27 升级为 landed**——FEAT-058 MUST#11 "cancel 可观察出口" 已通过 agent-core-java mr/437 #252 cancellation log anchor + probe-agent `CancelProbeController` 侧通道落地（develop-head m2），SIT TC 实体承接到 FEAT-058 cases §3.12 TC-CANCEL-OBS-S18 + §3.13 TC-CANCEL-OBS-S19（跨 FEAT 双 Tag `@Tag("feat-058") @Tag("feat-064")`）。ECS 2026-10-27 实测 2/2 PASS。本 FEAT-064 cases 不再独立新增 TC-USER-CANCELLED-\* 条目，USER_CANCELLED 分类的 wire 可观测承诺由 FEAT-058 §3.12/§3.13 覆盖；UT-C10 / UT-R06 继续承接 "CancellationException 恢复 + 不计熔断 + 不整次重试" 的内部断言。
-- **TC-CLASSIFIED-FAILURE-NOT-COUNTED**（L2 §1.2.16 熔断计数消费分类，**SHOULD**）：等 agent-core-java 平台开放 `ModelCircuitBreaker` 观测面（开发侧 2026-10-26 答复给出三选一方案：公开 `isOpen()`/`consecutiveFailures()` modifier / breaker 注入 Spring bean / Micrometer gauge；偏好方案 1）。平台 issue 落地后 TC 构造策略按 §1.2.16 原文——驱动若干次 QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 分类失败，断言 `state=CLOSED` + `failureCount=0`（RATE_LIMITED / TEMPORARY **计入**熔断，不是"不计入"的构造标的）；UT `ModelCircuitBreakerTest.onFailure` 当前承接。SHOULD 等级，SIT 延迟不阻塞特性合入。
+- **TC-CLASSIFIED-FAILURE-NOT-COUNTED**（L2 §1.2.16 熔断计数消费分类，**SHOULD**）：**从 deferred 升级为 runnable**——平台层已提供只读快照 API `Model.getCircuitBreakerSnapshot()` 返回 `Optional<Snapshot>`，快照含 `isOpen` + `consecutiveFailures` 两字段（二态；两字段独立采样，不承诺并发期间原子一致性；未转发观测的客户端返回 empty Optional）。TC 构造策略按 §1.2.16 原文——驱动若干次 QUOTA_EXCEEDED / AUTH_FAILED / CONTEXT_LENGTH_EXCEEDED 永久类调用后读快照，断言 `isPresent()` + `isOpen()==false` + `consecutiveFailures()==0`；对照组用 TEMPORARY 类驱动，断言 `consecutiveFailures()>0`（证明 breaker 本身在工作，排除"所有调用都不计数"的假阳性）；R6 判据 numericCode 继续按 §3.3/§3.4/§3.6 主判据覆盖。r3 "只刷判据不新增 TC"，§3.X 不展开骨架，SIT 侧 fixture 新增 `assertCircuitBreakerSnapshotClean()` / `assertCircuitBreakerConsecutiveFailuresGt(int)` 两 helper（首版 UOE，等后续窗口回灌）。SHOULD 等级，SIT 不阻塞特性合入。
+
+### S1/S2 规格层问题（L1↔L2 口径，建议向特性文档作者澄清）
+
+| # | 位置 | 问题 | 本档影响 |
+|---|------|------|------|
+| **S1** | L1 §5.1.7「每次模型调用失败」 vs L2 §3.10「每次重试」| **范围不一致**：L1 要求含永久类日志记录，L2 实现仅覆盖重试事件 | §1.4.2 "T3 通道待平台层落地" 的根因；SIT 侧 `assertTerminalLogCategory` 首版 throw UOE，不影响 §3.3/§3.4/§3.6 的 numericCode 主判据 |
+| **S2** | L1 §8.3 ST-O01「两族」组成未点名 | L2 版本口径（Feat-Func-064 line 29）已明确两族 = OpenAI 族 × SiliconFlow 族，L1 未同口径；实际能跑的 "第二族" 是 DeepSeek（`BaseModelClient` 子类，OpenAI 兼容 wire，llm-stub-server 可用），SiliconFlow 栈 wire 协议独立不可跑 | §3.21 以 OpenAI × DeepSeek 两族承接 ST-O01；SiliconFlow 挂点代码路径由 UT 承接，不入 SIT 骨架 |
+| **S3**（**r5 新增**）| L1 §8.3 ST-R04「总调用=3」 vs L2 §2.3「全程调用上限 = (maxRetries+1)×(护栏重试次数+1) = 3×2 = 6」 | **层级范围不同、各自正确**：L1 ST-R04 "总调用=3" 是 Retrier **内层单层**描述（`maxRetries=2` + 首发 = 3）；L2 §2.3 "6" 是 Retrier × Rail **双层总计** | SIT 以 L2 §2.3 双层事实为锚（§3.1/§3.5 strong-eq stub=6 + retry 日志=4）；L1 ST-R04 的 3 作为内层参考不写入 SIT 判据。两份文档不需要修订，仅做层级范围脚注说明（§5） |
 
 ### 已知设计偏差（不阻塞）
 
@@ -408,10 +552,26 @@ FEAT-064 默认配置下**同时存在两层重试**：
 
 ### Fixture 扩展清单（相对 FEAT-058）
 
-| Fixture | 新增 API |
-|---|---|
-| `SutLogTailer` | `countOfRetryLog()` / `countOfStatusCode(int)` / `categoryOfLastError()` |
-| `ErrorEnvelopeAsserter` | `assertCategory(String)` / `assertStatusCode(int)` 覆盖五码 / `assertRetryLogCount(SutLogTailer, int)` / `assertNoRetryLog(SutLogTailer)` / **`assertStubCallCount(StubStatsClient, String mode, int)`**（FEAT-064 r2 新增） |
-| `TimeoutProbeHttpClient` | SSE / 单 JSON 双形态；读新 wire schema `payload.failure.{code,numericCode,isRetryable}` 并把 `failure.code` 映射回老判据 `details.category` 字段（`mapFailureCodeToCategory`） |
-| `StubStatsClient` | **FEAT-064 r2 新增**：`snapshot()` / `callCount(String mode)` / `reset()` 读 llm-stub-server 侧通道 `GET /__stats` / `POST /__stats/reset` |
-| `TimeoutDemoLauncher` | 无需变更（FEAT-064 TC 全部用默认 profile 或 s14/s15/s16/s17 新 profile，不传额外 Spring 参数） |
+| Fixture | 新增 API | r3/r4/r5 变更点 |
+|---|---|---|
+| `SutLogTailer` | `countOfRetryLog()` / `countOfStatusCode(int)` / `categoryOfLastError()` / `countOfTerminalLog()` / `terminalLogCategoryOf()` | 后两个方法用于 T3 通道，首版可返 Optional.empty 等平台层通道落地后真实解析 |
+| `StubStatsClient` | `countOf(stubMode)` / `reset()` 对接 llm-stub-server `GET /__stats` + `POST /__stats/reset` 侧通道 | **r4 新增**（demo 侧 stub stats 通道已落地，SIT 侧 helper 已就绪） |
+| `ErrorEnvelopeAsserter` | `assertNumericCode(int)` 覆盖五码 / `assertRetryLogCategory(SutLogTailer, String)` / `assertTerminalLogCategory(SutLogTailer, String)` / `assertRetryLogCount(SutLogTailer, int)` / `assertNoRetryLog(SutLogTailer)` / `assertStubCallCount(StubStatsClient, String, int)` strong-equality / `assertCircuitBreakerSnapshotClean()` / `assertCircuitBreakerConsecutiveFailuresGt(int)` | r2 的 `assertCategory` + `assertStatusCode` 两方法原路径（HTTP body `details.*`）**已 deprecate**；r3 改走 numericCode + 日志双通道；r4 的 `assertStubCallCountBetween` 区间断言 **r5 弃用**（全部场景已 strong-eq）；`assertCategory` **r5 重定义**：读 `/v1/query` SSE `failure.code` 经 fixture `mapFailureCodeToCategory` 映射到 category 字串；`assertTerminalLogCategory` 首版 throw `UnsupportedOperationException` 等平台层 T3 通道落地；`assertCircuitBreakerSnapshot*` 两 helper 读 `Model.getCircuitBreakerSnapshot()` 公开 API |
+| `TimeoutProbeHttpClient` | `errorNumericCode()` / `category()` 从 `/v1/query` SSE `failure.{numericCode,code}` 解析 + fixture 映射；**r5 新增 `query(prompt, timeout, stream=true)` 重载** 支持 §3.15/§3.18/§3.20 的 stream 开关 | r3 新增；r5 字段路径从 `metadata.openjiuwen.error.*` 订正为 SSE `failure.*`；`errorDetails()` 老 Map 返回路径 r5 清理（残留的 category 返回移除，Javadoc 标 deprecated） |
+| `TimeoutDemoLauncher` | **r5 新增**：`probeAgent()` 默认 env 允许 TC 侧覆写 `LLM_PROVIDER`（原本硬编码 `OpenAI`），支撑 §3.21 ST-O01 两族切换；其他 FEAT-064 TC 继续默认 `OpenAI` 不受影响 | r5 增量 |
+
+---
+
+## 5. 规格层脚注
+
+### 5.1 L1 §8.3 ST-R04「总调用=3」 vs L2 §2.3「6 = (maxRetries+1)×(护栏重试次数+1)」层级范围
+
+**结论**：两份文档层级范围不同、**各自正确**，SIT 以 L2 §2.3 双层事实为锚。
+
+**解释**：
+- **L1 §8.3 ST-R04 「总调用=3」** 描述 `ModelCallRetrier` **内层单层**的调用总数：首发 1 次 + 重试 `maxRetries=2` 次 = 3 次。这是 "Retrier 侧视角" 的单层正确描述，用于说明 "retry 预算在 Retrier 内层如何展开"。
+- **L2 §2.3 原文「全程调用上限 = (maxRetries+1)×(护栏重试次数+1) = 3×2 = 6」** 描述 Retrier × Rail **双层总计** 的调用上限：Retrier 内层发 3 次（首发+2 次重试）× Rail 整轮一次（`DEFAULT_MAX_GUARDRAIL_RETRIES=1`，重触发 Retrier 内层完整循环再 3 次）= 6 次。这是 "调用方视角" 的双层总观察。
+
+**SIT 侧选择**：SIT 以 L2 §2.3 双层事实为锚（§3.1/§3.5 strong-eq `stub=6 / retry 日志=4`、§3.10/§3.11 strong-eq `stub=2`），因为 SIT 看到的 wire-observable 调用次数是 stub-server 实际收到的 HTTP 请求数，天然涵盖双层。L1 ST-R04 的 "3" 作为 Retrier 内层设计参考值不写入 SIT 判据。
+
+**两份文档无需修订**：L1 和 L2 的层级范围表述在各自上下文中都是准确的，仅在跨层级引用时需明确说明"内层单层" vs "双层总计"的区别。本 testplan 以 L2 为锚，不涉及对 L1 的修订请求。

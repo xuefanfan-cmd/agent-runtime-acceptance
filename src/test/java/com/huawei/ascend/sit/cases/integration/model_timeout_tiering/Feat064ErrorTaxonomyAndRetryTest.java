@@ -43,9 +43,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>TC-CONTEXT-LENGTH-EXCEEDED (§3.6) — S12
  *   <li>TC-STREAM-ERROR-FRAME (§3.7) — S13
  *   <li>TC-DETAILS-CATEGORY-FIELD (§3.9) — aggregates 5 traces
- *   <li>TC-SUCCESS-NO-INTERFERENCE (ST-R01, L1 §8.3) — stub {@code ok} happy path
+ *   <li>TC-SUCCESS-NO-INTERFERENCE (cases §3.14, r5 "stub CI 补充") — stub
+ *       {@code ok} happy path. Does NOT claim L1 §8.3 ST-R01 anchor (ST-R01 is
+ *       owned by {@code Feat064RealEndpointSamplingTest.realEndpointHappyPath}).
  *   <li>TC-STREAM-RECOVER-BEFORE-FIRST (ST-S01, L1 §8.3) — stub
  *       {@code rate-limited-recover} first-segment boundary + stream data integrity
+ *   <li>TC-NON-STREAM-RATE-LIMITED-RECOVER (cases §3.18, ST-R02) — blocking
+ *       path (stream:false) rate-limit recover; single JSON wire parse.
+ *   <li>TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (cases §3.20, ST-S02) —
+ *       demo S21 {@code stream-rate-limited-first-segment-after}: emits
+ *       first segment then 429; MUST#7 pins "首段后不透明重试".
  * </ul>
  *
  * <p>All TCs use the demo {@code s0} profile (baseline — no three-layer timeout
@@ -316,16 +323,19 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     }
 
     /**
-     * TC-SUCCESS-NO-INTERFERENCE (L1 §8.3 ST-R01). stub mode {@code ok} returns
-     * HTTP 200 + an SSE answer stream with a real completion body. Baseline
-     * regression check that FEAT-064 taxonomy + Rail wiring does not interfere
-     * with the happy path: expect HTTP 200 + {@code result_type=answer} + non-empty
-     * {@code output} + zero retry log lines + exactly 1 stub call + no classified
-     * error codes in the SUT log.
+     * TC-SUCCESS-NO-INTERFERENCE (cases §3.14, r5 "stub CI 补充"). stub mode
+     * {@code ok} returns HTTP 200 + an SSE answer stream with a real completion
+     * body. Baseline regression check that FEAT-064 taxonomy + Rail wiring does
+     * not interfere with the happy path: expect HTTP 200 +
+     * {@code result_type=answer} + non-empty {@code output} + zero retry log
+     * lines + exactly 1 stub call + no classified error codes in the SUT log.
      *
-     * <p>This TC is cheap (sub-second) and the only green-path anchor in the
-     * class — it fails loudly if a future FEAT-064 code change accidentally
-     * injects an error landing into the success surface.
+     * <p>Does NOT claim L1 §8.3 ST-R01: ST-R01 is the real-endpoint绿路 anchor
+     * (owned by {@code Feat064RealEndpointSamplingTest.realEndpointHappyPath}).
+     * This TC is the stub-CI 补充版本 — cheap (sub-second) and the only
+     * green-path anchor in the stub class — it fails loudly if a future
+     * FEAT-064 code change accidentally injects an error landing into the
+     * success surface.
      */
     @Test
     void successPathIsNotInterferedWith() throws Exception {
@@ -378,7 +388,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
         stubExtra.put("LLM_STUB_RATE_LIMITED_RECOVER_AFTER", "1");
         stubExtra.put("LLM_STUB_RATE_LIMITED_RETRY_AFTER_SECONDS", "1");
 
-        try (QueryTrace trace = runStubbed("rate-limited-recover", stubExtra)) {
+        try (QueryTrace trace = runStubbed("rate-limited-recover", stubExtra, true)) {
             assertThat(trace.response.statusCode())
                     .as("HTTP status after first-segment-boundary recover")
                     .isEqualTo(200);
@@ -399,6 +409,80 @@ final class Feat064ErrorTaxonomyAndRetryTest {
         }
     }
 
+    /**
+     * TC-NON-STREAM-RATE-LIMITED-RECOVER (cases §3.18, ST-R02). stub mode
+     * {@code rate-limited-recover} returns 429 first, 200 afterwards. Caller
+     * forces {@code stream=false} on the probe-agent HTTP body — exercises the
+     * blocking single-JSON wire path (as opposed to §3.2 which rides SSE).
+     * Expect: HTTP 200 + {@code result_type=answer} + exactly 1 retry log line
+     * + strong-eq 2 stub calls (first 429 → retry → 200).
+     *
+     * <p>Fills the ST-R02 slot opened by r5 — "非流式 recover" complements
+     * §3.2's streaming recover and pins the single-JSON parse path.
+     */
+    @Test
+    void nonStreamRateLimitedRecoverSucceedsAfterRetry() throws Exception {
+        assumeFatJarsPresent();
+
+        Map<String, String> stubExtra = new LinkedHashMap<>();
+        stubExtra.put("LLM_STUB_RATE_LIMITED_RECOVER_AFTER", "1");
+        stubExtra.put("LLM_STUB_RATE_LIMITED_RETRY_AFTER_SECONDS", "1");
+
+        try (QueryTrace trace = runStubbed("rate-limited-recover", stubExtra, false)) {
+            assertThat(trace.response.statusCode())
+                    .as("HTTP status for non-stream rate-limited-recover success")
+                    .isEqualTo(200);
+            assertThat(trace.response.resultType())
+                    .as("result_type for non-stream rate-limited-recover success")
+                    .isEqualTo("answer");
+
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertRetryLogCount(trace.tailer, 1)
+                    .assertStubCallCount(trace.stats, "rate-limited-recover", 2);
+
+            assertNoOtherClassifiedCodes(trace.tailer, -1);
+        }
+    }
+
+    /**
+     * TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (cases §3.20, ST-S02). stub
+     * mode {@code stream-rate-limited-first-segment-after} emits the first SSE
+     * segment OK, then injects a 429. {@code FirstSegmentRetryIterator} MUST
+     * NOT whole-call retry past the first segment (MUST#7 "首段后不透明重试");
+     * Rail is also bypassed at that boundary. Expect: numericCode ∈
+     * {181009, 181001} (the exact code is schema-dependent — DashScope family
+     * maps 429-after-first to TEMPORARY; OpenAI family keeps RATE_LIMITED) +
+     * zero retry log lines + strong-eq 1 stub call.
+     *
+     * <p>Demo S21 covers this scenario per 2026-10-28 dev confirmation —
+     * SIT does not need to construct a custom stream.
+     */
+    @Test
+    void streamRateLimitedFirstSegmentAfterShortCircuits() throws Exception {
+        assumeFatJarsPresent();
+
+        try (QueryTrace trace = runStubbed("stream-rate-limited-first-segment-after")) {
+            Integer actualCode = trace.response.errorStatusCode();
+            assertThat(actualCode)
+                    .as("Expected numericCode present for first-segment-after rate-limit")
+                    .isNotNull();
+            assertThat(actualCode)
+                    .as("Expected numericCode ∈ {181009 RATE_LIMITED, 181001 TEMPORARY} "
+                            + "for first-segment-after 429 (schema-agnostic landing)")
+                    .isIn(ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED,
+                            ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
+
+            new ErrorEnvelopeAsserter(trace.response)
+                    .assertNoRetryLog(trace.tailer)
+                    .assertStubCallCount(trace.stats,
+                            "stream-rate-limited-first-segment-after", 1);
+
+            assertThat(trace.tailer.totalTimeoutCount())
+                    .as("stream-rate-limited-first-segment-after must not emit any 181008")
+                    .isZero();
+        }
+    }
+
     // ---------------- helpers ----------------
 
     private QueryTrace runStubbed(String stubMode) throws Exception {
@@ -406,6 +490,17 @@ final class Feat064ErrorTaxonomyAndRetryTest {
     }
 
     private QueryTrace runStubbed(String stubMode, Map<String, String> stubExtraEnv) throws Exception {
+        return runStubbed(stubMode, stubExtraEnv, null);
+    }
+
+    /**
+     * Variant with explicit HTTP body {@code stream} flag — pass {@code false}
+     * for non-stream TCs (§3.18 ST-R02) and {@code true} for explicit-stream
+     * TCs (§3.15 stream wire pinning). {@code null} omits the field (demo
+     * default behavior).
+     */
+    private QueryTrace runStubbed(String stubMode, Map<String, String> stubExtraEnv,
+                                  Boolean streamFlag) throws Exception {
         Map<String, String> stubEnv = commonEnv();
         stubEnv.put("LLM_STUB_DEFAULT_MODE", stubMode);
         stubEnv.putAll(stubExtraEnv);
@@ -422,7 +517,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .build()
                     .start();
             QueryResponse resp = new TimeoutProbeHttpClient(probe.baseUrl())
-                    .query(PROMPT, DEFAULT_INVOKE_TIMEOUT);
+                    .query(PROMPT, DEFAULT_INVOKE_TIMEOUT, streamFlag);
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
             StubStatsClient stats = new StubStatsClient(stub.baseUrl());
             return new QueryTrace(stub, probe, resp, tailer, stats);

@@ -70,12 +70,25 @@ public final class TimeoutProbeHttpClient {
      * other fields are null.
      */
     public QueryResponse query(String prompt, Duration requestTimeout) throws Exception {
+        return query(prompt, requestTimeout, null);
+    }
+
+    /**
+     * Variant that pins the HTTP body {@code stream} flag — used by FEAT-064
+     * r5 §3.15 (stream:true explicit) and §3.18 (stream:false non-stream
+     * recover) to exercise both wire paths from the same probe. Pass
+     * {@code null} to omit the field (demo default behavior).
+     */
+    public QueryResponse query(String prompt, Duration requestTimeout, Boolean stream) throws Exception {
         Objects.requireNonNull(prompt, "prompt");
         Objects.requireNonNull(requestTimeout, "requestTimeout");
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("conversation_id", "sit-" + UUID.randomUUID());
         body.put("message", prompt);
+        if (stream != null) {
+            body.put("stream", stream);
+        }
         String json = MAPPER.writeValueAsString(body);
 
         HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/query"))

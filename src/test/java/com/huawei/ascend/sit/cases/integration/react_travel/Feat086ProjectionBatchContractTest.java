@@ -159,7 +159,7 @@ class Feat086ProjectionBatchContractTest {
             var good=new Feat086A2aFixture(root.resolve("good"),List.of(Map.of("task",Feat086A2aFixture.task("COMPLETED",List.of(),List.of(Feat086A2aFixture.text("good"))))))) {
             var registry=new com.openjiuwen.service.app.a2a.catalog.A2ARemoteAgentCardRegistry(); registry.register("bad",bad.card(),10,false);registry.register("good",good.card(),10,false);
             List<Task> originals=new CopyOnWriteArrayList<>();
-            var caller=new A2ARemoteAgentClient(registry,4,null,t->{originals.add(t);if(((TextPart)t.status().message().parts().getFirst()).text().equals("good"))return "other-success";if(throwing)throw new IllegalStateException("batch-canary");return null;});
+            var caller=new A2ARemoteAgentClient(registry,4,null,new WeightedRandomCandidateSelector(),t->{originals.add(t);if(((TextPart)t.status().message().parts().getFirst()).text().equals("good"))return "other-success";if(throwing)throw new IllegalStateException("batch-canary");return null;});
             try(var s=new Session(caller,null,null,List.of("bad","good"),true,false)) {
                 s.run();assertThat(s.probe.received).hasSize(2);
                 assertThat(s.probe.results().get("call-0").toString()).contains("REMOTE_RESULT_HOOK_ERROR","ok=false").doesNotContain("remoteError=","responseMetadata=");

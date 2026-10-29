@@ -27,7 +27,8 @@ class Feat086RemoteCallerContractTest {
         try (Feat086A2aFixture peer = new Feat086A2aFixture(evidence.resolve(key), wire)) {
             A2ARemoteAgentCardRegistry registry = new A2ARemoteAgentCardRegistry();
             registry.register("peer", peer.card(), 10, streaming);
-            A2ARemoteAgentClient caller = new A2ARemoteAgentClient(registry, 4, null, hook);
+            A2ARemoteAgentClient caller = new A2ARemoteAgentClient(registry, 4, null,
+                    new WeightedRandomCandidateSelector(), hook);
             try {
                 RemoteCallOutcome outcome = caller.callOutcome(new RemoteCall("peer", "input", "context", null,
                         Map.of(), Map.of(), streaming), observer).get(15, TimeUnit.SECONDS);
@@ -105,7 +106,8 @@ class Feat086RemoteCallerContractTest {
         try (Feat086A2aFixture peer = new Feat086A2aFixture(evidence.resolve(key),
                 List.of(Map.of("task", task("COMPLETED", List.of(a("answer", "fallback-forbidden")), List.of(text("status-fallback-forbidden"))))))) {
             A2ARemoteAgentCardRegistry registry = new A2ARemoteAgentCardRegistry(); registry.register("peer", peer.card(), 10, false);
-            A2ARemoteAgentClient caller = new A2ARemoteAgentClient(registry, 4, null, hook);
+            A2ARemoteAgentClient caller = new A2ARemoteAgentClient(registry, 4, null,
+                    new WeightedRandomCandidateSelector(), hook);
             try {
                 assertThatThrownBy(() -> caller.callOutcome(new RemoteCall("peer", "input", "context", null, Map.of()), observer)
                         .get(15, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class).hasStackTraceContaining(expected);

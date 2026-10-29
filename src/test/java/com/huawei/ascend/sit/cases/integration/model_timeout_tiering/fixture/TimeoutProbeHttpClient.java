@@ -248,6 +248,19 @@ public final class TimeoutProbeHttpClient {
             if (root.has("result_type") && !root.get("result_type").isNull()) {
                 resultType = root.get("result_type").asText();
             }
+            // 2026-10-29 SIT 实证：/v1/query 带 body "stream":false 的 blocking 响应 wire schema 是
+            //   {"result":{"role":"assistant","content":"ok"},"conversation_id":"..."}
+            // 跟 streaming SSE 的 payload.result_type / payload.output 字段完全不同。
+            // blocking wire 没有 result_type 字段（通过 result.role=assistant 隐式标识是 agent answer），
+            // output 从 result.content 读。本分支补 blocking schema 识别，不影响其他 schema。
+            // 对应 TC: Feat064ErrorTaxonomyAndRetryTest.nonStreamRateLimitedRecoverSucceedsAfterRetry (§3.18 ST-R02)
+            // 实证来源: 2026-10-29 ECS curl 复现 /v1/query stream=false 的 raw body
+            if (output == null && root.has("result") && root.get("result").isObject()) {
+                JsonNode result = root.get("result");
+                if (result.has("content") && !result.get("content").isNull()) {
+                    output = result.get("content").asText();
+                }
+            }
             // 新 wire schema 支持 (对称 parseSse 的升级)：
             //   {"type":"error", "error":"...", "failure":{"code":"MODEL_CALL_...",
             //    "numericCode":18100N, "isRetryable":true/false}}

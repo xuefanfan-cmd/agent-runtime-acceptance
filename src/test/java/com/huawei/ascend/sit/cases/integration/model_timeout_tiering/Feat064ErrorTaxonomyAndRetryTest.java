@@ -444,9 +444,19 @@ final class Feat064ErrorTaxonomyAndRetryTest {
             assertThat(trace.response.statusCode())
                     .as("HTTP status for non-stream rate-limited-recover success")
                     .isEqualTo(200);
-            assertThat(trace.response.resultType())
-                    .as("result_type for non-stream rate-limited-recover success")
-                    .isEqualTo("answer");
+            // 2026-10-29 SIT 实证订正：/v1/query 带 stream=false 的 blocking 响应 wire schema 是
+            //   {"result":{"role":"assistant","content":"ok"},"conversation_id":"..."}
+            // 跟 streaming SSE 的 {"type":"answer","payload":{"result_type":"answer","output":"..."}}
+            // 完全不同——blocking wire 没有 result_type 字段（通过 result.role=assistant 隐式标识
+            // 是 agent answer）。r5 新建此 TC 时按 streaming 字段写判据不符实际 blocking wire schema。
+            // 本次订正：删除 .resultType()=="answer" 判据（blocking 没该字段），改为验 output 非空
+            // （fixture TimeoutProbeHttpClient.parseSingleJson 已补从 result.content 读 output）。
+            // 实证来源：2026-10-29 ECS curl 复现 /v1/query stream=false 的 raw body。
+            assertThat(trace.response.output())
+                    .as("output for non-stream rate-limited-recover success "
+                            + "(parsed from result.content per blocking wire schema)")
+                    .isNotNull()
+                    .isNotBlank();
 
             new ErrorEnvelopeAsserter(trace.response)
                     .assertRetryLogCount(trace.tailer, 1)

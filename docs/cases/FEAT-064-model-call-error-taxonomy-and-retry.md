@@ -563,6 +563,38 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 | TC-CROSS-FAMILY-OPENAI-VS-SILICONFLOW | **runnable（r5 新增 ST-O01；r6 订正 DeepSeek→SiliconFlow）** | 载体层：`TimeoutDemoLauncher.probeAgent()` 需支持 TC 侧覆写 `LLM_PROVIDER`（r5 新增，见 §2.2） | **SIT 待新增**：§3.21 新 TC `crossFamilyOpenAIAndSiliconFlowClassifyAuthFailureIdentically` + fixture `LLM_PROVIDER` override 开孔；r6 订正：DeepSeek 反射代理到 OpenAIModelClient 非独立栈，SiliconFlow 自带 Retrier/SseIterator/handlers 才是真二族 |
 | TC-STREAM-DISCONNECT-FIRST-SEGMENT-AFTER-STRICT **r6 新增** | **runnable（r6 新增 ST-S02 真型，strict pin 181001 唯一）** | demo stub mode `stream-disconnect-first-segment-after` 需 demo-handoff 新增（首段后纯 TCP close 无 payload） | **SIT 待新增**：§3.22 新 TC `streamDisconnectFirstSegmentAfterStrictPinsTemporary`；strict pin numericCode==181001 唯一 + stub count==1 + T3 `category=TEMPORARY, reason=NOT_RETRYABLE`（纯 disconnect 判为 permanent-error 终态） |
 
+### 2026-10-29 实证小结（Feat064 22 TC 全量跑结果）
+
+**ECS 跑测结果**：**22 TC / 19 PASS / 3 FAIL / 0 Errors / 0 Skipped / Total time 3:43 min**
+
+- 使用 jar：develop-head PR!242+PR!442+PR!449 bundle rebuild（docsReview commit `ab9e03ba6581`，10-28 14:02 推）
+- 使用 model：qwen-doc-turbo（阿里云百炼 OpenAI 兼容 chat completions）
+- SIT 侧 session 累积 4 处 fixture / TC 代码 fix（见 `docs/issues/draft-feat064-r7-fix-handoff-notes-20261029.md`）：
+  1. `StubStatsClient.java` Void 类型 bug（JDK 21 release 下 BodyHandlers.discarding() 返回 BodyHandler<Void>）
+  2. `SutLogTailer.java` TERMINAL_LINE Pattern bug（r7 刷了 Asserter.REASON_* 常量但 Pattern 没同步 + 中间字段紧邻 bug）
+  3. `TimeoutProbeHttpClient.java` parseSingleJson 补 blocking wire schema 识别（§3.18 需要）
+  4. `Feat064ErrorTaxonomyAndRetryTest.java` §3.18 判据订正（删 resultType，改读 output，对齐 blocking 真实 wire schema）
+
+**3 条 FAIL 跟踪项（都不是 SIT bug）**：
+
+| TC | FAIL 根因 | 等待动作 | 关联 observation |
+|---|---|---|---|
+| §3.22 streamDisconnectFirstSegmentAfterStrictPinsTemporary | 10-28 rebuild stub jar 实证**没有** `handleStreamDisconnectFirstSegmentAfter` handler；cases §r6 自己标注 "demo-handoff 冒烟待确认" | 等 demo owner 补 stub mode + rebuild jar 推 docsReview | — |
+| §3.20 streamRateLimitedFirstSegmentAfterShortCircuits | `Expected stub==1 but got 2` — Rail 挽留吃 TEMPORARY（跟 S5 observation 同根）| 等 agent-core-java 侧 **C-4 PR** 落地（Rail 发 wire `model_retry` 事件 + `retry_tier` 字段 + session interval 配置联动），SIT 升级判据 | **docsReview `SIT-OBSERVATION-s5-rail-swallows-timeout-20261029.md`**（commit `a4415aae9a7d`）+ 开发侧答复 `DEV-REPLY-s5-rail-timeout-coordination-20261029.md`（commit `630251da18a1`，裁定 C-4） |
+| §3.19 realEndpointContextLengthClassifiesAs181012 | glm-5.3-prime (context 128K) 和 qwen-doc-turbo (context 256K) 都远超 128 KiB prompt → 不触发 context_length_exceeded；input_tokens 16407-16420 远 < 256K | 换真正 ≤16K context 的 model（阿里云百炼平台待确认 `qwen-turbo` 标准 8K 等）；或接受 §3.19 的 **partial** 状态（cases §r6 本就标 partial，T3 category 待通道开放）| — |
+
+**9 条 FAIL → PASS 的 fix 转化**（SIT 本次 session 实证得到的转绿清单）：
+- 分类 B T3 Pattern bug 修完 → §3.3/§3.4/§3.5/§3.6/§3.17 real-endpoint auth-failed + Feat064RetryConfig 5 TC（含 §3.10/§3.11/§3.12/§3.13/§3.21）**合计 10 条**
+- 分类 D §3.18 blocking schema 识别 + 判据订正 → **1 条**（nonStreamRateLimitedRecoverSucceedsAfterRetry）
+
+**待开发侧动作**（SIT 侧 PR 落地前不动用例代码）：
+1. 核心侧 C-4 PR（修 S5 Rail 挽留与 session interval 协调缺陷）—— 影响 §3.20 + 议题三 S5 blockingPath + errorDetails 第 3 段，PR 落地后 SIT 升级判据
+2. demo 侧补 `stream-disconnect-first-segment-after` stub mode + rebuild jar —— 影响 §3.22
+
+**本件相关 docsReview 推送**：
+- 2026-10-29 09:03 `SIT-OBSERVATION-s5-rail-swallows-timeout-20261029.md`（commit `a4415aae9a7d`，SIT 实证 + 四条可能解法）
+- 2026-10-29 10:17 `DEV-REPLY-s5-rail-timeout-coordination-20261029.md`（commit `630251da18a1`，开发侧裁定 C-4 新方向）
+
 ### 跟踪项（L1 §8.3 ST-O02 两族 real-endpoint 跨族抽样，r6 唯一剩项）
 
 > r5 ST-R01/R02/C01/C02/S01/S02/S03/O01 已全部收回入 §3.14-§3.22（r6 §3.22 新增 ST-S02 真型）。唯一剩项为 ST-O02 "两族 real-endpoint 跨族抽样"——要求 OpenAI × **SiliconFlow** 两族各挂真实端点凭据跑同一 happy-path/bad-key 组合，需两套真实凭据并行配置。不入 r6 TC 骨架，归跟踪项。

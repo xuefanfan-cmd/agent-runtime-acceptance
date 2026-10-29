@@ -82,7 +82,10 @@ public final class StubStatsClient {
                 .timeout(Duration.ofSeconds(5))
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
-        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.discarding());
+        // 2026-10-29 SIT fix: BodyHandlers.discarding() 返回 BodyHandler<Void> →
+        // send() 返回 HttpResponse<Void>；原声明 HttpResponse<String> 在 JDK 21
+        // release=21 下类型推断失败。改声明为 Void，语义不变（本来就 discard body）。
+        HttpResponse<Void> resp = http.send(req, HttpResponse.BodyHandlers.discarding());
         if (resp.statusCode() != 200) {
             throw new AssertionError("POST /__stats/reset returned HTTP " + resp.statusCode());
         }

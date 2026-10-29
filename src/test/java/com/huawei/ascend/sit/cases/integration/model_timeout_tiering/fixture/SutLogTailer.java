@@ -58,8 +58,8 @@ public final class SutLogTailer {
      */
     private static final Pattern TERMINAL_LINE = Pattern.compile(
             "Model call failed\\.\\s*\\{category=(?<category>[A-Z_]+)"
-                    + ",\\s*reason=(?<reason>PERMANENT_ERROR|RETRY_BUDGET_EXHAUSTED"
-                    + "|RETRY_DISABLED_BY_SWITCH|RETRY_BUDGET_ZERO)\\}");
+                    + ".*?reason=(?<reason>NOT_RETRYABLE|POLICY_DISALLOWED"
+                    + "|RETRY_BUDGET_EXHAUSTED)[,}]");
 
     /** FEAT-064: {@code category=<CAT>} field embedded in classified error log lines. */
     private static final Pattern CATEGORY_FIELD = Pattern.compile(

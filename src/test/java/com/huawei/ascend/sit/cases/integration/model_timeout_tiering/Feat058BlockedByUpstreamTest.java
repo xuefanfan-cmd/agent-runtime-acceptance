@@ -11,7 +11,6 @@ import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.Tim
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient.QueryResponse;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -157,20 +156,27 @@ final class Feat058BlockedByUpstreamTest {
     }
 
     /**
-     * TC-PER-CALL-IDLE-OVERRIDE (cases §3.9). s3-per-call profile (needs demo
-     * side or SIT yaml override): client-level {@code stream-idle-seconds=600s}
-     * + per-call {@code ModelInvokeOptions.timeout=300s} on the first call
-     * only. Stub mode {@code after-first-segment-idle} holds silence 310s
-     * after first chunk.
+     * TC-PER-CALL-IDLE-OVERRIDE (cases §3.9). s3-per-call profile: client-level
+     * {@code stream-idle-seconds=600s} + first call carries per-call
+     * {@code ModelInvokeOptions.timeout=300s}; second call carries no override.
+     * Stub mode {@code after-first-segment-idle} holds silence 310s after
+     * first chunk.
      *
-     * <p>Expect (after B1 fix):
+     * <p>2026-10-28 batch triage 议题四 landed: demo side added
+     * {@code PerCallProbeController} + {@code s3-per-call} profile (commit
+     * {@code ab9e03ba6581}). SIT drives both calls via the side channel
+     * {@code POST /probe/per-call} using {@link TimeoutProbeHttpClient#queryPerCall}.
+     *
+     * <p>Expect:
      * <ul>
-     *   <li>First call (with per-call override=300s): 181008 at
-     *       {@code timeout_seconds≈300} — override wins over client-level 600s;
-     *   <li>Second call (without override): HTTP 200 + {@code result_type=answer}
-     *       — client-level 600s window exceeds 310s stall, request completes
-     *       naturally; proves per-call override released, client config not
-     *       polluted.
+     *   <li>First call (with per-call override=300s): per-call override wins
+     *       over client-level 600s baseline, trips at 300s stream_idle →
+     *       {@code [181008]} line in SUT log with
+     *       {@code effective timeout 300.0s} in the message;
+     *   <li>Second call (without override): HTTP 200 + {@code completed=true}
+     *       — client-level 600s window exceeds 310s stub stall, iterator
+     *       runs to natural end; proves per-call override released, client
+     *       config not polluted.
      * </ul>
      *
      * <p>Original design overlaid per-call {@code ModelInvokeOptions.timeout}
@@ -179,13 +185,15 @@ final class Feat058BlockedByUpstreamTest {
      * removed in r1 by narrowing this TC to the per-call layer only (agent-level
      * persistent-field validation is a UT responsibility).
      */
-    @Disabled("blocked_by_upstream B1 + awaits demo-side s3-per-call profile; see cases §3.9")
     @Test
     void perCallIdleOverrideDoesNotPolluteClientConfig() throws Exception {
         assumeFatJarsPresent();
 
         Map<String, String> stubEnv = commonEnv();
         stubEnv.put("LLM_STUB_DEFAULT_MODE", "after-first-segment-idle");
+        // stub 首块后沉默 310s（超过 per-call override 300s + client-level 600s
+        // 的 300s 下限）；对第一腿而言 300s 先触发；对第二腿而言 310s < 600s 自然完成
+        stubEnv.put("LLM_STUB_FIRST_SEGMENT_MS", "310000");
         try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
                 .envAll(stubEnv)
                 .build()
@@ -198,31 +206,45 @@ final class Feat058BlockedByUpstreamTest {
 
             TimeoutProbeHttpClient http = new TimeoutProbeHttpClient(probe.baseUrl());
 
-            // First call: per-call override=300s wins over client-level 600s.
-            // Stub stalls 310s > 300s → trips at 300s with timeout envelope.
-            QueryResponse first = http.query(PROMPT, IDLE_INVOKE_TIMEOUT);
-            new ErrorEnvelopeAsserter(first)
-                    .assertTimeoutStatusCode()
-                    .assertAllFourFieldsPresent()
-                    .assertPhase(TimeoutPhase.AFTER_FIRST_SEGMENT)
-                    .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
-                    .assertTimeoutSeconds(300.0, 1.0)
-                    .assertStream(true);
-
-            // Second call: no override, client-level 600s window applies.
-            // Stub stalls 310s < 600s → completes naturally, no 181008.
-            // (This is the key assertion: per-call didn't pollute client config.)
-            QueryResponse second = http.query(PROMPT, IDLE_INVOKE_TIMEOUT);
-            assertThat(second.statusCode())
-                    .as("second call must complete under client-level 600s window")
+            // 第 1 腿：per_call_timeout_seconds=300, stub 310s 沉默 → trip 在 300s
+            // driver wait 必须 ≥ 320s (300s trip + buffer)
+            TimeoutProbeHttpClient.PerCallResponse first = http.queryPerCall(
+                    Duration.ofSeconds(400), 300);
+            assertThat(first.statusCode())
+                    .as("first call: HTTP 200 from side-channel (iterator terminated via throwable)")
                     .isEqualTo(200);
-            assertThat(second.resultType())
-                    .as("second call result_type=answer (natural completion)")
-                    .isEqualTo("answer");
+            assertThat(first.perCallTimeoutSeconds())
+                    .as("first call: echoed per_call_timeout_seconds")
+                    .isEqualTo(300);
+            assertThat(first.terminatedByException())
+                    .as("first call: iterator must terminate via throwable (per-call 300s < stub 310s)")
+                    .isTrue();
+            assertThat(first.message())
+                    .as("first call: expected 'effective timeout 300.0s' in exception message")
+                    .contains("effective timeout 300.0s");
 
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
+            assertThat(tailer.countOfPhase(TimeoutPhase.AFTER_FIRST_SEGMENT))
+                    .as("exactly one AFTER_FIRST_SEGMENT 181008 line expected (first call only)")
+                    .isEqualTo(1);
+
+            // 第 2 腿：no override, client-level 600s 应用 → stub 310s < 600s → 自然完成
+            // driver wait 必须 ≥ 320s (310s stub stall + answer completion buffer)
+            TimeoutProbeHttpClient.PerCallResponse second = http.queryPerCall(
+                    Duration.ofSeconds(700), null);
+            assertThat(second.statusCode())
+                    .as("second call: HTTP 200 (natural completion)")
+                    .isEqualTo(200);
+            assertThat(second.completedNaturally())
+                    .as("second call: iterator must complete naturally (client-level 600s > stub 310s)")
+                    .isTrue();
+            assertThat(second.terminatedByException())
+                    .as("second call: no exception (per-call override released, client config not polluted)")
+                    .isFalse();
+
+            // 全程只应该有第 1 腿产生的那一条 [181008]
             assertThat(tailer.totalTimeoutCount())
-                    .as("exactly one 181008 line (from first call only)")
+                    .as("exactly one 181008 line (from first call only — proves per-call override released)")
                     .isEqualTo(1);
         }
     }

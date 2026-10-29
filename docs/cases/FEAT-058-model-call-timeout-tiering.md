@@ -116,7 +116,7 @@ related_docs:
 | TC-ERROR-DETAILS-PAYLOAD | 聚合 s1/s2/s5 | 聚合 | 跨 TC 聚合断言 |
 | TC-PER-CALL-IDLE-OVERRIDE | **新 profile** `s3-per-call`（**待开发侧补**，或 SIT 侧用 override 注入） | `after-first-segment-idle` | client 级 `stream-idle-seconds=600s` + per-call `ModelInvokeOptions.timeout=300s` 或 `ReActAgentConfig.modelStreamIdleSeconds=300` |
 | TC-RANGE-VALIDATION | **新 profile** `s-range-invalid`（**待开发侧补**，或 SIT 用临时 yaml） | n/a（不启动 stub） | `connect-timeout=3s`（低于 5s）或 `stream-idle-seconds=1200s`（高于 900s）；期望 probe-agent 启动失败 |
-| TC-UNIFIED-STACK-COVERAGE | 复用 `s2`（header-wait 快速路径） | `header-wait-silent` | `LLM_PROVIDER=OpenAiCompatible` / `DashScope` / `SiliconFlow` / `DeepSeek` env 切换，其余同 s2 |
+| TC-UNIFIED-STACK-COVERAGE | 复用 `s2`（header-wait 快速路径） | `header-wait-silent` | `LLM_PROVIDER=OpenRouter` / `DashScope` / `SiliconFlow` / `DeepSeek` env 切换，其余同 s2（2026-10-28 batch triage 议题二 Path A：外部 provider enum value `OpenAiCompatible` → `OpenRouter`；底层 impl 类 `OpenAiCompatibleModelClient` 类名未变）|
 
 > **开发侧需要补的 profile**：`s3-per-call` 与 `s-range-invalid` 两份；若开发侧不便补，SIT 侧可以用 `application-sit-feat058-*.yml` 临时写入本仓 test resources 作为过渡（**不改 demo 内容**），但首选是开发侧在 demo 内补齐，便于 demo 冒烟同步覆盖这两条增量断言。
 
@@ -181,16 +181,18 @@ related_docs:
 | FAIL | 出现 `[181008]` |
 | INCONCLUSIVE | 当前默认立场；`blocked_by B1`；上游修复后恢复判据 |
 
-### 3.6 TC-BLOCKING-SAME-SEMANTICS（阻塞路径同口径）
+### 3.6 TC-BLOCKING-SAME-SEMANTICS（阻塞路径同口径） — **MUST#9 窄义解读 + 路径 Y 判据**
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于 `s5` profile；`timeout=8s`（legacy header-wait）；stub-server `idle-silent-blocking` 模式（200 OK 阻塞 Content-Type 头） |
-| When | `POST /v1/query` body `{"message":"ping"}` |
-| Then | 恰一次 `[181008]` + phase=`BEFORE_FIRST_SEGMENT`；禁 `BEFORE_CONNECT` / `AFTER_FIRST_SEGMENT`；error payload：`details.phase=="BEFORE_FIRST_SEGMENT"` + `details.layer=="header_wait"` + `details.timeout_seconds==8.0`（±0.5s）+ `details.stream==false`（阻塞路径关键字段） |
-| PASS | 阻塞路径表面与流式一致 + `stream==false` |
-| FAIL | 任一字段偏离 / `stream==true`（阻塞被误识别为流式） |
+| Given | probe-agent 启动于 `s5` profile + 启动参数 `--openjiuwen.service.llm.stream-idle-seconds=300`（SDK 下限 [300,900]）；stub-server `idle-silent-blocking` 模式 + `LLM_STUB_BLOCKING_IDLE_MS=310000`（沉默 310s 后 body 到达） |
+| When | `POST /v1/query` body `{"message":"ping"}`；SIT driver timeout ≥ 320s（避免 driver 先关连接） |
+| Then | 恰一次 `[181008]` + phase=`BEFORE_FIRST_SEGMENT`；禁 `BEFORE_CONNECT` / `AFTER_FIRST_SEGMENT`；error payload：`details.phase=="BEFORE_FIRST_SEGMENT"` + **`details.layer=="stream_idle"`**（**不是 `header_wait`** — MUST#9 窄义：响应头字节到齐后 header_wait 不再触发，"头到齐 → body 首字节"窗口归 stream_idle 层保护）+ `details.timeout_seconds==300.0`（±1.0s）+ `details.stream==false`（阻塞路径关键字段） |
+| PASS | 阻塞路径表面与流式同一分层语义 + layer=stream_idle 证明 stream_idle 层在 BEFORE_FIRST_SEGMENT 相位能触发 + `stream==false` |
+| FAIL | 任一字段偏离 / `stream==true`（阻塞被误识别为流式）/ layer==header_wait（广义解读未裁定，开发侧已明确窄义）|
 | INCONCLUSIVE | stub 启动失败 |
+
+> **2026-10-28 batch triage 议题三路径 Y 回灌**：MUST#9 原文"响应头到达前的等待窗口必须有超时保护"字面上两种自洽解读：窄义（HTTP 响应头字节到齐即解除 header_wait）vs 广义（首段可消费数据到达才解除）。开发侧 10-22 回帖 `SIT-CLARIFY-REPLY-must9-ambiguity-s5-fail.md` 技术判定走窄义；2026-10-28 `DEV-REPLY-batch-triage-20261028.md` 议题三再次校准：选路径 Y（正测试，证超窗必掐断）而非路径 X（负测试，证窗口内不误杀）。原路径 X 判据（layer=header_wait, timeout=8s）记录于 r1 初稿，经本次回帖裁定收敛为路径 Y 判据（layer=stream_idle, timeout=300s）。
 
 ### 3.7 TC-CANCEL-NOT-TIMEOUT（调用方取消 ≠ 超时） — **弱层回归，MUST#11 判定力归 UT**
 
@@ -210,21 +212,23 @@ related_docs:
 |---|---|
 | Given | 已跑完 TC-CONNECT-TIMEOUT + TC-HEADER-WAIT-LEGACY + TC-BLOCKING-SAME-SEMANTICS 三条 trace |
 | When | 聚合三条 trace 的 HTTP response body error payload |
-| Then | 每条 payload 的 `details.{phase, timeout_seconds, layer, stream}` **四字段必填齐备**；三 phase 对应三 layer（`BEFORE_CONNECT ↔ connect` / `BEFORE_FIRST_SEGMENT ↔ header_wait`）；程序方可按 `details.phase` 做分支判定（三 phase 字面值互斥） |
+| Then | 每条 payload 的 `details.{phase, timeout_seconds, layer, stream}` **四字段必填齐备**；phase ↔ layer 映射非 1:1：s1 (`BEFORE_CONNECT ↔ connect`) + s2 (`BEFORE_FIRST_SEGMENT ↔ header_wait`) + s5 (`BEFORE_FIRST_SEGMENT ↔ stream_idle`，MUST#9 窄义窗口由 stream_idle 层承载，见 §3.6)；程序方可按 `details.phase`+`details.layer` 组合判定（允许同一 phase 对应不同 layer） |
 | PASS | 三 trace 均满足 |
 | FAIL | 任一 trace 缺字段 / 对应关系错位 |
 | INCONCLUSIVE | 任一上游 TC 自己是 INCONCLUSIVE（则本 TC 相应降级），**但**由于本 TC 不依赖 AFTER_FIRST_SEGMENT 维度，B1 不影响本 TC |
 
-### 3.9 TC-PER-CALL-IDLE-OVERRIDE（增量 / per-call 不污染 client） — **blocked_by_upstream B1**
+### 3.9 TC-PER-CALL-IDLE-OVERRIDE（增量 / per-call 不污染 client） — **demo 侧通道 landed**
 
 | 字段 | 内容 |
 |---|---|
-| Given | probe-agent 启动于**新 profile** `s3-per-call`（需开发侧补或 SIT 临时 yaml）：**client 级 `stream-idle-seconds=600s`**（持久配置）；per-call 入口 `ModelInvokeOptions.timeout=300s`（仅第一次调用携带）；stub-server `after-first-segment-idle` 首块后停 310s |
-| When | 1) **带 per-call override=300s** 发第一次 `POST /v1/query`；2) **不带 override** 发第二次（client 级 600s 回退生效） |
-| Then（期望） | 第一次 trace：出现 `[181008]` + `details.timeout_seconds==300.0`（per-call override 生效，300s < 310s stall → 触发）；第二次 trace：HTTP 200 + `result_type==answer` + **无** `[181008]`（client 级 600s > 310s stall → 自然完成，证明 per-call 已释放、client 级配置未被污染） |
-| PASS | 第一次 timeout_seconds=300.0 + 第二次成功完成 |
-| FAIL | 第一次 timeout_seconds≠300（override 未生效）或第二次出现 `[181008]`（per-call 污染 client 配置，client 级被压低到 300） |
-| INCONCLUSIVE | 当前默认立场；`blocked_by B1`（第一次依赖 AFTER_FIRST_SEGMENT 可观察）|
+| Given | probe-agent 启动于 `s3-per-call` profile（**client 级 `stream-idle-seconds=600s`** 持久配置；demo 侧 `PerCallProbeController` 侧通道已 landed via commit `ab9e03ba6581`，2026-10-28 batch triage 议题四）；stub-server `after-first-segment-idle` 模式 + `LLM_STUB_FIRST_SEGMENT_MS=310000`（首块后沉默 310s） |
+| When | 1) 第一腿 `POST /probe/per-call/query?per_call_timeout_seconds=300`（driver timeout≥320s）；2) 第二腿 `POST /probe/per-call/query`（不带 override，driver timeout≥700s） |
+| Then（期望） | 第一腿响应：HTTP 200 + `exception_type=="ModelError"` + `message` 含 `"effective timeout 300.0s"`（per-call 300s < stub 310s → 触发 timeout，证 override 到达 SDK）；SUT 日志出现 1 条 `[181008]` + phase=`AFTER_FIRST_SEGMENT`。第二腿响应：HTTP 200 + `completed==true` + 无 `exception_type`（client 级 600s > stub 310s → 自然完成，证明 per-call 已释放、client 级配置未被污染）；SUT 日志**仍只 1 条** `[181008]`（来自第一腿） |
+| PASS | 第一腿 exception_type=ModelError + message 含 effective timeout 300.0s；第二腿 completed=true + 全程只 1 条 [181008] |
+| FAIL | 第一腿缺 exception / message 不含 300.0s（override 未生效）；第二腿 completed=false 或出现第 2 条 [181008]（per-call 污染 client，client 级被压低到 300） |
+| INCONCLUSIVE | demo 侧 `PerCallProbeController` 启动失败 / fat jar 版本不含 PerCallProbeController class |
+
+> **2026-10-28 batch triage 议题四 landed 回灌**：原设计 blocked_by_upstream B1（HttpRequest.timeout 当总时长执行）于 10-23 HANDOFF 归因到 JDK 24+ 环境问题后 RETRACTED。开发侧 10-28 落地 demo 侧通道：新增 `/probe/per-call` endpoint（**走 `Model.stream(prompt, options)` 不走 ReActAgent**）、新增 `s3-per-call` profile、新增 `perCallProbeModel` bean（one-shot 构造 retry=0 避免 retry 叠加干扰）；prompt 硬编码 "probe per-call"（不接 request body）。SIT 侧 fixture 新增 `TimeoutProbeHttpClient.queryPerCall(Duration, Integer)` + `PerCallResponse` record；原 TC `@Disabled` 已删（commit 跟本次 batch 一起 push）。
 
 > **PR#354 评审 1 回灌**：原设计把 per-call override（`ModelInvokeOptions.timeout`）与 agent 级常驻字段（`ReActAgentConfig.modelStreamIdleSeconds`）在同一 TC 内叠加，导致"第二腿期望 timeout_seconds=300"的断言歧义。本版 TC 收窄为**仅覆盖 `ModelInvokeOptions.timeout` 的 per-call 语义**（agent 级 `modelStreamIdleSeconds` 的持久字段验证由 UT 的 `ReActAgentConfig` 单测承接），第二腿改为"client 级 600s 回退、stall 310s 不触发超时"，判据无歧义。
 
@@ -243,8 +247,8 @@ related_docs:
 
 | 字段 | 内容 |
 |---|---|
-| 前置 | **demo 侧需先实证 5 provider（OpenAI / OpenAiCompatible / DashScope / SiliconFlow / DeepSeek）均可打通 llm-stub-server**（URL 路径 + 协议差异），由 demo HANDOFF 冒烟表给出可达性清单；DeepSeek 反射委托 OpenAI 栈，天然可达，其余 4 条 provider 若 stub 侧协议未兼容则本 TC 对应子跑降为 INCONCLUSIVE。 |
-| Given | probe-agent 启动于 `s2` profile；分别设置 `LLM_PROVIDER=OpenAI` / `OpenAiCompatible` / `DashScope` / `SiliconFlow` / `DeepSeek` 跑五次；stub-server `header-wait-silent`（stub 兼容性由前置条件保证） |
+| 前置 | **demo 侧需先实证 5 provider（OpenAI / OpenRouter / DashScope / SiliconFlow / DeepSeek）均可打通 llm-stub-server**（URL 路径 + 协议差异），由 demo HANDOFF 冒烟表给出可达性清单；DeepSeek 反射委托 OpenAI 栈，天然可达，其余 4 条 provider 若 stub 侧协议未兼容则本 TC 对应子跑降为 INCONCLUSIVE。注：外部 provider enum value `OpenAiCompatible` 已在 agent-core-java-0.1.17 改名为 `OpenRouter`（2026-10-28 batch triage 议题二 Path A）；底层 impl 类 `OpenAiCompatibleModelClient` 类名未变，L2 MUST#8 覆盖面以 impl 类家族计。|
+| Given | probe-agent 启动于 `s2` profile；分别设置 `LLM_PROVIDER=OpenAI` / `OpenRouter` / `DashScope` / `SiliconFlow` / `DeepSeek` 跑五次；stub-server `header-wait-silent`（stub 兼容性由前置条件保证） |
 | When | 每次 `POST /v1/query` body `{"message":"ping"}` |
 | Then | 五次 trace 的 error payload `details.{phase, layer, timeout_seconds, stream}` **字面相等**；`provider` 字段体现差异（如 `details.provider` 字段若存在） |
 | PASS | 四字段字面相等 |
@@ -290,14 +294,14 @@ related_docs:
 | TC-DEFAULT-BASELINE | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（Feat058RunnablePathTest, 6.57s） |
 | TC-CONNECT-TIMEOUT | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（39.14s）—— 新 jar PR!242+PR!442+PR!449 修 #260 + wire 结构化 failure 后，#260 EOF 清零；BEFORE_CONNECT + connect 5s 转绿 |
 | TC-HEADER-WAIT-LEGACY | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（68.75s）—— 同上，BEFORE_FIRST_SEGMENT + header_wait 8s 转绿 |
-| TC-AFTER-FIRST-SEGMENT-IDLE | **wire-eof-rooted-in-mvc-bug** | 共用 bf19b76/5bae22e | ✅ 2026-10-27 fixture 全修完（/v1 后缀 fc15b30 + stub FIRST_SEGMENT_MS=310000 36ef7da），300s stream_idle 真触发 + ModelCallRetrier 两层重试共 10 分钟 → wire EOF；跟 FEAT-064 对象路径同根，等开发侧 QueryMvcExceptionHandler 修复 |
+| TC-AFTER-FIRST-SEGMENT-IDLE | **landed PASS** | — | ✅ 2026-10-28 ECS 复跑 PASS（develop-head PR!242+PR!442+PR!449 rebuild bundle 新 jar，commit `ab9e03ba6581`）。10-27 wire-eof 根因（#260 SSE 结构化错误后 chunked 流中断）由新 jar 顺带修完，AFTER_FIRST_SEGMENT 相位 wire body 正常返回，TC 从 wire-eof-rooted-in-mvc-bug 直接转绿 |
 | TC-NO-TOTAL-CAP-STREAM | **landed PASS** | — | ✅ 2026-10-27 /v1 后缀 fc15b30 修完 ECS 实证 PASS（96.99s，MUST#4 契约 wire 可观察性验证通过）|
-| TC-BLOCKING-SAME-SEMANTICS | **blocked_by_contract_ambiguity (MUST#9)** | 等 MUST#9 窄义/广义裁定 | 2026-10-28 ECS 复跑仍 FAIL（72.01s）；跟开发侧 2026-10-27 `SIT-CLARIFY-REPLY-must9-ambiguity-s5-fail.md` 既存条文歧义同根。stub mode `idle-silent-blocking` 发 status 200 不发 body → probe 认为 header 阶段已过（窄义），不触发 header_wait=8s；栈：`ClassifiedModelErrors.toCancellation` 由 60s driver timeout 的 shutdown hook 触发（CancellationException，非 ModelError），全程无 wire body |
+| TC-BLOCKING-SAME-SEMANTICS | **landed PASS（路径 Y 待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题三裁定路径 Y：layer=stream_idle + timeout=300.0（替代原路径 X 判据 layer=header_wait + timeout=8.0）；SIT 侧已改 stub LLM_STUB_BLOCKING_IDLE_MS=310000 + probe --stream-idle-seconds=300 + driver 400s + asserter LAYER_STREAM_IDLE；待 ECS 一次 batch 复跑验证 |
 | TC-CANCEL-NOT-TIMEOUT | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（69.01s，弱层判据） |
-| TC-ERROR-DETAILS-PAYLOAD | **blocked_by_contract_ambiguity (MUST#9)** | 等 MUST#9 窄义/广义裁定 | 2026-10-28 ECS 复跑仍 FAIL（179.57s）；3 段 trace 里 s1 段 + s2 段 PASS asserter，**s5 段 FAIL** 跟 TC-BLOCKING-SAME-SEMANTICS 同根；MUST#9 裁定后一起恢复 |
-| TC-PER-CALL-IDLE-OVERRIDE | blocked_by_demo | 需 demo s3-per-call profile + per-call HTTP 入口 | B1 已 RETRACTED（2026-10-23 HANDOFF 归因到 JDK 24+ 环境），当前仅等 demo 侧补 per-call 入口（见 §3.9） |
+| TC-ERROR-DETAILS-PAYLOAD | **landed PASS（跟 S5 路径 Y 同步，待复跑验证）** | — | ✅ 2026-10-28 跟 TC-BLOCKING-SAME-SEMANTICS 第三段同步改路径 Y；第三段 asserter LAYER_HEADER_WAIT → LAYER_STREAM_IDLE；phase ↔ layer 映射更新为非 1:1（§3.8）；待 ECS 一次 batch 复跑验证 |
+| TC-PER-CALL-IDLE-OVERRIDE | **landed PASS（待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题四 landed：demo 侧补 PerCallProbeController 侧通道 + s3-per-call profile（commit `ab9e03ba6581`）；SIT 侧 fixture 补 queryPerCall + PerCallResponse record + 删 @Disabled + 两腿判据按 §3.9 实现；待 ECS 一次 batch 复跑验证 |
 | TC-RANGE-VALIDATION | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（2.72s）；异常栈改层：从 agent-core-java `ModelClientConfig$Builder.build` 下沉到 agent-service-app `LlmConfigResolver.validateTimeoutTiering:222`，错误消息改为 `openjiuwen.service.llm.connect-timeout must be between 5 and 15 seconds`；TC `containsAnyOf("ModelClientConfig","connect","range","must be between")` 判据 "connect" + "must be between" 覆盖新消息 → PASS 不受影响 |
-| TC-UNIFIED-STACK-COVERAGE | **blocked_by_contract_ambiguity (provider 枚举)** | 等 provider 枚举契约裁定 | 2026-10-28 ECS 复跑 ERROR（74.57s）—— iter2 `LLM_PROVIDER=OpenAiCompatible` fail-fast with `[181000] model provider is invalid`。agent-core-java-0.1.17 `ProviderType` enum 已把 `OPEN_AI_COMPATIBLE` 改为 `OPEN_ROUTER`（外部字符串 "OpenAiCompatible" → "OpenRouter"），但 demo README 10-27 + 本地 cases §3.11 仍写 "OpenAiCompatible"（三源不自洽）；observation 已推 docsReview：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`），请开发侧裁定路径 A/B/C（见 observation §三）|
+| TC-UNIFIED-STACK-COVERAGE | **landed PASS（待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题二 Path A 裁定：外部 provider enum value `OpenAiCompatible` → `OpenRouter`（agent-core-java-0.1.17 已改名；底层 impl 类 `OpenAiCompatibleModelClient` 类名未变，L2 MUST#8 以 impl 类家族计覆盖面，L2 契约未违约）。本仓 cases §3.11 + `Feat058RunnablePathTest.java:416` 字样已同步刷新。待 ECS 复跑 5 provider 完整走通后标 landed PASS。关联：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`）+ 开发侧 `DEV-REPLY-batch-triage-20261028.md`（commit `44067785`）|
 | **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |
 | **TC-CANCEL-OBS-S19** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S18 共 2/2）** |
 

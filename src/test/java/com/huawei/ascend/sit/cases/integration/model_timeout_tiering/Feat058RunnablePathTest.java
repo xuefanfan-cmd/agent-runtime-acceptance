@@ -198,10 +198,21 @@ final class Feat058RunnablePathTest {
     }
 
     /**
-     * TC-BLOCKING-SAME-SEMANTICS (cases §3.6). s5 profile, legacy {@code timeout=8s},
-     * stub mode {@code idle-silent-blocking} (blocking path).
-     * Expect: 181008 at phase={@code BEFORE_FIRST_SEGMENT}, layer={@code header_wait},
-     * timeout_seconds≈8, stream=false.
+     * TC-BLOCKING-SAME-SEMANTICS (cases §3.6). s5 profile with
+     * {@code stream-idle-seconds=300s} override (SDK lower bound), stub mode
+     * {@code idle-silent-blocking} with 310s blocking-body idle.
+     * Expect: 181008 at phase={@code BEFORE_FIRST_SEGMENT}, layer={@code stream_idle},
+     * timeout_seconds≈300, stream=false.
+     *
+     * <p>2026-10-28 batch triage 议题三 路径 Y（正测试，证超窗必掐断）：MUST#9 窄义
+     * 解读下，HTTP 响应头到齐后 header_wait 不再触发；"头到齐 → body 首字节"窗口
+     * 归 stream_idle 层保护。stub 发 status 200 header 后沉默 310s，probe 应该在
+     * 300s 时 stream_idle 层触发 timeout → 181008 at BEFORE_FIRST_SEGMENT with
+     * layer=stream_idle（不是 header_wait）。
+     *
+     * <p>原路径 X 判据（layer=header_wait, timeout_seconds=8.0）记录于 2026-10-22
+     * 对 MUST#9 的广义解读；经 2026-10-28 batch triage 议题三回帖裁定后改用窄义 +
+     * 路径 Y 判据（layer=stream_idle, timeout_seconds=300.0）。
      */
     @Test
     void blockingPathSameTieringSemantics() throws Exception {
@@ -209,6 +220,8 @@ final class Feat058RunnablePathTest {
 
         Map<String, String> stubEnv = commonEnv();
         stubEnv.put("LLM_STUB_DEFAULT_MODE", "idle-silent-blocking");
+        // 路径 Y：stub 沉默 310s（超过 stream_idle 300s 下限，触发 stream_idle 超时）
+        stubEnv.put("LLM_STUB_BLOCKING_IDLE_MS", "310000");
         try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
                 .envAll(stubEnv)
                 .build()
@@ -216,18 +229,21 @@ final class Feat058RunnablePathTest {
              TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
                      .profile("s5")
                      .envAll(probeEnv(stub))
+                     // 路径 Y：override stream-idle=300s（SDK 下限 [300,900]，必须带 s 单位否则 Spring 当 ms 解析）
+                     .arg("--openjiuwen.service.llm.stream-idle-seconds=300s")
                      .build()
                      .start()) {
 
             TimeoutProbeHttpClient http = new TimeoutProbeHttpClient(probe.baseUrl());
-            QueryResponse resp = http.query(PROMPT, DEFAULT_INVOKE_TIMEOUT);
+            // driver wait ≥ 320s（stream_idle 310s + buffer），避免 driver 先关连接
+            QueryResponse resp = http.query(PROMPT, Duration.ofSeconds(400));
 
             new ErrorEnvelopeAsserter(resp)
                     .assertTimeoutStatusCode()
                     .assertAllFourFieldsPresent()
                     .assertPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)
-                    .assertLayer(ErrorEnvelopeAsserter.LAYER_HEADER_WAIT)
-                    .assertTimeoutSeconds(8.0, 0.5)
+                    .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
+                    .assertTimeoutSeconds(300.0, 1.0)
                     .assertStream(false);
         }
     }
@@ -338,6 +354,8 @@ final class Feat058RunnablePathTest {
 
         Map<String, String> blockingStubEnv = commonEnv();
         blockingStubEnv.put("LLM_STUB_DEFAULT_MODE", "idle-silent-blocking");
+        // 2026-10-28 batch triage 议题三 路径 Y：跟 blockingPathSameTieringSemantics 同步
+        blockingStubEnv.put("LLM_STUB_BLOCKING_IDLE_MS", "310000");
         try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
                 .envAll(blockingStubEnv)
                 .build()
@@ -345,10 +363,11 @@ final class Feat058RunnablePathTest {
              TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
                      .profile("s5")
                      .envAll(probeEnv(stub))
+                     .arg("--openjiuwen.service.llm.stream-idle-seconds=300s")
                      .build()
                      .start()) {
             blockingResp = new TimeoutProbeHttpClient(probe.baseUrl())
-                    .query(PROMPT, DEFAULT_INVOKE_TIMEOUT);
+                    .query(PROMPT, Duration.ofSeconds(400));
         }
 
         new ErrorEnvelopeAsserter(connectResp).assertAllFourFieldsPresent()
@@ -359,7 +378,7 @@ final class Feat058RunnablePathTest {
                 .assertLayer(ErrorEnvelopeAsserter.LAYER_HEADER_WAIT);
         new ErrorEnvelopeAsserter(blockingResp).assertAllFourFieldsPresent()
                 .assertPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)
-                .assertLayer(ErrorEnvelopeAsserter.LAYER_HEADER_WAIT)
+                .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
                 .assertStream(false);
     }
 
@@ -402,18 +421,28 @@ final class Feat058RunnablePathTest {
 
     /**
      * TC-UNIFIED-STACK-COVERAGE (cases §3.11). Loop through the five
-     * client subclasses sharing the same resolver: {@code OpenAI},
-     * {@code OpenAiCompatible}, {@code DashScope}, {@code SiliconFlow},
-     * {@code DeepSeek}. For each, drive s2 + header-wait-silent and assert
-     * the four fields are literally equal across providers (apart from the
-     * {@code provider} field itself if present).
+     * providers sharing the same resolver (external {@code LLM_PROVIDER} env
+     * values): {@code OpenAI}, {@code OpenRouter}, {@code DashScope},
+     * {@code SiliconFlow}, {@code DeepSeek}. For each, drive s2 +
+     * header-wait-silent and assert the four fields are literally equal
+     * across providers (apart from the {@code provider} field itself if
+     * present).
+     *
+     * <p>2026-10-28 provider rename note (batch triage 议题二 Path A): the
+     * external provider enum value previously known as {@code OpenAiCompatible}
+     * was renamed to {@code OpenRouter} in agent-core-java-0.1.17's
+     * {@code ProviderType} enum. The underlying impl class
+     * {@code OpenAiCompatibleModelClient} is unchanged — L2 MUST#8 covers
+     * client-subclass families by impl class name (which did not change), so
+     * the contract is not violated; only the public {@code LLM_PROVIDER} env
+     * value changed.
      */
     @Test
     void unifiedStackCoverageAcrossClientSubclasses() throws Exception {
         assumeFatJarsPresent();
 
         List<String> providers = List.of(
-                "OpenAI", "OpenAiCompatible", "DashScope", "SiliconFlow", "DeepSeek");
+                "OpenAI", "OpenRouter", "DashScope", "SiliconFlow", "DeepSeek");
 
         String referencePhase = null;
         String referenceLayer = null;

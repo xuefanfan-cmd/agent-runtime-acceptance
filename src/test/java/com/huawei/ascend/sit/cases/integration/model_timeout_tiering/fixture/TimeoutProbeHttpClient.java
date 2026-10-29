@@ -444,4 +444,112 @@ public final class TimeoutProbeHttpClient {
             return null;
         }
     }
+
+    /**
+     * S9 TC-PER-CALL-IDLE-OVERRIDE side-channel driver (cases §3.9).
+     *
+     * <p>Issues {@code POST /probe/per-call/query} to the demo-side
+     * {@code PerCallProbeController}（2026-10-28 batch triage 议题四 landed with
+     * commit {@code ab9e03ba6581}). Driver has no prompt body — probe-agent
+     * uses a hard-coded prompt "probe per-call". Query param
+     * {@code per_call_timeout_seconds} is optional:
+     * <ul>
+     *   <li>provided: controller builds {@code ModelInvokeOptions.timeout(float)}
+     *       and calls {@code Model.stream(prompt, options)};
+     *   <li>omitted: controller calls {@code Model.stream(prompt)} using the
+     *       client-level {@code stream-idle-seconds} baseline (s3-per-call
+     *       profile pins baseline at 600s).
+     * </ul>
+     *
+     * <p>Response is a plain JSON {@code Map<String,Object>} (not SSE) with
+     * fields:
+     * <ul>
+     *   <li>{@code completed} (Boolean) — true if iterator ran to natural end;
+     *   <li>{@code chunks} (int) — number of chunks received before termination;
+     *   <li>{@code per_call_timeout_seconds} (Integer) — echoed back;
+     *   <li>{@code exception_type} (String, when iterator terminated via
+     *       throwable) — e.g. "ModelError";
+     *   <li>{@code message} (String, when iterator terminated via throwable) —
+     *       e.g. "model call timeout at BEFORE_FIRST_SEGMENT, effective timeout 300.0s, ...".
+     * </ul>
+     *
+     * @param requestTimeout driver-side HTTP timeout; must exceed stub stall
+     *                       (310s) + buffer, so set 400s+ for TC's first call
+     *                       and 700s+ for second call
+     * @param perCallSec     per-call timeout in seconds; {@code null} means
+     *                       don't send the query param (client-level baseline
+     *                       applies)
+     */
+    public PerCallResponse queryPerCall(Duration requestTimeout, Integer perCallSec) throws Exception {
+        Objects.requireNonNull(requestTimeout, "requestTimeout");
+
+        StringBuilder url = new StringBuilder(baseUrl).append("/probe/per-call/query");
+        if (perCallSec != null) {
+            url.append("?per_call_timeout_seconds=").append(perCallSec);
+        }
+
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url.toString()))
+                .timeout(requestTimeout)
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        try {
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return parsePerCall(resp);
+        } catch (java.net.http.HttpTimeoutException callerAborted) {
+            return PerCallResponse.aborted(callerAborted.getMessage());
+        }
+    }
+
+    private PerCallResponse parsePerCall(HttpResponse<String> resp) {
+        int status = resp.statusCode();
+        String raw = resp.body();
+        if (raw == null || raw.isBlank()) {
+            return new PerCallResponse(status, null, null, null, null, null, raw, false, null);
+        }
+        try {
+            Map<String, Object> parsed = MAPPER.readValue(raw, new TypeReference<>() {});
+            Boolean completed = parsed.get("completed") instanceof Boolean b ? b : null;
+            Integer perCallSec = parsed.get("per_call_timeout_seconds") instanceof Number n
+                    ? n.intValue() : null;
+            Integer chunks = parsed.get("chunks") instanceof Number n ? n.intValue() : null;
+            String exceptionType = parsed.get("exception_type") instanceof String s ? s : null;
+            String message = parsed.get("message") instanceof String s ? s : null;
+            return new PerCallResponse(status, completed, perCallSec, chunks,
+                    exceptionType, message, raw, false, null);
+        } catch (Exception notJson) {
+            return new PerCallResponse(status, null, null, null, null, null, raw, false, null);
+        }
+    }
+
+    /**
+     * Response record for {@link #queryPerCall(Duration, Integer)}. Fields map
+     * 1:1 to the demo-side PerCallProbeController JSON response body.
+     */
+    public record PerCallResponse(
+            int statusCode,
+            Boolean completed,
+            Integer perCallTimeoutSeconds,
+            Integer chunks,
+            String exceptionType,
+            String message,
+            String rawBody,
+            boolean callerAborted,
+            String callerAbortReason) {
+
+        static PerCallResponse aborted(String reason) {
+            return new PerCallResponse(-1, null, null, null, null, null, null, true, reason);
+        }
+
+        /** True if the iterator ran to natural completion. */
+        public boolean completedNaturally() {
+            return Boolean.TRUE.equals(completed);
+        }
+
+        /** True if the iterator terminated via a throwable (per-call timeout fired, etc). */
+        public boolean terminatedByException() {
+            return exceptionType != null;
+        }
+    }
 }

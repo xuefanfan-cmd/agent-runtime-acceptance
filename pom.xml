@@ -74,6 +74,13 @@
              注意 067-S12（护栏 actrule.yaml）与 067-S10（模板资产）读的是 **classpath 资产**，
              不需要本属性。 -->
         <deepanalyze.source.root></deepanalyze.source.root>
+        <!-- FEAT-032（2026-10-23 整改）：PR !404（feat/multimodal-entry-m1m2@1dab2530）已于
+             2026-10-20 合入 agent-core-java develop；本地 .m2 的 0.1.17 需从源码重打包才含
+             core/foundation/llm/multimodal 包。工具与 demo 模块版本取自 agent-solution common
+             分支 revision=0.1.3 与 demo pom 0.1.3（common!882 合入）。 -->
+        <agent-core-java.version>0.1.17</agent-core-java.version>
+        <agent-core-ext-multimodal-tools.version>0.1.3</agent-core-ext-multimodal-tools.version>
+        <multi-modal-tools-demo.version>0.1.3</multi-modal-tools-demo.version>
     </properties>
 
     <dependencyManagement>
@@ -280,6 +287,32 @@
             <version>${deepanalyze-engine.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- ================================================================ -->
+        <!-- FEAT-032 多模态 SUT 三件套（2026-10-23 整改：PR !404 已合入）     -->
+        <!-- agent-core-java 0.1.17 必须从源码重打包（2026-10-23 前的发布制品    -->
+        <!-- 不含 foundation/llm/multimodal 契约包）；multimodal-tools 与       -->
+        <!-- multi-modal-tools-demo 由 agent-solution common!882 构建。        -->
+        <!-- ================================================================ -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-java</artifactId>
+            <version>${agent-core-java.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-multimodal-tools</artifactId>
+            <version>${agent-core-ext-multimodal-tools.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-032 验证基座 agent：common/example/multi-modal-tools-demo 的
+             MultimodalToolsAgent（ObservationToolSuite + vote_answer 装配的 ReActAgent）。 -->
+        <dependency>
+            <groupId>com.openjiuwen.example</groupId>
+            <artifactId>multi-modal-tools-demo</artifactId>
+            <version>${multi-modal-tools-demo.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -368,6 +401,24 @@
                         <groupId>io.qameta.allure</groupId>
                         <artifactId>allure-maven</artifactId>
                         <version>3.0.2</version>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <!-- FEAT-032 f03223 headless 显式失败语义：桌面会话（非 headless）JVM 下该用例按
+             dependency-gated SKIPPED；用本 profile 以 headless 分叉 JVM 单独激活：
+             mvn test -Pheadless-gate -Dtest=Feat032SutToolDirectTest#f03223HeadlessScreenshotFailsExplicitly
+             （与 F032-22 桌面正向语义互斥环境分别执行，见测试设计文档附录 A） -->
+        <profile>
+            <id>headless-gate</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <argLine>-Djava.awt.headless=true</argLine>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

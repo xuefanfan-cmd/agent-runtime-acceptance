@@ -88,7 +88,7 @@ class SkillHubNotReadySitTest extends AbstractSkillHubSyncSitTest {
     }
 
     /** 报告只保留最近一次完成结果，滚动采集不同 syncId 的 startedAt。 */
-    private static List<Instant> collectRoundStarts(String base, Duration window, int minRounds)
+    private List<Instant> collectRoundStarts(String base, Duration window, int minRounds)
             throws InterruptedException {
         List<Instant> starts = new ArrayList<>();
         List<String> seen = new ArrayList<>();

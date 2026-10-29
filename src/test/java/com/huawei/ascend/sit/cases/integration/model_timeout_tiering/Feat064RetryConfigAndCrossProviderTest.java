@@ -104,7 +104,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "rate-limited-persistent", 2);
+                    .assertStubCallCount(trace.stats, "rate-limited-persistent", 2)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_RATE_LIMITED,
+                            ErrorEnvelopeAsserter.REASON_POLICY_DISALLOWED, 2);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED);
@@ -133,7 +136,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "server-5xx", 2);
+                    .assertStubCallCount(trace.stats, "server-5xx", 2)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_TEMPORARY,
+                            ErrorEnvelopeAsserter.REASON_POLICY_DISALLOWED, 2);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -160,7 +166,10 @@ final class Feat064RetryConfigAndCrossProviderTest {
             new ErrorEnvelopeAsserter(trace.response)
                     .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_ERROR)
                     .assertNoRetryLog(trace.tailer)
-                    .assertStubCallCount(trace.stats, "server-5xx", 1);
+                    .assertStubCallCount(trace.stats, "server-5xx", 1)
+                    .assertTerminalLogCategory(trace.tailer,
+                            ErrorEnvelopeAsserter.CATEGORY_TEMPORARY,
+                            ErrorEnvelopeAsserter.REASON_RETRY_BUDGET_EXHAUSTED, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);

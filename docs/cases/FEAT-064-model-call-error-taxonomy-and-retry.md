@@ -351,9 +351,9 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 |---|---|
 | Given | probe-agent 启动于 **s14 profile**（`demo.timeout-probe.retry-on-rate-limited: false`，绑定到 `ModelClientConfig.Builder.retryOnRateLimit(false)`）；stub-server 启动于 `rate-limited-persistent` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | **T1**：SSE `failure.numericCode == 181009` + `failure.code == MODEL_CALL_RATE_LIMITED`；**T2**：`Model call will retry.` **零次**（Retrier 开关 OFF 绕过内层重试循环；Rail requestRetry 不走 publishRetry）；**stub 调用计数**：`assertStubCallCount("rate-limited-persistent", 2)`；禁 `[181001/181010/181011/181012]` numericCode |
-| PASS | T1 numericCode 181009 + T2 零 retry 行 + stub strong-eq 2 |
-| FAIL | 出现 retry 日志（证明 Retrier 开关 OFF 未生效，L2 §1.2.9 FAIL）/ numericCode 非 181009 / stub ≠ 2 |
+| Then | **T1**：SSE `failure.numericCode == 181009` + `failure.code == MODEL_CALL_RATE_LIMITED`；**T2**：`Model call will retry.` **零次**（Retrier 开关 OFF 绕过内层重试循环；Rail requestRetry 不走 publishRetry）；**T3**（r7-fix 追加）：SUT terminal 日志 `Model call failed. {category=RATE_LIMITED, reason=POLICY_DISALLOWED}` **strong-eq 2 行**（Retrier 内层 policy.allows=false 1 次 + Rail 整轮再触发 Retrier 1 次，Rail 不消费 `retry-on-rate-limited` 开关仅检查 `maxRetries>0` + `DEFAULT_MAX_GUARDRAIL_RETRIES=1`）；**stub 调用计数**：`assertStubCallCount("rate-limited-persistent", 2)`；禁 `[181001/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181009 + T2 零 retry 行 + T3 strong-eq 2 + stub strong-eq 2 |
+| FAIL | 出现 retry 日志（证明 Retrier 开关 OFF 未生效，L2 §1.2.9 FAIL）/ numericCode 非 181009 / T3 category 或 reason 错位或行数 ≠ 2 / stub ≠ 2 |
 | INCONCLUSIVE | s14 profile 未被 probe-agent 识别（载体层 `demo.timeout-probe.*` 绑定未到位） |
 
 ### 3.11 TC-TEMPORARY-SWITCH-OFF（增量 s15 / 临时故障开关 OFF 分支，L2 §1.2.9）
@@ -364,9 +364,9 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 |---|---|
 | Given | probe-agent 启动于 **s15 profile**（`demo.timeout-probe.retry-on-temporary: false`，绑定到 `ModelClientConfig.Builder.retryOnTemporary(false)`）；stub-server 启动于 `server-5xx` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | **T1**：SSE `failure.numericCode == 181001`；**T2**：`Model call will retry.` **零次**；**stub 调用计数**：`assertStubCallCount("server-5xx", 2)`；禁 `[181008/181009/181010/181011/181012]` numericCode |
-| PASS | T1 numericCode 181001 + T2 零 retry 行 + stub strong-eq 2 |
-| FAIL | 出现 retry 日志（L2 §1.2.9 FAIL）/ numericCode 非 181001 / stub ≠ 2 |
+| Then | **T1**：SSE `failure.numericCode == 181001`；**T2**：`Model call will retry.` **零次**；**T3**（r7-fix 追加）：SUT terminal 日志 `Model call failed. {category=TEMPORARY, reason=POLICY_DISALLOWED}` **strong-eq 2 行**（Retrier 内层 policy.allows=false 1 次 + Rail 整轮再触发 Retrier 1 次，Rail 不消费 `retry-on-temporary` 开关仅检查 `maxRetries>0`）；**stub 调用计数**：`assertStubCallCount("server-5xx", 2)`；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181001 + T2 零 retry 行 + T3 strong-eq 2 + stub strong-eq 2 |
+| FAIL | 出现 retry 日志（L2 §1.2.9 FAIL）/ numericCode 非 181001 / T3 category 或 reason 错位或行数 ≠ 2 / stub ≠ 2 |
 | INCONCLUSIVE | s15 profile 未被识别 |
 
 ### 3.12 TC-MAX-RETRIES-ZERO-NO-RETRY（增量 s16 / maxRetries=0 预算关断 wire-observable，L2 §1.2.9）
@@ -377,9 +377,9 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 |---|---|
 | Given | probe-agent 启动于 **s16 profile**（`demo.timeout-probe.max-retries-override: 0`，绑定到 `ModelClientConfig.Builder.maxRetries(0)`）；stub-server 启动于 `server-5xx` 模式 |
 | When | SIT driver `POST /v1/query` body `{"conversation_id":"sit-<uuid>","message":"ping"}` |
-| Then | **T1**：SSE `failure.numericCode == 181001` + 日志 `max_retries=0` 字段；**T2**：`Model call will retry.` **零次**（预算关断，首次失败即终 numericCode）；**stub 调用计数**：`assertStubCallCount("server-5xx", 1)`（两层全关）；禁 `[181008/181009/181010/181011/181012]` numericCode |
-| PASS | T1 numericCode 181001 + `max_retries=0` 字段 + T2 零 retry 行 + stub 次数 == 1 |
-| FAIL | 出现 retry 日志（证明预算关断未生效）/ numericCode 非 181001 / `max_retries` 字段 ≠ 0 / stub 次数 ≠ 1（2 次表明 Rail gate 未阻断，证明装配偏离 L2 §2.3） |
+| Then | **T1**：SSE `failure.numericCode == 181001` + 日志 `max_retries=0` 字段；**T2**：`Model call will retry.` **零次**（预算关断，首次失败即终 numericCode）；**T3**（r7-fix 追加）：SUT terminal 日志 `Model call failed. {category=TEMPORARY, reason=RETRY_BUDGET_EXHAUSTED}` **strong-eq 1 行**（Retrier 内层 `tryConsumeRetry` 失败 1 次；Rail gate `currentModelAllowsRetry` 查 `maxRetries>0` 不通过 → 不触发整轮，无第二行）；**stub 调用计数**：`assertStubCallCount("server-5xx", 1)`（两层全关）；禁 `[181008/181009/181010/181011/181012]` numericCode |
+| PASS | T1 numericCode 181001 + `max_retries=0` 字段 + T2 零 retry 行 + T3 strong-eq 1 + stub 次数 == 1 |
+| FAIL | 出现 retry 日志（证明预算关断未生效）/ numericCode 非 181001 / `max_retries` 字段 ≠ 0 / T3 category 或 reason 错位或行数 ≠ 1 / stub 次数 ≠ 1（2 次表明 Rail gate 未阻断，证明装配偏离 L2 §2.3） |
 | INCONCLUSIVE | s16 profile 未被识别；或 stub 调用计数通道未开放时降级 |
 
 ### 3.13 TC-CROSS-PROVIDER-CLASSIFICATION（增量 s17 / OpenAI 挂点 schema-agnostic R6 验证，L2 §1.2.1）
@@ -549,9 +549,9 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 | TC-STREAM-ERROR-FRAME | **runnable（r5 ST-S03）** | — | SIT 侧 `streamErrorFrameAfterFirstSegmentShortCircuits` 已落地，r5 更新 ST 编号 S02→S03 |
 | TC-MAX-RETRIES-NEGATIVE-REJECTED | runnable | — | SIT 侧 `maxRetriesNegativeIsRejectedAtStartup` 已落地 |
 | TC-NUMERIC-CODE-FIELD | runnable | 永久类 category 字段部分待 T3 通道开放 | SIT 侧 `numericCodeFieldIsPresentForAllCategories` 已落地（跨 TC 聚合），r5 更新字段路径 metadata→SSE failure |
-| TC-RATE-LIMITED-SWITCH-OFF | **runnable（r5 strong-eq 2）** | 无（r4 待裁定点已废弃；Rail 不消费开关 + `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 为锚） | SIT 侧 `Feat064RetryConfigAndCrossProviderTest.rateLimitedSwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量 |
-| TC-TEMPORARY-SWITCH-OFF | **runnable（r5 strong-eq 2）** | 同 s14 | SIT 侧 `temporarySwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量 |
-| TC-MAX-RETRIES-ZERO-NO-RETRY | runnable | — | SIT 侧 `maxRetriesZeroShutsDownRetryBudget` 已落地 |
+| TC-RATE-LIMITED-SWITCH-OFF | **runnable（r5 strong-eq 2；r7-fix T3 strong-eq 2）** | 无（r4 待裁定点已废弃；Rail 不消费开关 + `DEFAULT_MAX_GUARDRAIL_RETRIES=1` 为锚） | SIT 侧 `Feat064RetryConfigAndCrossProviderTest.rateLimitedSwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量；r7-fix 追加 T3 `category=RATE_LIMITED, reason=POLICY_DISALLOWED` strong-eq **2 行**断言（Retrier 内层 1 + Rail 整轮 1） |
+| TC-TEMPORARY-SWITCH-OFF | **runnable（r5 strong-eq 2；r7-fix T3 strong-eq 2）** | 同 s14 | SIT 侧 `temporarySwitchOffBypassesRetry` 已落地，r5 更新 strong-eq 常量；r7-fix 追加 T3 `category=TEMPORARY, reason=POLICY_DISALLOWED` strong-eq **2 行**断言 |
+| TC-MAX-RETRIES-ZERO-NO-RETRY | **runnable（r7-fix T3 strong-eq 1）** | — | SIT 侧 `maxRetriesZeroShutsDownRetryBudget` 已落地；r7-fix 追加 T3 `category=TEMPORARY, reason=RETRY_BUDGET_EXHAUSTED` strong-eq **1 行**断言（Rail gate `maxRetries>0` 阻断整轮，无第二行） |
 | TC-CROSS-PROVIDER-CLASSIFICATION | runnable | — | SIT 侧 `crossProviderSchemaHookpointCoverage` 已落地（s17 schema=dashscope） |
 | TC-SUCCESS-NO-INTERFERENCE | runnable | — | SIT 侧 `successPathIsNotInterferedWith` 已落地，r5 Javadoc 更新为 "stub CI 补充" 不认领 ST-R01 |
 | TC-STREAM-RECOVER-BEFORE-FIRST | **runnable（r5 加 stream:true body + stream-answer 断言）** | — | SIT 侧 `streamRecoverBeforeFirstSegmentPreservesAnswer` 已落地，r5 更新请求 body + 响应断言 |

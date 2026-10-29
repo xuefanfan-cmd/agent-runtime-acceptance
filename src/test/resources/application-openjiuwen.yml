@@ -835,6 +835,22 @@ sut:
       group: com.customer
       artifact: customer-multipart-app
       version: "1.0.0"
+    # FEAT-072 SkillHub runtime demo（agent-solution common/example/skillhub-runtime-demo，
+    # -Drevision=0.1.2 构建，制品安装到 ~/.m2 后由框架按 GAV 拉起）。
+    # 场景配置（endpoint/local-dir/encrypted-token/规则文件等）由用例侧
+    # AbstractSkillHubSyncSitTest 以 Spring 程序参数逐项覆盖注入，此处只声明坐标与就绪方式。
+    # 就绪判据用 TCP：demo 不暴露 actuator/health，管理面就绪由用例的 report 轮询自证。
+    skillhub-demo:
+      group: com.openjiuwen.example
+      artifact: skillhub-runtime-demo
+      version: 0.1.2
+      ready-mode: tcp
+    # SC-INST-01 双实例对照（同 GAV，独立 local-dir 由用例注入）。
+    skillhub-demo-b:
+      group: com.openjiuwen.example
+      artifact: skillhub-runtime-demo
+      version: 0.1.2
+      ready-mode: tcp
   # Per-agent LLM api-key injection: an agent that declares `llm-api-key-property: <spring-key>`
   # gets the global LLM_API_KEY value (below) injected at launch as `--<spring-key>=<LLM_API_KEY>`,
   # a highest-precedence Spring arg that overrides the agent's bundled application.yml — so it works

@@ -86,3 +86,7 @@ envs:
       - { source: agent-solution, module: common/example/multi_react_travel_hosted_demo }
       - { source: agent-solution, module: common/example/multi_deep_research_hosted_demo }
       - { source: agent-solution, module: common/example/versatile-orchestration-demo }
+      # FEAT-072 SkillHub runtime demo（SUT，application-openjiuwen.yml sut.agents.skillhub-demo*）。
+      # 必须排在 agent-runtime-ext-java 之后：本特性的同步/热加载实现（含 PR #950/#958/
+      # #961/#964 修复）尚未全部进入已发布构件，从源码 install 才能拿到含修复的 0.1.2 制品。
+      - { source: agent-solution, module: common/example/skillhub-runtime-demo }

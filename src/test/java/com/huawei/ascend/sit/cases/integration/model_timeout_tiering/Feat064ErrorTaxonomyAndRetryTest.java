@@ -179,7 +179,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertStubCallCount(trace.stats, "quota-exceeded", 1)
                     .assertTerminalLogCategory(trace.tailer,
                             ErrorEnvelopeAsserter.CATEGORY_QUOTA_EXCEEDED,
-                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
+                            ErrorEnvelopeAsserter.REASON_NOT_RETRYABLE, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED);
@@ -203,7 +203,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                     .assertStubCallCount(trace.stats, "auth-failed", 1)
                     .assertTerminalLogCategory(trace.tailer,
                             ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED,
-                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
+                            ErrorEnvelopeAsserter.REASON_NOT_RETRYABLE, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED);
@@ -234,7 +234,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                             PERSISTENT_RETRYABLE_STUB_CALLS)
                     .assertTerminalLogCategory(trace.tailer,
                             ErrorEnvelopeAsserter.CATEGORY_TEMPORARY,
-                            ErrorEnvelopeAsserter.REASON_RETRY_BUDGET_EXHAUSTED, 1);
+                            ErrorEnvelopeAsserter.REASON_RETRY_BUDGET_EXHAUSTED, 2);
 
             assertNoOtherClassifiedCodes(trace.tailer,
                     ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
@@ -256,16 +256,16 @@ final class Feat064ErrorTaxonomyAndRetryTest {
 
         try (QueryTrace trace = runStubbed("context-length-exceeded")) {
             new ErrorEnvelopeAsserter(trace.response)
-                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED)
+                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED)
                     .assertCategory(ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED)
                     .assertNoRetryLog(trace.tailer)
                     .assertStubCallCount(trace.stats, "context-length-exceeded", 1)
                     .assertTerminalLogCategory(trace.tailer,
                             ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED,
-                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
+                            ErrorEnvelopeAsserter.REASON_NOT_RETRYABLE, 1);
 
             assertNoOtherClassifiedCodes(trace.tailer,
-                    ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED);
+                    ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED);
         }
     }
 
@@ -322,7 +322,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                         ErrorEnvelopeAsserter.MODEL_CALL_ERROR,
                         ErrorEnvelopeAsserter.CATEGORY_TEMPORARY),
                 new Classification("context-length-exceeded",
-                        ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED,
+                        ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED,
                         ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED));
 
         for (Classification c : table) {
@@ -595,7 +595,7 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                 ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED,
                 ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED,
-                ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED,
+                ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_TIMEOUT_CODE,
         };
         for (int code : classified) {

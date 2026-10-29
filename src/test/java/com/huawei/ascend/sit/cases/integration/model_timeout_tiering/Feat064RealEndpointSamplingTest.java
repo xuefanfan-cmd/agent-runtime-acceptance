@@ -143,8 +143,8 @@ final class Feat064RealEndpointSamplingTest {
                     .assertNoRetryLog(tailer)
                     .assertTerminalLogCategory(tailer,
                             ErrorEnvelopeAsserter.CATEGORY_AUTH_FAILED,
-                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
-        }
+                            ErrorEnvelopeAsserter.REASON_NOT_RETRYABLE, 1);
+            }
     }
 
     /**
@@ -189,11 +189,11 @@ final class Feat064RealEndpointSamplingTest {
             SutLogTailer tailer = new SutLogTailer(probe.logFile());
 
             new ErrorEnvelopeAsserter(resp)
-                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED)
+                    .assertStatusCode(ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED)
                     .assertNoRetryLog(tailer)
                     .assertTerminalLogCategory(tailer,
                             ErrorEnvelopeAsserter.CATEGORY_CONTEXT_LENGTH_EXCEEDED,
-                            ErrorEnvelopeAsserter.REASON_PERMANENT_ERROR, 1);
+                            ErrorEnvelopeAsserter.REASON_NOT_RETRYABLE, 1);
         }
     }
 
@@ -240,7 +240,7 @@ final class Feat064RealEndpointSamplingTest {
                 ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED,
                 ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED,
-                ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED,
+                ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_TIMEOUT_CODE,
                 ErrorEnvelopeAsserter.MODEL_CALL_ERROR,
         };

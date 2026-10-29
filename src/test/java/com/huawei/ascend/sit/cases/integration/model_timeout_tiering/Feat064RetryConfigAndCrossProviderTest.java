@@ -303,7 +303,7 @@ final class Feat064RetryConfigAndCrossProviderTest {
                 ErrorEnvelopeAsserter.MODEL_CALL_RATE_LIMITED,
                 ErrorEnvelopeAsserter.MODEL_CALL_QUOTA_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_AUTH_FAILED,
-                ErrorEnvelopeAsserter.MODEL_CALL_CONTEXT_LENGTH_EXCEEDED,
+                ErrorEnvelopeAsserter.MODEL_CONTEXT_LENGTH_EXCEEDED,
                 ErrorEnvelopeAsserter.MODEL_CALL_TIMEOUT_CODE,
         };
         for (int code : classified) {

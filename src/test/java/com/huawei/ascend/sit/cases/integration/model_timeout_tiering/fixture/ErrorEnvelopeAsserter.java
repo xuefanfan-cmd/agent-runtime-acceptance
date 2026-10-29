@@ -43,7 +43,7 @@ public final class ErrorEnvelopeAsserter {
     public static final int MODEL_CALL_RATE_LIMITED = 181009;
     public static final int MODEL_CALL_QUOTA_EXCEEDED = 181010;
     public static final int MODEL_CALL_AUTH_FAILED = 181011;
-    public static final int MODEL_CALL_CONTEXT_LENGTH_EXCEEDED = 181012;
+    public static final int MODEL_CONTEXT_LENGTH_EXCEEDED = 181012;
     public static final int MODEL_CALL_ERROR = 181001;
 
     /** FEAT-064 {@code ModelErrorCategory} enum values present on wire. */
@@ -54,14 +54,24 @@ public final class ErrorEnvelopeAsserter {
     public static final String CATEGORY_CONTEXT_LENGTH_EXCEEDED = "CONTEXT_LENGTH_EXCEEDED";
 
     /**
-     * FEAT-064 r6: {@code reason} enum values on T3 terminal log — landed via
-     * agent-core-java PR!449 (2026-10-27). Shape of T3 line:
+     * FEAT-064 r7: {@code reason} enum values on T3 terminal log — real values
+     * emitted by agent-core-java PR!449 (verified 2026-10-29 against reviewer
+     * r6 feedback). Shape of T3 line:
      * {@code "Model call failed. {category=<CAT>, reason=<REASON>}"}.
+     *
+     * <p>Only three enum values are real:
+     * <ul>
+     *   <li>{@code NOT_RETRYABLE} — permanent-class terminal (QUOTA / AUTH /
+     *       CONTEXT_LENGTH / generic non-retryable);
+     *   <li>{@code POLICY_DISALLOWED} — retry category switch OFF (Rail may
+     *       still execute one guardrail round);
+     *   <li>{@code RETRY_BUDGET_EXHAUSTED} — retryable budget consumed, incl.
+     *       {@code maxRetries=0} (first-call-only, no retries).
+     * </ul>
      */
-    public static final String REASON_PERMANENT_ERROR = "PERMANENT_ERROR";
+    public static final String REASON_NOT_RETRYABLE = "NOT_RETRYABLE";
+    public static final String REASON_POLICY_DISALLOWED = "POLICY_DISALLOWED";
     public static final String REASON_RETRY_BUDGET_EXHAUSTED = "RETRY_BUDGET_EXHAUSTED";
-    public static final String REASON_RETRY_DISABLED_BY_SWITCH = "RETRY_DISABLED_BY_SWITCH";
-    public static final String REASON_RETRY_BUDGET_ZERO = "RETRY_BUDGET_ZERO";
 
     private final QueryResponse response;
 
@@ -162,19 +172,22 @@ public final class ErrorEnvelopeAsserter {
     }
 
     /**
-     * FEAT-064 r6: T3 terminal failure log strong-eq assertion — landed via
-     * agent-core-java PR!449 (2026-10-27). Asserts exactly {@code expected}
-     * log lines matching {@code "Model call failed. {category=<CAT>,
-     * reason=<REASON>}"} with the given category + reason pair.
+     * FEAT-064 r7: T3 terminal failure log strong-eq assertion — landed via
+     * agent-core-java PR!449 (reviewer-correct r7 2026-10-29). Asserts exactly
+     * {@code expected} log lines matching {@code "Model call failed.
+     * {category=<CAT>, reason=<REASON>}"} with the given category + reason pair.
      *
-     * <p>Used for:
+     * <p>Expected counts per scenario (reviewer r6 correction):
      * <ul>
-     *   <li>permanent-class strong-eq 1: QUOTA_EXCEEDED / AUTH_FAILED /
-     *       CONTEXT_LENGTH_EXCEEDED, reason=PERMANENT_ERROR;
-     *   <li>retryable-exhausted strong-eq 1: TEMPORARY / RATE_LIMITED,
-     *       reason=RETRY_BUDGET_EXHAUSTED;
-     *   <li>switch-off strong-eq 1: reason=RETRY_DISABLED_BY_SWITCH;
-     *   <li>budget-zero strong-eq 1: reason=RETRY_BUDGET_ZERO.
+     *   <li>Permanent class (QUOTA / AUTH / CONTEXT_LENGTH), reason=NOT_RETRYABLE:
+     *       count=1 (classifier short-circuits before Rail);
+     *   <li>Retry category switch OFF, reason=POLICY_DISALLOWED: count=2
+     *       (Rail still executes one guardrail round, so terminal fires per round);
+     *   <li>maxRetries=0, reason=RETRY_BUDGET_EXHAUSTED: count=1
+     *       (first-call-only, no retries, no Rail round);
+     *   <li>Default retryable exhausted (TEMPORARY / RATE_LIMITED),
+     *       reason=RETRY_BUDGET_EXHAUSTED: count=2 (inner budget exhausted,
+     *       Rail then runs another full round and terminal fires again).
      * </ul>
      */
     public ErrorEnvelopeAsserter assertTerminalLogCategory(SutLogTailer tailer,

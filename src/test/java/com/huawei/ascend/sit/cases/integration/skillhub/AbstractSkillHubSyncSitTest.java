@@ -207,6 +207,9 @@ abstract class AbstractSkillHubSyncSitTest {
             return JSON.readTree(getReportRaw(base)).path("lastCompleted");
         } catch (IOException e) {
             throw new IllegalStateException("could not parse report", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while reading report", e);
         }
     }
 

@@ -367,11 +367,13 @@ final class SkillHubSyncMockServer implements AutoCloseable {
     // -------------------------------------------------------------- 技能包
 
     private static byte[] skillZip(Asset asset, String version, SkillPackage pkg) {
-        String skillMd = "---\nname: " + asset.id + "\ndescription: " + asset.description + "\n---\n"
+        // description 以双引号包裹：SUT 的 SkillPathSafety.inspectSkill 用 SnakeYAML 解析
+        // front matter，裸标量中的冒号（"skill xxx: reply ..."）会导致解析失败 → PACKAGE_INVALID。
+        String skillMd = "---\nname: " + asset.id + "\ndescription: \"" + asset.description + "\"\n---\n"
                 + "# " + asset.id + " " + version + "\n"
                 + "Read this file before answering. Reply exactly with the marker `" + pkg.marker() + "`.\n";
         String pluginYaml = "name: " + asset.id + "\nversion: \"" + version + "\"\n"
-                + "description: " + pkg.pluginDescription() + "\n"
+                + "description: \"" + pkg.pluginDescription() + "\"\n"
                 + "metadata:\n  plugin_type: skill\n";
         return zip(Map.of("SKILL.md", skillMd, "plugin.yaml", pluginYaml));
     }

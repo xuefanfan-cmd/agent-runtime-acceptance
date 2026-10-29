@@ -81,6 +81,13 @@
         <agent-core-java.version>0.1.17</agent-core-java.version>
         <agent-core-ext-multimodal-tools.version>0.1.3</agent-core-ext-multimodal-tools.version>
         <multi-modal-tools-demo.version>0.1.3</multi-modal-tools-demo.version>
+        <!-- FEAT-033（2026-10-29 新增）：被动结构化上下文压缩的 processor 配置类归属 artifact。
+             Feat033ConfigFailFastTest 直接 reach-into 构造 StructuredCompactProcessorConfig 对象做
+             build-time IllegalArgumentException 断言，不走 fat jar wire 面。其他 8 条 FEAT-033 TC
+             走 context-probe-agent fat jar HTTP 接口不依赖本 artifact。版本跟 HANDOFF.md 2026-10-28
+             批次锁定 0.1.3（随 agent-core-ext 0.1.3 release 分发）。LOCAL-ONLY，需 ECS ~/.m2 预装
+             或 openJiuwen 内部 registry 可解析。 -->
+        <agent-core-ext-context-compression.version>0.1.3</agent-core-ext-context-compression.version>
     </properties>
 
     <dependencyManagement>
@@ -272,15 +279,25 @@
         <!-- FEAT-065/066：确定性编排层（蓝图调度 + 交叉验证装载期编译）。
              组件层直接消费其公开面：BlueprintLoader.load / BlueprintScheduler / BlueprintWorkflowCompiler /
              SubAgentExecutor。依据 FEAT-065 §3「成员绑定契约」与「执行入口」两个跨模块 API 契约。 -->
+        <!-- 2026-10-29 临时注释（FEAT-033 unblock）：ECS ~/.m2 下该 artifact 从未成功下载过（aliyun 公共仓没有），
+             Maven .lastUpdated 失败标记已打，force full resolve 时 FAIL。本次 FEAT-033 SIT 跑测本来就不需要
+             orchestration/deepanalyze；FEAT-065/066/067/068 相关测试通过 testExcludes 排除（见下方 compiler
+             plugin testExcludes 段 2026-10-29 新增两条）。队友上传 jar+pom 到 docsReview
+             agent-runtime-acceptance-m2-missing/ 后恢复本块 + 删 testExcludes 两条。 -->
+        <!--
         <dependency>
             <groupId>com.openjiuwen</groupId>
             <artifactId>agent-core-ext-orchestration</artifactId>
             <version>${agent-core-ext-orchestration.version}</version>
             <scope>test</scope>
         </dependency>
+        -->
         <!-- FEAT-067：DA 宿主的会话内工作流工具组（da.workflow 包六件）。
              六件工具的公开构造器依赖全部可注入（DaWorkflowRunner 收 memberFactory + parallelism，
              DelegateTaskTool 收 board + delegate 函数），故工具契约可在组件层验证，无需拉起宿主进程。 -->
+        <!-- 2026-10-29 临时注释（同 orchestration 原因）。本仓测试源码无直接 import deepanalyze-engine 的类，
+             仅为 pom declared 依赖，Maven force full resolve 时 FAIL；注释后 Maven 不要求本 artifact。 -->
+        <!--
         <dependency>
             <groupId>com.openjiuwen</groupId>
             <artifactId>deepanalyze-engine</artifactId>
@@ -311,6 +328,15 @@
             <groupId>com.openjiuwen.example</groupId>
             <artifactId>multi-modal-tools-demo</artifactId>
             <version>${multi-modal-tools-demo.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- FEAT-033：被动结构化上下文压缩的 processor 配置类所在 artifact。
+             Feat033ConfigFailFastTest 直接构造 StructuredCompactProcessorConfig 对象做
+             build-time IllegalArgumentException 断言，不走 fat jar wire 面。 -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-context-compression</artifactId>
+            <version>${agent-core-ext-context-compression.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -381,6 +407,13 @@
                         <exclude>**/react_travel/RedisStandaloneBehaviorTest.java</exclude>
                         <exclude>**/e2e/reconnect/**</exclude>
                         <exclude>**/fixtures/reconnect/**</exclude>
+                        <!-- 2026-10-29 临时排除（FEAT-033 unblock）：下列两目录测试源码 import
+                             com.openjiuwen.agents.orchestration.* 包，依赖 agent-core-ext-orchestration
+                             artifact；该 artifact 在 ECS ~/.m2 下未成功下载过，本仓 pom 已临时注释
+                             orchestration + deepanalyze-engine 两条 dep（见上方 dependencies 段）。
+                             队友上传 jar+pom 后恢复 dep + 删本两条 exclude。 -->
+                        <exclude>**/component/deepanalyze_template/**</exclude>
+                        <exclude>**/e2e/deepanalyze/**</exclude>
                     </testExcludes>
                 </configuration>
             </plugin>

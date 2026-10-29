@@ -97,7 +97,7 @@ related_docs:
 | **span 事件**：`GET /__span-events` | demo controller（OTel InMemorySpanExporter） | `{ "spans": [ { "span": "agent.trigger_compact", "events": [ { "name": "context.compression_state", "attributes": { "outcome": ..., "reason": ..., "algorithm_version": "1", "before_tokens": N, ... } } ] } ] }` | TC-TRACEBRIDGE-SPAN-EVENT 主判据 |
 | **装配**：`GET /__assembly-info` | demo controller | `{ "registered_processors": [...], "callback_framework": "...", "trace_bridge_installed": true, "tracer_provider": "...", "processor_type": "StructuredCompactProcessor", "algorithm_version": "1" }` | TC-ASSEMBLY-CHAIN-E2E / TC-TRACEBRIDGE-SPAN-EVENT preflight |
 | **stub 统计**：`GET /__stats` | llm-stub-server | `{ "stats": { "valid": N, "missing-chapter-then-valid": N, ... } }` | 各 TC 对账预期 LLM 调用次数 |
-| **装配骨架日志**：rail_dispatch_begin/end | demo controller `/trigger-compact-via-rail` | `rail_dispatch_begin agent_id=... rail=ContextProcessorRail processors=[structured_compact] message_count_before=N` → `rail_dispatch_end agent_id=... status=ok message_count_after=N` | TC-ASSEMBLY-CHAIN-E2E 四级装配链路证据（R01） |
+| **装配骨架日志**：rail_dispatch_begin/end | demo controller `/trigger-compact-via-rail` | `rail_dispatch_begin agent_id=context-probe-agent rail=ContextProcessorRail processors=[MessageSummaryOffloader, DialogueCompressor, CurrentRoundCompressor, RoundLevelCompressor, StructuredCompactProcessor] message_count_before=N` → `rail_dispatch_end agent_id=context-probe-agent status=ok message_count_after=N` | TC-ASSEMBLY-CHAIN-E2E 四级装配链路证据（R01）。**2026-10-29 ECS 实证订正**：`processors=[...]` 列表值用 `StructuredCompactProcessor.PROCESSOR_TYPE` 常量（PascalCase 类名），不是早期 HANDOFF 文档描述的 snake_case `[structured_compact]`；`rail_dispatch_end` 后先打 `agent_id=` 字段再打 `status=ok`，非紧邻 |
 
 ---
 
@@ -141,7 +141,7 @@ related_docs:
   3. 对照组（仅观察，不作通过凭据）`POST /__direct-handler?scenario=s1` → 直接调 `processor.onGetContextWindow`
 - **判据**（required）：
   - preflight：`/__assembly-info` 字段齐全
-  - 主请求：probe 日志出现 `rail_dispatch_begin agent_id=... processors=[structured_compact] message_count_before=N` + `rail_dispatch_end status=ok message_count_after=N` 两行
+  - 主请求：probe 日志出现 `rail_dispatch_begin agent_id=context-probe-agent processors=[... StructuredCompactProcessor] message_count_before=N` + `rail_dispatch_end agent_id=context-probe-agent status=ok message_count_after=N` 两行（**2026-10-29 实证订正**：`processors=[...]` 列表值用 `PROCESSOR_TYPE` 常量 PascalCase 类名；`rail_dispatch_end` 后 `agent_id=` 跟 `status=ok` 中间隔字段非紧邻）
   - HTTP body `trigger_source=rail_dispatch` + `rail_dispatch_status=ok`
   - `/__compression-history` 产出 1 条 kind=`structured_compact` details
   - `outcome=LLM_COMPACTED`
@@ -602,6 +602,60 @@ src/test/java/com/huawei/ascend/sit/cases/integration/context_compression/
 **Phase-2 待补**：3 TC（MESSAGES-TO-KEEP-ZERO / DET-NO-DECREASE-NO-OP / IDENTIFIER-PRIORITY）
 
 ---
+
+### 5.1 2026-10-29 ECS 首轮验收实证小结
+
+**跑测环境**：develop-head PR!242+PR!442+PR!449 bundle rebuild（docsReview commit `ab9e03ba6581`）+ PR!464 upstream `OpenAIModelClient.parseResponse` finish_reason 修复 rebuild（demo 10-29 批次 probe MD5 `6b6ff5862b6496ad32b607436187fa75` / stub MD5 `fe8f493642d429a8f9c35475e0f8739c`）。
+
+**首轮跑测盘面**：**40 Tests / 12 FAIL / 0 Error / 4 min**（Feat033ConfigFailFastTest 11 + Feat033PassiveCompactionTest 14 + Feat033TraceBridgeTest 2 + Feat033IdentifierTest 2 + Feat033ConcurrencyTest 2 + Feat033RetryAndFallbackTest 3 + Feat033DetailsMapCompletenessTest 1 + Feat033LayerProtectionTest 4 + Feat033StateLifecycleTest 1）。
+
+**本次 session SIT 侧累积 7 处 asserter/TC 判据改动**（都有 L2 line 号支撑或产品实证）：
+
+| # | 文件 | 改动 | L2/实证支撑 |
+|---|---|---|---|
+| 1 | `fixture/CompressionDetailsAsserter.java` EXPECTED_KEYS | 加 `summary_max_tokens` 字段 | L2 Line 263 "完成事件附加数值 summary_max_tokens" |
+| 2 | `fixture/CompressionDetailsAsserter.assertAlgorithmVersion` | Number cast → String.valueOf | L2 Line 211 "algorithmVersion=1" + span events JSON `"algorithm_version":"1"` 实证 |
+| 3 | `Feat033PassiveCompactionTest.s0` log Pattern | `attempts/llm_calls` → `attempt_count/llm_call_count` | L2 Line 226 §5.3 对外字段表 |
+| 4 | `Feat033PassiveCompactionTest.s0` details asserter | 删 `.assertKind()` NO_OP 场景 | L2 Line 215 — compression_usage.details.kind 只在实际 compact 发生时产生 |
+| 5 | `Feat033PassiveCompactionTest.assemblyChainE2E` | processor_type `"structured_compact"` → `"StructuredCompactProcessor"` + rail_dispatch_end 完整 Pattern 带 agent_id | L2 Line 240 PROCESSOR_TYPE 常量 + jar `javap` 实证 |
+| 6 | `Feat033TraceBridgeTest` 两 TC | processor_type + span events contains + rail_dispatch_end Pattern | L2 Line 215, 240 |
+| 7 | `Feat033DetailsMapCompletenessTest.assertConfigSnapshot` | messages_to_keep 10→4 | demo s1 profile `application.yml` 实证 |
+
+**s17/s18 contextId 不同步 bug 修复**：扩展 `CompactProbeHttpClient.trigger` 加 contextId override 重载 + 3 处 TC（Feat033IdentifierTest.s17 / Feat033ConcurrencyTest.s17SnapshotChange / Feat033StateLifecycleTest.s18）全程使用显式 contextId。实证 Round-2 before_tokens 从 1638 变成 1649（Round-1 after + 1 条 mutate user 消息），证明 mutate 操作真到达同一 context。
+
+**s18 删 `compression_history_size >= 1` 判据**（违反 L2 Line 209 "运行中状态不跨进程恢复；saveState/loadState 仅维护算法状态版本，稳定摘要存在消息历史中"）+ **补 `assertForbidden("outcome=NO_OP")` 能红判据**（防原 r5 判据 "log tail 整体搜索" 的假绿 — Round-1 outcome=LLM_COMPACTED 让原 TC 过，但 Round-2 实际走 NO_OP NO_COMPRESSIBLE_MIDDLE，TC 看不见）。
+
+**v7 跑测盘面**（经 7 处 fix + s17/s18 contextId + s18 删/加判据后）：**40 Tests / 5 FAIL** — 转绿 7 条，剩 5 条跟踪项。
+
+**剩余 5 条 FAIL 根因分析**（都是跨仓问题，SIT 侧自己改不了）：
+
+| TC | 根因 | 归属 |
+|---|---|---|
+| **s17RepeatCompactRepairsIdentifiers** | Round-2 outcome=NO_OP NO_COMPRESSIBLE_MIDDLE — ScenarioFixtures.mutateSource append-user 只加 1 条 user 消息（+11 tokens），Round-1 compact 后保护尾部 + 摘要 user 消息已占满，Round-2 分区后没有可压缩中间段（L2 §3.2 "没有中间段时 no-op"）| **demo 侧** — fixture 结构问题 |
+| **s18SaveLoadRoundTripRestoresHistoryAndKeepsMessageCount** | 补 `assertForbidden("outcome=NO_OP")` 后 FAIL — 跟 s17 同根（Round-2 restored state 结构同样没中间段）| **demo 侧** — 跟 s17 同根 fixture |
+| **s23RoundBoundaryOddExtendBackward** | 产品 "1 次 LLM NO_DECREASE → fallback deterministic → DETERMINISTIC_COMPACTED" 跟 L2 §3.4 决策表 "连续两次不足" + L2 Line 99 "无法下降返回 no-op" 两处契约有偏差 | **跟 core 对账产品行为是否符合 L2** |
+| **activeTriggerCompress** | `/__trigger-active` endpoint `compressContext(contextId, null, null, List.of(PROCESSOR_TYPE), ...)` 调用没真触发 processor（log tail 完全没 phase=\* 日志）；passive path 正常 | **demo 侧** — endpoint bug |
+| **s19AsyncCancelDoesNotMutateHistory** | `/__async-result` 顶层无 status 字段（嵌套 result.status）+ completed 状态 buildResponse 不打 status + cancel 不真中止 CompletableFuture | **TC+demo 两侧 schema 不同步** |
+
+**v7 轮 FEAT-033 转绿 TC 清单**（原来 12 FAIL 的 TC 中转绿的 7 条）：
+- `Feat033DetailsMapCompletenessTest.detailsMapMatchesL2Schema`（Fix 1+2 修）
+- `Feat033LayerProtectionTest.s12ExternalSystemMessagePreserved`（Fix 1 修）
+- `Feat033PassiveCompactionTest.s0BelowThresholdNoOp`（Fix 3+4 修）
+- `Feat033PassiveCompactionTest.assemblyChainE2E`（Fix 5 修）
+- `Feat033TraceBridgeTest.traceBridgeEmitsSpanEventOnCompact`（Fix 6 修）
+- `Feat033TraceBridgeTest.traceBridgeCloseAndReinstall`（Fix 6 修）
+- `Feat033RetryAndFallbackTest.s16OutputLengthTruncatedFallsBackDeterministic`（demo 10-29 批次 PR!464 upstream OpenAIModelClient.parseResponse finish_reason 修复实证）
+
+**本次 session 关联对账材料**：
+- `docs/issues/draft-feat033-r5-asserter-fix-handoff-20261029.md`（本仓 draft — SIT 侧 7 处 asserter fix 对账 r5）
+- docsReview `structured-compact-sit-demo/SIT-FEAT033-R1-ANALYSIS-20261029.md`（commit `8d51f1ee` — 跨仓分析 + 5 FAIL 跟踪项详细归属）
+- docsReview `structured-compact-sit-demo/SIT-REQUEST-m2-artifacts-20261029.md`（commit `60971ec9` — context-compression artifact 请求，已到位）
+- demo 侧 `DEV-REPLY-feat033-pr464-rebuild-20261029.md`（docsReview，demo 15/15 scenario 本机 PASS）
+- 本件 memory：待立 `feat033-sit-campaign`
+
+---
+
+
 
 ## 6. 回归触发口径（本档不定义 CI 口径，仅给判据边界）
 

@@ -60,14 +60,18 @@ final class Feat033IdentifierTest {
         try (Scenario s = CompactProbeHarness.launch("s17", "valid", Map.of())) {
             String contextId = "ctx-s17";
 
-            TriggerResponse round1 = s.http().trigger("s17", DEFAULT_TRIGGER_TIMEOUT);
+            // 2026-10-29 SIT 修：trigger 必须跟 mutateSource 用同一个 contextId，否则 trigger
+            // 操作 demo 默认 "probe-s17" context，mutateSource 操作 "ctx-s17"，两 context 不同步
+            // 导致 Round-2 看不到 mutation 结果 → NO_OP。扩展 CompactProbeHttpClient.trigger 支持
+            // contextId override 后，两处 trigger 都显式传 "ctx-s17"。
+            TriggerResponse round1 = s.http().trigger("s17", contextId, DEFAULT_TRIGGER_TIMEOUT);
             assertThat(round1.statusCode()).as("round-1 HTTP status").isEqualTo(200);
             CompactProbeHarness.waitForCompleteCount(s.tailer(), 1, SHORT);
 
             TriggerResponse mutate = s.http().mutateSource(contextId, "append-user", SHORT);
             assertThat(mutate.statusCode()).as("__source-mutate HTTP status").isEqualTo(200);
 
-            TriggerResponse round2 = s.http().trigger("s17", DEFAULT_TRIGGER_TIMEOUT);
+            TriggerResponse round2 = s.http().trigger("s17", contextId, DEFAULT_TRIGGER_TIMEOUT);
             assertThat(round2.statusCode()).as("round-2 HTTP status").isEqualTo(200);
             CompactProbeHarness.waitForCompleteCount(s.tailer(), 2, SHORT);
 

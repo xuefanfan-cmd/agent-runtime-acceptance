@@ -132,14 +132,16 @@ final class Feat033ConcurrencyTest {
         try (Scenario s = CompactProbeHarness.launch("s17", "valid", Map.of())) {
             String contextId = "ctx-s17";
 
-            TriggerResponse round1 = s.http().trigger("s17", DEFAULT_TRIGGER_TIMEOUT);
+            // 2026-10-29 SIT 修：trigger 必须跟 mutateSource 用同一个 contextId（见
+            // Feat033IdentifierTest.s17 同根 bug 注释）。
+            TriggerResponse round1 = s.http().trigger("s17", contextId, DEFAULT_TRIGGER_TIMEOUT);
             assertThat(round1.statusCode()).as("round-1 trigger-compact HTTP status").isEqualTo(200);
             CompactProbeHarness.waitForCompleteCount(s.tailer(), 1, SHORT);
 
             TriggerResponse mutate = s.http().mutateSource(contextId, "append-user", SHORT);
             assertThat(mutate.statusCode()).as("__source-mutate HTTP status").isEqualTo(200);
 
-            TriggerResponse round2 = s.http().trigger("s17", DEFAULT_TRIGGER_TIMEOUT);
+            TriggerResponse round2 = s.http().trigger("s17", contextId, DEFAULT_TRIGGER_TIMEOUT);
             assertThat(round2.statusCode()).as("round-2 trigger-compact HTTP status").isEqualTo(200);
             CompactProbeHarness.waitForCompleteCount(s.tailer(), 2, SHORT);
 

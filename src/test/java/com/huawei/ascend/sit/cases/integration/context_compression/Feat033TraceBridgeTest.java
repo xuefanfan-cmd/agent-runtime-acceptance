@@ -70,7 +70,8 @@ final class Feat033TraceBridgeTest {
                     .isEqualTo(Boolean.TRUE);
             assertThat(assemblyBefore.body("processor_type"))
                     .as("processor_type exposed by /__assembly-info")
-                    .isEqualTo("structured_compact");
+                    // 2026-10-29 SIT 对齐 L2 Line 240 PROCESSOR_TYPE 常量二进制值。
+                    .isEqualTo("StructuredCompactProcessor");
 
             TriggerResponse resetResp = s.http().resetSpanExporter(SHORT);
             assertThat(resetResp.statusCode()).as("__reset-span-exporter HTTP status").isEqualTo(200);
@@ -83,15 +84,17 @@ final class Feat033TraceBridgeTest {
             // 4-level-assembly evidence; TraceBridge span event is the OTel
             // counterpart.
             s.tailer().assertRequired("rail_dispatch_begin");
-            s.tailer().assertRequired("rail_dispatch_end status=ok");
+            // 2026-10-29 SIT 对齐产品日志实际格式：rail_dispatch_end 后先打 agent_id= 字段
+            // 再打 status=ok；原 pattern `rail_dispatch_end status=ok` 要求紧邻不符实际。
+            s.tailer().assertRequired("rail_dispatch_end agent_id=context-probe-agent status=ok");
 
             TriggerResponse spanEvents = s.http().spanEvents(SHORT);
             assertThat(spanEvents.statusCode()).as("__span-events HTTP status").isEqualTo(200);
-            // The span-events payload is a free-form JSON dump; SIT only
-            // asserts the compact event name surfaces somewhere in the body.
+            // 2026-10-29 SIT 对齐 span events 实际 attribute：event name 是
+            // "context.compression_state"（L2 Line 215），processor 字段值 PascalCase 类名。
             assertThat(spanEvents.rawBody())
-                    .as("span events include structured_compact event")
-                    .contains("structured_compact");
+                    .as("span events include compression_state event emitted by StructuredCompactProcessor")
+                    .contains("StructuredCompactProcessor");
             assertThat(spanEvents.rawBody())
                     .as("span event records outcome=LLM_COMPACTED")
                     .contains("LLM_COMPACTED");
@@ -147,8 +150,10 @@ final class Feat033TraceBridgeTest {
 
             TriggerResponse spanEvents = s.http().spanEvents(SHORT);
             assertThat(spanEvents.rawBody())
-                    .as("span events after reinstall still carry structured_compact")
-                    .contains("structured_compact");
+                    .as("span events after reinstall still carry StructuredCompactProcessor evidence")
+                    // 2026-10-29 SIT 对齐 L2 Line 215 的 context.compression_state 事件 attribute：
+                    // processor 字段值是 PROCESSOR_TYPE 常量 PascalCase "StructuredCompactProcessor"。
+                    .contains("StructuredCompactProcessor");
         }
     }
 }

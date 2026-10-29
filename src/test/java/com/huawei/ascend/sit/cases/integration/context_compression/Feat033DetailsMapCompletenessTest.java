@@ -29,7 +29,7 @@ import java.util.Map;
  *   <li>fixed enums ({@code kind="structured_compact"}, {@code algorithm_version=1});
  *   <li>config snapshot matches the s1 profile ({@code trigger_total_tokens=1000}
  *       / {@code compression_call_max_tokens=200000} /
- *       {@code messages_to_keep=10});
+ *       {@code messages_to_keep=4});
  *   <li>result triple ({@code outcome=LLM_COMPACTED} / {@code reason=SUCCESS});
  *   <li>token accounting ({@code after_tokens < before_tokens});
  *   <li>retention ratios in [0,1];
@@ -86,7 +86,10 @@ final class Feat033DetailsMapCompletenessTest {
                     .assertAfterTokensStrictlyLessThanBefore()
                     .assertRetentionInUnitRange("middle_retention")
                     .assertRetentionInUnitRange("global_retention")
-                    .assertConfigSnapshot(1000L, 200000L, 10)
+                    // 2026-10-29 SIT 对齐 demo s1 profile 实际 application.yml 配置：
+                    // messages_to_keep=4（L2 Line 180 默认 10 是算法默认，不是 s1 profile 具体值）。
+                    // 产品 probe_begin 日志实证 `messages_to_keep=4` 跟 details.messages_to_keep 一致。
+                    .assertConfigSnapshot(1000L, 200000L, 4)
                     .assertNoSecretsInDetails();
         }
     }

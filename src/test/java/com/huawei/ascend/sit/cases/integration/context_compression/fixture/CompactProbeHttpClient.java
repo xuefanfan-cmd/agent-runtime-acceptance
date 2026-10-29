@@ -69,6 +69,21 @@ public final class CompactProbeHttpClient {
         return postNoBody("/trigger-compact?scenario=" + enc(scenario), requestTimeout);
     }
 
+    /**
+     * Overload with explicit {@code contextId}. The {@code /trigger-compact} demo endpoint
+     * accepts {@code contextId} as an optional query param; omitting it makes the demo use
+     * {@code "probe-" + scenario} as the default. SIT TCs that pair trigger with
+     * {@link #saveState}/{@link #loadState}/{@link #mutateSource} must thread the same
+     * {@code contextId} end-to-end — otherwise trigger operates on {@code "probe-" + scenario}
+     * while the state/mutate endpoints operate on the SIT-chosen contextId, and the two contexts
+     * drift. 2026-10-29 added to unblock s17/s18 TCs.
+     */
+    public TriggerResponse trigger(String scenario, String contextId, Duration requestTimeout) throws Exception {
+        return postNoBody("/trigger-compact?scenario=" + enc(scenario)
+                        + "&contextId=" + enc(contextId),
+                requestTimeout);
+    }
+
     public TriggerResponse triggerViaRail(String scenario, Duration requestTimeout) throws Exception {
         return postNoBody("/trigger-compact-via-rail?scenario=" + enc(scenario), requestTimeout);
     }

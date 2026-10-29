@@ -64,15 +64,21 @@ final class Feat033PassiveCompactionTest {
         try (Trace t = run("s0", "valid", Map.of())) {
             t.tailer.assertRequired("outcome=NO_OP");
             t.tailer.assertRequired("reason=BELOW_THRESHOLD");
-            t.tailer.assertRequired("attempts=0");
-            t.tailer.assertRequired("llm_calls=0");
+            // 2026-10-29 SIT 对齐 L2 §5.3 Line 226 对外字段：attempt_count / llm_call_count
+            // （产品 probe_result 行写 attempt_count=0 llm_call_count=0；原 asserter 用的短名
+            // attempts/llm_calls 只匹配 StructuredCompactProcessor 内部日志 phase=complete 行，
+            // 而 s0 场景 NO_OP 不触发 phase=complete，故改为匹配对外契约字段名）。
+            t.tailer.assertRequired("attempt_count=0");
+            t.tailer.assertRequired("llm_call_count=0");
             t.tailer.assertForbidden("outcome=LLM_COMPACTED");
             t.tailer.assertForbidden("outcome=DETERMINISTIC_COMPACTED");
             t.tailer.assertForbidden("phase=attempt");
 
             new CompressionDetailsAsserter(t.response)
                     .assertHttpOk()
-                    .assertKind()
+                    // 2026-10-29 SIT 修：L2 Line 215 规定 compression_usage.details.kind 只在
+                    // 实际 compact 发生时产生；s0 NO_OP BELOW_THRESHOLD 场景产品不触发 compact
+                    // → details 无 kind 字段，符合 L2。去掉本处 .assertKind()。
                     .assertOutcome("NO_OP")
                     .assertReason("BELOW_THRESHOLD")
                     .assertAttemptCount(0)
@@ -349,14 +355,27 @@ final class Feat033PassiveCompactionTest {
             assertThat(assembly.statusCode()).as("__assembly-info HTTP status").isEqualTo(200);
             assertThat(assembly.body("processor_type"))
                     .as("processor_type exposed by /__assembly-info")
-                    .isEqualTo("structured_compact");
+                    // 2026-10-29 SIT 对齐 L2 Line 240 的 ContextEngine.registerProcessor(
+                    // "StructuredCompactProcessor", StructuredCompactProcessor.class)；
+                    // 实证 StructuredCompactProcessor.PROCESSOR_TYPE 常量二进制值 == PascalCase
+                    // Java 类名。snake_case "structured_compact" 仅用于摘要 metadata.kind
+                    // 和 compression_usage.details.kind 两处（L2 Line 211/215），不是 processor_type。
+                    .isEqualTo("StructuredCompactProcessor");
             assertThat(assembly.body("trace_bridge_installed"))
                     .as("trace_bridge_installed")
                     .isEqualTo(Boolean.TRUE);
 
             t.tailer.assertRequired("rail_dispatch_begin");
-            t.tailer.assertRequired("structured_compact");
-            t.tailer.assertRequired("rail_dispatch_end status=ok");
+            // 2026-10-29 SIT 对齐 10-28 批次 jar 实际 rail_dispatch_begin 日志格式：
+            // processors=[MessageSummaryOffloader, DialogueCompressor, CurrentRoundCompressor,
+            //              RoundLevelCompressor, StructuredCompactProcessor]
+            // 列表值用 PROCESSOR_TYPE 常量（PascalCase 类名），不是 HANDOFF.md 过时文档
+            // 中描述的 snake_case `structured_compact`。
+            t.tailer.assertRequired("StructuredCompactProcessor");
+            // 2026-10-29 SIT 对齐产品 rail_dispatch_end 日志格式：
+            //   rail_dispatch_end agent_id=context-probe-agent status=ok message_count_after=24
+            // 原 pattern `rail_dispatch_end status=ok` 要求紧邻匹配不符实际（中间隔 agent_id 字段）。
+            t.tailer.assertRequired("rail_dispatch_end agent_id=context-probe-agent status=ok");
             t.tailer.assertRequired("outcome=LLM_COMPACTED");
             t.tailer.assertRequired("reason=SUCCESS");
 

@@ -51,7 +51,10 @@ public final class CompressionDetailsAsserter {
             "duration_ms",
             "identifiers_selected",
             "identifiers_truncated",
-            "identifiers_repaired"
+            "identifiers_repaired",
+            // 2026-10-29 SIT 补：L2 Line 263 规定"完成事件附加数值 summary_max_tokens"，
+            // 产品 details map 落 summary_max_tokens 字段符合 L2，whitelist 需同步纳入。
+            "summary_max_tokens"
     );
 
     /** L2 §7.3 "no credentials in logs" red-line — forbidden substrings. */
@@ -90,9 +93,14 @@ public final class CompressionDetailsAsserter {
     }
 
     public CompressionDetailsAsserter assertAlgorithmVersion(int expected) {
-        assertThat(((Number) details.get("algorithm_version")).intValue())
+        // 2026-10-29 SIT 修：L2 Line 211 规定 "algorithmVersion=1"（版本号标识），
+        // 产品实际 details map 落值为 String "1"（跟 span events JSON
+        // "algorithm_version":"1" 一致）。原 cast 为 Number 在 String 值下 ClassCast。
+        // 改用 String.valueOf 比较兼容 Number/String 两种形式。
+        String actual = String.valueOf(details.get("algorithm_version"));
+        assertThat(actual)
                 .as("details.algorithm_version")
-                .isEqualTo(expected);
+                .isEqualTo(String.valueOf(expected));
         return this;
     }
 

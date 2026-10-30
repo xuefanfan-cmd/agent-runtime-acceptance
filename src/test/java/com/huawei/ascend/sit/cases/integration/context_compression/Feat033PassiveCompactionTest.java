@@ -76,9 +76,12 @@ final class Feat033PassiveCompactionTest {
 
             new CompressionDetailsAsserter(t.response)
                     .assertHttpOk()
-                    // 2026-10-29 SIT 修：L2 Line 215 规定 compression_usage.details.kind 只在
-                    // 实际 compact 发生时产生；s0 NO_OP BELOW_THRESHOLD 场景产品不触发 compact
-                    // → details 无 kind 字段，符合 L2。去掉本处 .assertKind()。
+                    // 2026-10-30 SIT 升级：昨天 Fix 4 直接删 .assertKind() 存在"产品哪天在
+                    // NO_OP 场景错打非 structured_compact 的 kind 字段 TC 看不见"风险。按
+                    // demo 侧 R1 答复的建议改成条件判据 .assertKindAbsentOrStructuredCompact()
+                    // — null 可接受（符合 L2 Line 215 "kind 只在实际 compact 发生时产生"），
+                    // 非 null 必须 "structured_compact"（防字段 leak / 命名漂移）。
+                    .assertKindAbsentOrStructuredCompact()
                     .assertOutcome("NO_OP")
                     .assertReason("BELOW_THRESHOLD")
                     .assertAttemptCount(0)
@@ -389,13 +392,20 @@ final class Feat033PassiveCompactionTest {
     }
 
     /**
-     * §3.4 TC-FEAT-033.active-trigger-compress — explicit
-     * {@code ContextEngine.compressContext(contextId, null, null,
-     * List.of(StructuredCompactProcessor.PROCESSOR_TYPE), Map.of(...))}. SIT
-     * verifies the active trigger path emits the same processor contract as
-     * the passive rail path: one {@code phase=complete} line with
-     * outcome=LLM_COMPACTED reason=SUCCESS. The HTTP response for
-     * {@code /__trigger-active} returns the same {@code details} map shape.
+     * §3.4 TC-FEAT-033.active-trigger-compress — explicit active trigger via
+     * {@code POST /__trigger-active}. 2026-10-29 demo R1 侧答复后 endpoint 从
+     * {@code ContextEngine.compressContext(..., onAddMessages)} 切换到
+     * {@code SessionModelContext.getContextWindow(..., Map.of("compression_trigger","manual"))}
+     * — 走 processor 的 {@code onGetContextWindow} 钩子（跟 passive path 同一钩子），
+     * 用 {@code agent.active_compact} span 名区分来源，响应 body 新增
+     * {@code trigger_source=active_window} 字段，日志新增一行
+     * {@code probe_begin trigger_source=active_window scenario=... fixture=...}。
+     *
+     * <p>SIT 本 TC 验证：active trigger path 跟 passive path 走同一 processor 契约，
+     * 都能产出 one {@code phase=complete} line with outcome=LLM_COMPACTED reason=SUCCESS。
+     * 额外加 {@code trigger_source=active_window} 判据作为 "能红证明"：
+     * 产品哪天 /__trigger-active 走回老 compressContext 钩子（onAddMessages no-op），
+     * 日志不会打 {@code trigger_source=active_window} → FAIL。
      */
     @Test
     void activeTriggerCompress() throws Exception {
@@ -405,6 +415,10 @@ final class Feat033PassiveCompactionTest {
             t.tailer.assertRequired("reason=SUCCESS");
             t.tailer.assertRequired("attempts=1");
             t.tailer.assertRequired("llm_calls=1");
+            // 2026-10-30 SIT 补：能红证明判据 — 验证走的是 demo 2026-10-29 新 endpoint
+            // (getContextWindow + compression_trigger=manual kwarg) 而不是老
+            // compressContext + onAddMessages no-op 的死路径。
+            t.tailer.assertRequired("trigger_source=active_window");
 
             new CompressionDetailsAsserter(t.response)
                     .assertHttpOk()

@@ -92,6 +92,33 @@ public final class CompressionDetailsAsserter {
         return this;
     }
 
+    /**
+     * 2026-10-30 SIT 补：针对 NO_OP 场景的条件判据 — L2 Line 215 规定
+     * {@code compression_usage.details.kind=structured_compact} 只在实际 compact 发生时产生；
+     * NO_OP BELOW_THRESHOLD 场景产品不触发 compact，details.kind 可缺省。
+     *
+     * <p>这个条件判据允许 {@code kind} 字段缺省或为 null，但只要存在就必须是
+     * {@code "structured_compact"} — 防止产品在 NO_OP 场景错打非 structured_compact
+     * 的 kind 字段（如 "legacy_compact"、"hacked" 等）被 TC 看漏。
+     *
+     * <p>能红证明：
+     * <ul>
+     *   <li>产品 NO_OP 场景不打 kind → PASS（符合 L2 Line 215）
+     *   <li>产品 NO_OP 场景打 kind="structured_compact" → PASS（符合 L2 Line 215）
+     *   <li>产品 NO_OP 场景打 kind="legacy_compact" → FAIL ✓ 能红
+     *   <li>产品 compact 场景打 kind="structured_compact" → PASS
+     * </ul>
+     */
+    public CompressionDetailsAsserter assertKindAbsentOrStructuredCompact() {
+        Object kind = details.get("kind");
+        if (kind != null) {
+            assertThat(kind)
+                    .as("details.kind (if present) must be 'structured_compact' per L2 Line 215")
+                    .isEqualTo("structured_compact");
+        }
+        return this;
+    }
+
     public CompressionDetailsAsserter assertAlgorithmVersion(int expected) {
         // 2026-10-29 SIT 修：L2 Line 211 规定 "algorithmVersion=1"（版本号标识），
         // 产品实际 details map 落值为 String "1"（跟 span events JSON

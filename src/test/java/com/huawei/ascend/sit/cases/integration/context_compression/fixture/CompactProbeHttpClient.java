@@ -125,6 +125,28 @@ public final class CompactProbeHttpClient {
                 requestTimeout);
     }
 
+    /**
+     * 2026-10-30 SIT 补：/__load-state 带 injectAfterLoad 的重载，对应 demo 侧
+     * 2026-10-29 新增的 {@code injectAfterLoad=N} 可选 query param（见
+     * {@code DEV-REPLY-feat033-sit-r1-reply-20261029.md} §2.4）。
+     *
+     * <p>当 {@code injectAfterLoad >= 1} 时，demo 侧在 state restore 后额外注入
+     * N 条带标识符的 user 消息，让 Round-2 分区后真有可压缩中间段 — 覆盖
+     * R10.2 "restored state 能继续 compact" 的 TC 场景。
+     *
+     * <p>当 {@code injectAfterLoad == 0}（或走旧 {@link #loadState(String, String, Duration)}）
+     * 时严格 round-trip，Round-2 应该走 NO_OP — 覆盖 R10.1 "保存恢复不重压"。
+     */
+    public TriggerResponse loadState(String contextId, String scenario,
+                                     int injectAfterLoad,
+                                     Duration requestTimeout) throws Exception {
+        return postNoBody(
+                "/__load-state?contextId=" + enc(contextId)
+                        + "&scenario=" + enc(scenario)
+                        + "&injectAfterLoad=" + injectAfterLoad,
+                requestTimeout);
+    }
+
     public TriggerResponse compressionHistory(String contextId, Duration requestTimeout)
             throws Exception {
         return getRequest("/__compression-history?contextId=" + enc(contextId), requestTimeout);

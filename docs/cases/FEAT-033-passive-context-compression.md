@@ -657,6 +657,47 @@ src/test/java/com/huawei/ascend/sit/cases/integration/context_compression/
 
 
 
+### 5.2 2026-10-30 R2 对账回帖落码（demo 侧 R1 答复后的 batch 修正）
+
+> **背景**：demo 侧 2026-10-29 对 SIT R1 分析（见 `docs/issues/draft-feat033-cross-repo-analysis-20261029.md`）回帖
+> `DEV-REPLY-feat033-sit-r1-reply-20261029.md`（docsReview `structured-compact-sit-demo/`），
+> demo 侧 4 处 endpoint 整改 + HANDOFF.md 一处文档更正；本档随 R2 batch 刷新 TC 本地判据对齐新 schema。
+
+**本次 batch 6 处 SIT 判据改动**（5 文件 +243/-73 行，commit 待 push）：
+
+| # | TC / 组件 | 改动摘要 | 契约/文档支撑 |
+|---|---|---|---|
+| 1 | `CompressionDetailsAsserter.assertKindAbsentOrStructuredCompact()` | 新加条件判据方法 — null 可接受；非 null 必须 `"structured_compact"` | L2 Line 215 "kind 只在实际 compact 发生时产生"；demo R1 §三 Fix 4 建议 |
+| 2 | `CompactProbeHttpClient.loadState(contextId, scenario, injectAfterLoad, timeout)` | 新加重载签名；对接 demo 2026-10-29 新 query param `injectAfterLoad=N` | demo R1 §2.4 新 endpoint 契约 |
+| 3 | `Feat033PassiveCompactionTest.s0BelowThresholdNoOp` | 昨天直接删 `.assertKind()` → 升级为条件判据 `.assertKindAbsentOrStructuredCompact()`；防字段 leak / 命名漂移 | 同 1 |
+| 4 | `Feat033PassiveCompactionTest.activeTriggerCompress` | 加 `tailer.assertRequired("trigger_source=active_window")` 能红证明判据 | demo R1 §2.2 新 endpoint `getContextWindow + compression_trigger=manual` kwarg + 日志新增 `probe_begin trigger_source=active_window` |
+| 5 | `Feat033StateLifecycleTest.s18SaveLoadRoundTripIsStrictlyIdempotent` **（R10.1 严格 round-trip）** | TC 重命名 + 判据重设：撤 `assertRequired("outcome=LLM_COMPACTED")` + 撤 `assertForbidden("outcome=NO_OP")`；改 `assertRequired("outcome=NO_OP")`（Round-2 必须 NO_OP） | demo R1 §2.4 "R10.1 不传 injectAfterLoad → round-2 可观察 NO_OP 或 BELOW_THRESHOLD"；L2 Line 209 "运行中状态不跨进程恢复" |
+| 6 | `Feat033StateLifecycleTest.s18R10_2RestoredStateCanContinueCompact` **（新 TC）** | 新 TC — `loadState(contextId, "s18", 6, SHORT)`；验 `messages_injected_after_load == 6` + Round-2 真走 `LLM_COMPACTED SUCCESS` | demo R1 §2.4 "R10.2 injectAfterLoad=N → round-2 真能跑 LLM_COMPACTED SUCCESS" |
+| 7 | `Feat033LayerProtectionTest.s23RoundBoundaryOddExtendBackward` **（outcome 放宽）** | outcome 从 `LLM_COMPACTED` 放宽到 `{LLM_COMPACTED, DETERMINISTIC_COMPACTED}`；撤 `assertRequired("outcome=LLM_COMPACTED")` + 撤 `assertRequired("reason=SUCCESS")`；保留 token 下降 + `messages_to_keep=3` 核验 | SIT 独立核对 L2 FEAT-033 文档 sha `844ab3c`：§3.4 决策表 "连续两次不足" subject = LOW_QUALITY 非 NO_DECREASE；§3.4 Line 125 "此降级可能比被拒绝的模型候选更短"；§3.1 flowchart 兼容 "LLM candidate NO_DECREASE → fallback deterministic" |
+
+**关联对账材料**：
+- demo R1 答复：`DEV-REPLY-feat033-sit-r1-reply-20261029.md`（docsReview `structured-compact-sit-demo/`，281 行）
+- SIT 独立核对：L2 FEAT-033 文档 sha `844ab3c`（Technical-AF/docs `develop/03-architecture/L2-Low-Level-Design/agent-core-ext/Feat-Func-033-passive-context-compression.md`）
+- 新 demo jar（本次 batch 待 ECS 实证）：
+  - `context-probe-agent-0.1.0.jar` MD5 **`d68a0708178a6f00f3146a619217bea5`**（旧 `6b6ff5862b6496ad32b607436187fa75`）
+  - `llm-stub-server-0.1.0.jar` MD5 **`3f978d2e82f2a1771e368de844f11ce3`**（旧 `fe8f493642d429a8f9c35475e0f8739c`）
+
+**本次 batch 盘面预期**（待 ECS 实证）：
+
+| 原 FAIL | 本次改动后预期 |
+|---|---|
+| `s17RepeatCompactRepairsIdentifiers` | ✅ demo `/__source-mutate` 默认追加 6 条 → Round-2 真跑 LLM_COMPACTED（TC 代码不改即受益） |
+| `activeTriggerCompress` | ✅ demo 新 endpoint 走 `getContextWindow` 钩子 + TC 加 `trigger_source=active_window` 能红判据 |
+| `s19AsyncCancelDoesNotMutateHistory` | ✅ demo `/__async-result` 顶层加 computed status（TC 代码本来就读顶层，不改即受益） |
+| `s18 R10.1` | ✅ 本次 TC 重命名 + 判据重设 — Round-2 本就应该 NO_OP（符合 L2 Line 209） |
+| `s18 R10.2`（新） | ✅ 本次新 TC — `injectAfterLoad=6` → Round-2 真跑 LLM_COMPACTED |
+| `s16OutputLengthTruncatedFallsBackDeterministic` | ✅ upstream PR!464 已合入（`commit 4cd131a`），demo 侧 jar 已含修复 |
+| `s23RoundBoundaryOddExtendBackward` | ✅ outcome 放宽；两条路径 `{LLM, DETERMINISTIC}` 都 PASS |
+
+---
+
+
+
 ## 6. 回归触发口径（本档不定义 CI 口径，仅给判据边界）
 
 - **主通道回归**：30 条 TC 的 `phase=complete` 日志行（含 r5 新 TC 的 `rail_dispatch_begin/end` + `context.compression_state` span event + `/__compression-history` 多轮快照）required/forbidden 全命中

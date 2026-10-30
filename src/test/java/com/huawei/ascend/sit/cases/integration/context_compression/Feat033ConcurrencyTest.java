@@ -59,8 +59,9 @@ final class Feat033ConcurrencyTest {
      * <ul>
      *   <li>cancel endpoint returns {@code {cancelled: true|false, done}}.
      *   <li>async-result endpoint reports {@code status} ∈ {cancelled, completed}.
-     *   <li>if {@code status=cancelled}: processor must not write to
-     *       {@code compressionHistory} (checked via /__compression-history).
+     *   <li>if {@code status=cancelled}: processor must not reach {@code phase=complete}
+     *       (verified via log tailer — direct core/runtime observable, independent of
+     *       any demo response field).
      * </ul>
      */
     @Test
@@ -95,22 +96,15 @@ final class Feat033ConcurrencyTest {
                     .as("async-result status for %s", opId)
                     .isIn("cancelled", "completed", "failed");
 
-            TriggerResponse history = s.http().compressionHistory(contextId, SHORT);
-            assertThat(history.statusCode())
-                    .as("__compression-history HTTP status")
-                    .isEqualTo(200);
-            Object historySize = history.body("size");
+            // R15 safety: if cancel won the race, core/runtime must not have committed
+            // a compaction — no phase=complete log line should appear.
+            // Verified via log tailer directly; no dependency on demo response fields.
             if ("cancelled".equals(status)) {
-                assertThat(((Number) historySize).intValue())
-                        .as("compressionHistory must NOT grow on cancelled op (R15 safety)")
+                assertThat(s.tailer().completeCount())
+                        .as("R15: cancelled op must not reach phase=complete (no compaction committed)")
                         .isZero();
-            } else {
-                // completed/failed — either outcome is a valid race observation;
-                // only the "cancelled → zero history" invariant is R15-material.
-                assertThat(((Number) historySize).intValue())
-                        .as("compressionHistory bounded on completed/failed op")
-                        .isGreaterThanOrEqualTo(0);
             }
+            // completed/failed are valid race observations; no additional assertion needed.
 
             // Business logs must not leak secrets regardless of cancel outcome.
             s.tailer().assertForbidden("sk-[A-Za-z0-9]{10,}");

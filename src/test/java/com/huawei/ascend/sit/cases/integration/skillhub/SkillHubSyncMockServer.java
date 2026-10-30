@@ -60,7 +60,7 @@ final class SkillHubSyncMockServer implements AutoCloseable {
     /** 一个技能资产：多版本 + 可见性。 */
     static final class Asset {
         private final String id;
-        private final String displayName;
+        private volatile String displayName;
         private final String description;
         private final LinkedHashMap<String, SkillPackage> versions = new LinkedHashMap<>();
         private volatile Visibility visibility = Visibility.PUBLIC;
@@ -101,6 +101,8 @@ final class SkillHubSyncMockServer implements AutoCloseable {
     private final AtomicReference<String> identityValidToken = new AtomicReference<>("");
     /** 挂起下一次目录请求（SC-CRASH：崩溃注入窗口）。close() 时强制放行，避免线程泄漏。 */
     private final AtomicReference<CountDownLatch> catalogStall = new AtomicReference<>();
+    private final AtomicReference<String> hideOnNextSnapshot = new AtomicReference<>();
+    private volatile String hiddenForSnapshot;
     private volatile boolean closed;
 
     private SkillHubSyncMockServer() throws IOException {
@@ -137,12 +139,18 @@ final class SkillHubSyncMockServer implements AutoCloseable {
         }
     }
 
-    /** 同版本重发：仅变化 plugin.yaml 描述（SKILL.md 不变）→ 客户端应判 METADATA_CHANGED。 */
-    void republishSameVersionMetadataOnly(String id, String version, String pluginDescription) {
+    /**
+     * 同版本重发：仅变化目录元数据（display_name，技能包字节不变）→ 客户端应判 METADATA_CHANGED。
+     *
+     * <p>对应 SUT 语义（SkillSyncService.reusesInstalledPackage/applyMetadataOnly）：
+     * 同版本且 checksum 相同（包字节一致）时，仅 catalog display_name 变化走
+     * metadataOnly + renamedPending；包内文件（含 plugin.yaml）变化会改变
+     * contentDigest，走 replaced——那属于 {@link #republishSameVersionContent}。
+     */
+    void republishSameVersionMetadataOnly(String id, String version, String newDisplayName) {
         synchronized (assets) {
             Asset asset = assets.get(id);
-            SkillPackage old = asset.versions.get(version);
-            asset.versions.put(version, new SkillPackage(old.marker(), pluginDescription));
+            asset.displayName = newDisplayName;
         }
     }
 
@@ -197,6 +205,14 @@ final class SkillHubSyncMockServer implements AutoCloseable {
         catalogStall.set(null);
     }
 
+    /**
+     * 让下一个完整目录快照（page=1 起的一轮分页）隐藏该 id，之后快照恢复显示。
+     * 用于构造删除复查场景：本轮目录列表里消失（进删除计划），复查快照仍在 → 取消删除。
+     */
+    void hideIdFromNextSnapshot(String id) {
+        hideOnNextSnapshot.set(id);
+    }
+
     // -------------------------------------------------------------- 观测
 
     String endpoint() {
@@ -232,7 +248,7 @@ final class SkillHubSyncMockServer implements AutoCloseable {
                 return;
             }
             if (path.equals("/api/v1/plugins")) {
-                handleCatalog(exchange);
+                handleCatalog(exchange, uri.getRawQuery());
                 return;
             }
             if (path.startsWith("/api/v1/artifacts/")) {
@@ -253,7 +269,7 @@ final class SkillHubSyncMockServer implements AutoCloseable {
         }
     }
 
-    private void handleCatalog(HttpExchange exchange) throws IOException {
+    private void handleCatalog(HttpExchange exchange, String rawQuery) throws IOException {
         catalogRequests.incrementAndGet();
         CountDownLatch stall = catalogStall.get();
         if (stall != null) {
@@ -273,10 +289,18 @@ final class SkillHubSyncMockServer implements AutoCloseable {
             send(exchange, status, "{\"error\":\"catalog failure injected\"}");
             return;
         }
+        // 一个"完整快照"= 从 page=1 开始的一轮分页请求；快照内隐藏项对后续页持续生效
+        String page = queryParam(rawQuery, "page");
+        if (page == null || page.isBlank() || "1".equals(page)) {
+            hiddenForSnapshot = hideOnNextSnapshot.getAndSet(null);
+        }
         List<Map<String, Object>> items = new ArrayList<>();
         synchronized (assets) {
             for (Asset asset : assets.values()) {
                 if (asset.visibility == Visibility.PRIVATE) {
+                    continue;
+                }
+                if (asset.id.equals(hiddenForSnapshot)) {
                     continue;
                 }
                 items.add(Map.of(
@@ -383,7 +407,12 @@ final class SkillHubSyncMockServer implements AutoCloseable {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
                 for (Map.Entry<String, String> entry : entries.entrySet()) {
-                    zip.putNextEntry(new ZipEntry(entry.getKey()));
+                    ZipEntry zipEntry = new ZipEntry(entry.getKey());
+                    // 真实 Hub 的对象字节固定不变（checksum=收件口径）：ZipOutputStream 默认
+                    // 写入当前时间戳，同一内容两次生成的 zip 摘要不同，会被 SUT 判为
+                    // CHECKSUM_MISMATCH（轮内）/ METADATA_CHANGED（轮间）。固定 DOS 纪元。
+                    zipEntry.setTime(FIXED_ZIP_TIME);
+                    zip.putNextEntry(zipEntry);
                     zip.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
                     zip.closeEntry();
                 }
@@ -393,6 +422,9 @@ final class SkillHubSyncMockServer implements AutoCloseable {
             throw new IllegalStateException("could not build mock skill zip", ex);
         }
     }
+
+    /** 固定的 zip 条目时间戳（1980-01-01，DOS 时间原点）。 */
+    private static final long FIXED_ZIP_TIME = 315532800000L;
 
     private static String sha256(byte[] value) {
         try {

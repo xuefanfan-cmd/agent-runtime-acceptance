@@ -19,8 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * FEAT-072 SC-POLL-01/SC-POLL-02：周期轮询触发。
  *
- * <p>配置契约：{@code sync.poll-enabled}（默认 true）、{@code sync.poll-interval}
- * （Duration，默认 5m，测试压到秒级）、{@code sync.poll-jitter}（double，默认 0.2，测试置 0）。
+ * <p>配置契约（SkillSyncProperties，前缀 {@code ...skillhub.sync.}）：
+ * {@code poll-enabled}（代码默认 <b>false</b>，必须显式开启）、{@code poll-interval}
+ * （Duration，默认 5m，测试压到秒级）、{@code poll-jitter}（double，默认 0.2，测试置 0）、
+ * {@code poll-initial-delay}（默认 30s，测试压到 1s）。
  * 间隔为静态配置——修改需重启生效；热读仅限外部规则/可见清单文件（L2 §6.2.1）。
  *
  * <p>Oracle：FEAT-072 测试方案 §6；2026-10-28 ECS 139 执行 PASS-D
@@ -46,8 +48,10 @@ class SkillHubPollingSitTest extends AbstractSkillHubSyncSitTest {
             hub.addSkill("sit-poll-a", "SIT Poll A", "1.0.0", "MARK-POLL-A-100");
 
             try (RunningAgent agent = startAgent(hub, localDir, a -> {
+                a.property(PREFIX + "sync.poll-enabled", "true");
                 a.property(PREFIX + "sync.poll-interval", POLL_INTERVAL);
                 a.property(PREFIX + "sync.poll-jitter", "0");
+                a.property(PREFIX + "sync.poll-initial-delay", "1s");
             })) {
                 awaitAnyCompletedReport(agent.base(), ROUND_TIMEOUT);
 
@@ -61,7 +65,7 @@ class SkillHubPollingSitTest extends AbstractSkillHubSyncSitTest {
                             assertThat(report.path("replaced").size())
                                     .as("SC-POLL-01: 周期轮应替换到 1.0.1").isEqualTo(1);
                             assertThat(report.path("triggerSource").asText())
-                                    .as("SC-POLL-01: 周期轮触发源应非 MANUAL").isNotEqualTo("MANUAL");
+                                    .as("SC-POLL-01: 周期轮触发源应为 POLL").isEqualTo("POLL");
                         });
                 assertThat(getReportRaw(agent.base()))
                         .as("SC-POLL-01: 报告应反映 1.0.1").contains("1.0.1");
@@ -76,24 +80,29 @@ class SkillHubPollingSitTest extends AbstractSkillHubSyncSitTest {
             hub.addSkill("sit-poll-b", "SIT Poll B", "1.0.0", "MARK-POLL-B-100");
 
             try (RunningAgent agent = startAgent(hub, localDir, a -> {
+                a.property(PREFIX + "sync.poll-enabled", "true");
                 a.property(PREFIX + "sync.poll-interval", POLL_INTERVAL);
                 a.property(PREFIX + "sync.poll-jitter", "0");
+                a.property(PREFIX + "sync.poll-initial-delay", "1s");
             })) {
-                // 采集 ≥3 个不同轮次的 startedAt（周期轮报告只留最近一次完成结果，滚动采集）
+                // 采集 ≥3 个周期轮的 startedAt（报告只留最近一次完成结果，滚动采集）。
+                // 只统计 triggerSource=POLL 的轮次：启动轮(STARTUP)与首个周期轮的间隔
+                // 由 poll-initial-delay 决定（本测试压到 1s），不属于 poll-interval 契约面。
                 java.util.List<String> startedAt = new java.util.ArrayList<>();
                 java.util.List<String> seen = new java.util.ArrayList<>();
                 long deadline = System.currentTimeMillis() + 25_000;
                 while (System.currentTimeMillis() < deadline && startedAt.size() < 3) {
                     JsonNode report = lastCompleted(agent.base());
                     String syncId = report.path("syncId").asText("");
-                    if (!syncId.isEmpty() && !seen.contains(syncId)) {
+                    if (!syncId.isEmpty() && !seen.contains(syncId)
+                            && "POLL".equals(report.path("triggerSource").asText(""))) {
                         seen.add(syncId);
                         startedAt.add(report.path("startedAt").asText(""));
                     }
                     Thread.sleep(300);
                 }
                 assertThat(startedAt.size())
-                        .as("SC-POLL-02: 25s 内应观察到至少 3 个周期轮").isGreaterThanOrEqualTo(3);
+                        .as("SC-POLL-02: 25s 内应观察到至少 3 个周期轮（POLL）").isGreaterThanOrEqualTo(3);
 
                 for (int i = 1; i < startedAt.size(); i++) {
                     Instant prev = Instant.parse(startedAt.get(i - 1));

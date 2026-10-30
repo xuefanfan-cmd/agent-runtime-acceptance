@@ -13,6 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -61,11 +62,13 @@ class SkillHubLegacyLayoutSitTest extends AbstractSkillHubSyncSitTest {
                 assertThat(Files.readString(legacySkill.resolve("SKILL.md"), StandardCharsets.UTF_8))
                         .as("SC-MIGR-01: 旧技能内容不得被改写").isEqualTo(legacyContent);
 
-                // 新链路接管：新技能进受管 .skillhub/active 树，不与旧目录混铺
-                assertThat(activeSkillDirCount(localDir))
-                        .as("SC-MIGR-01: 新技能应落受管 active 树").isEqualTo(1);
-                assertThat(localDir.resolve(".skillhub/active").resolve("sit-migr-a"))
-                        .as("SC-MIGR-01: 受管树按资产 ID 布局").exists();
+                // 新链路接管：新技能进受管 .skillhub/active 树（两层 directoryKey 布局），不与旧目录混铺
+                List<Path> managed = activeSkillPaths(localDir);
+                assertThat(managed)
+                        .as("SC-MIGR-01: 新技能应落受管 active 树").hasSize(1);
+                assertThat(Files.readString(managed.get(0).resolve("SKILL.md"), StandardCharsets.UTF_8))
+                        .as("SC-MIGR-01: 受管树内容应为新技能（marker 落地）")
+                        .contains("MARK-MIGR-A-100");
 
                 // 重启后幂等：旧目录仍保留，受管树不重复安装
                 agent.stack().stop(AGENT);

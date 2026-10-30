@@ -173,7 +173,7 @@ class SkillHubVersionRulesSitTest extends AbstractSkillHubSyncSitTest {
     }
 
     @Test
-    @DisplayName("SC-REPL-05: 同版本重发仅元数据变化 → metadataOnly，不重下载，generation 不推进")
+    @DisplayName("SC-REPL-05: 同版本重发仅目录元数据变化 → metadataOnly，不重下载，generation 不推进")
     void sameVersionMetadataOnlyRepublish(@TempDir Path localDir) throws Exception {
         try (SkillHubSyncMockServer hub = SkillHubSyncMockServer.start()) {
             hub.addSkill("sit-repl-m", "SIT Repl M", "1.0.2", "MARK-REPL-M-102");
@@ -184,8 +184,8 @@ class SkillHubVersionRulesSitTest extends AbstractSkillHubSyncSitTest {
                 int generation = first.path("generation").asInt();
                 int downloadsAfterFirst = hub.downloadRequests();
 
-                hub.republishSameVersionMetadataOnly("sit-repl-m", "1.0.2",
-                        "SIT skill sit-repl-m 1.0.2 metadata changed");
+                // 同版本仅元数据变化：包字节/checksum 不变，目录 display_name 变
+                hub.republishSameVersionMetadataOnly("sit-repl-m", "1.0.2", "SIT Repl M Renamed");
 
                 SyncResponse trigger = postSync(agent.base());
                 JsonNode second = awaitCompletedReport(agent.base(), trigger.json().path("syncId").asText(),
@@ -194,11 +194,13 @@ class SkillHubVersionRulesSitTest extends AbstractSkillHubSyncSitTest {
                 assertThat(second.path("result").asText()).as("SC-REPL-05: 元数据轮应 SUCCESS").isEqualTo("SUCCESS");
                 assertThat(second.path("metadataOnly").size())
                         .as("SC-REPL-05: 应记 metadataOnly").isEqualTo(1);
+                assertThat(second.path("renamedPending").size())
+                        .as("SC-REPL-05: 展示名变化应记 renamedPending（路径不漂移）").isEqualTo(1);
                 assertThat(second.path("generation").asInt())
                         .as("SC-REPL-05: generation 不应推进").isEqualTo(generation);
                 assertThat(hub.downloadRequests())
                         .as("SC-REPL-05: 内容未变不应重下载技能包")
-                        .isLessThanOrEqualTo(downloadsAfterFirst + 1);
+                        .isEqualTo(downloadsAfterFirst);
                 assertThat(activeSkillDirCount(localDir))
                         .as("SC-REPL-05: 目录数不变").isEqualTo(1);
             }

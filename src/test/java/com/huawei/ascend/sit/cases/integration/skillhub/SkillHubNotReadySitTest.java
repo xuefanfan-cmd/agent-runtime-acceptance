@@ -57,10 +57,12 @@ class SkillHubNotReadySitTest extends AbstractSkillHubSyncSitTest {
                 assertThat(activeSkillDirCount(localDir))
                         .as("SC-READY-01: 未就绪时不得把空技能当成功落盘").isEqualTo(0);
 
-                // ② 恢复退避：滚动采集 RECOVERY 轮 startedAt，相邻间隔应 ≥30s（30s 起指数退避）
-                List<Instant> starts = collectRoundStarts(agent.base(), Duration.ofSeconds(75), 3);
+                // ② 恢复退避：滚动采集 RECOVERY 轮 startedAt。实测退避 30s 起步（30/60/120 指数），
+                // 70s 观察窗可稳定采到启动轮 + 首个恢复轮（间隔 ≥30s 即证明退避而非高频重试）
+                List<Instant> starts = collectRoundStarts(agent.base(), Duration.ofSeconds(70), 2);
                 assertThat(starts.size())
-                        .as("SC-READY-01: 观察窗内应至少出现 3 个恢复轮").isGreaterThanOrEqualTo(3);
+                        .as("SC-READY-01: 观察窗内应至少出现 2 轮（启动失败轮+首个恢复轮）")
+                        .isGreaterThanOrEqualTo(2);
                 for (int i = 1; i < starts.size(); i++) {
                     long gap = Duration.between(starts.get(i - 1), starts.get(i)).getSeconds();
                     assertThat(gap)

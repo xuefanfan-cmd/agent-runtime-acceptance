@@ -24,8 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li>删除守卫：{@code sync.max-removals-per-sync}（默认 10）——计划删除数超限时拦截
  *       本轮全部删除，新增/更新照常提交，报告 PARTIAL + removalBlocked 逐项登记。</li>
- *   <li>删除复查（PR #950）：待删 id 在复查时仍可解析（如仅转私有、目录列表消失但
- *       artifacts 直达端点仍 200）→ 取消删除，保留本地。</li>
+ *   <li>删除复查（PR #950）：待删 id 复查（目录快照重取）仍可解析 → 取消删除、记
+ *       CATALOG_CHANGED，本地保留。注：复查口径是目录列表重取而非 artifacts 直达端点
+ *       （2026-10-29 代码核对 {@code planRemovals → containsSkills}），故场景用
+ *       轮内目录快照漂移构造：本轮列表消失、复查列表仍在。</li>
  * </ul>
  */
 @Feature("FEAT-072: 动态 Skill 获取与运行时热加载")
@@ -35,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledOnOs(OS.LINUX)
 @Stories(value = {
         @Story("SC-DEL-01: 删除下线 + 守卫——单技能删除成功；12>10 时本轮删除全拦、新增照常、removalBlocked"),
-        @Story("SC-DEL-02: 删除复查——待删技能复查仍可解析（转私有）→ 取消删除保留本地")
+        @Story("SC-DEL-02: 删除复查——待删技能复查仍可解析（目录快照漂移）→ 取消删除保留本地")
 })
 class SkillHubRemovalSitTest extends AbstractSkillHubSyncSitTest {
 
@@ -107,7 +109,7 @@ class SkillHubRemovalSitTest extends AbstractSkillHubSyncSitTest {
     }
 
     @Test
-    @DisplayName("SC-DEL-02: 技能转私有后复查仍可解析 → 取消删除，本地保留")
+    @DisplayName("SC-DEL-02: 待删技能复查仍可解析（目录快照漂移）→ 取消删除，本地保留")
     void removalRecheckCancelsDeleteWhenStillResolvable(@TempDir Path localDir) throws Exception {
         try (SkillHubSyncMockServer hub = SkillHubSyncMockServer.start()) {
             hub.addSkill("sit-del-r", "SIT Del Recheck", "1.0.0", "MARK-DEL-R-100");
@@ -116,14 +118,18 @@ class SkillHubRemovalSitTest extends AbstractSkillHubSyncSitTest {
                 awaitAnyCompletedReport(agent.base(), ROUND_TIMEOUT);
                 assertThat(activeSkillDirCount(localDir)).as("前置：技能已落盘").isEqualTo(1);
 
-                // 转私有：目录列表消失（进入删除计划），但 artifacts 直达端点复查仍可解析
-                hub.setVisibility("sit-del-r", SkillHubSyncMockServer.Visibility.PRIVATE);
+                // 目录快照漂移：本轮目录列表里该 id 消失（进入删除计划），
+                // 但复查快照（SkillSyncService.planRemovals → containsSkills 重取目录）仍在
+                hub.hideIdFromNextSnapshot("sit-del-r");
                 SyncResponse trigger = postSync(agent.base());
                 JsonNode report = awaitCompletedReport(agent.base(), trigger.json().path("syncId").asText(),
                         ROUND_TIMEOUT);
 
                 assertThat(report.path("removed").size())
                         .as("SC-DEL-02: 复查可解析时不应删除").isEqualTo(0);
+                assertThat(getReportRaw(agent.base()))
+                        .as("SC-DEL-02: 复查命中应记 CATALOG_CHANGED（取消删除的原因可观察）")
+                        .contains("CATALOG_CHANGED");
                 assertThat(activeSkillDirCount(localDir))
                         .as("SC-DEL-02: 本地技能应保留").isEqualTo(1);
                 assertThat(manifestGenerationAndRecords(localDir)[1])

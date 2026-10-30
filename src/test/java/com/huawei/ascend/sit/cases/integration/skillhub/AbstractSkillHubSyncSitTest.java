@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,18 +122,24 @@ abstract class AbstractSkillHubSyncSitTest {
         bindLlm(agent);
     }
 
-    /** LLM 绑定：key 用 Spring -- 参数（避免被全局空 -D 覆盖），base/model 走环境变量透传。 */
+    /**
+     * LLM 绑定：key/base/model 全部走 Spring {@code --} 参数。
+     * 全局 {@code sut.java.system-properties} 的 {@code LLM_API_KEY=""}/{@code LLM_MODEL=qwen3.8-max}/
+     * {@code LLM_API_BASE=<workspace>} 是 -D 系统属性，优先级高于环境变量——
+     * env 透传会被它们覆盖（2026-10-29 实测 403 "Workspace endpoint access denied"）。
+     * Spring 命令行参数优先级最高，值只在运行时从环境读取，不落文件、不落日志。
+     */
     private static void bindLlm(SutStack.AgentBuilder agent) {
         String apiKey = System.getenv("LLM_API_KEY");
         agent.property("LLM_API_KEY", apiKey == null || apiKey.isBlank() ? "sit-placeholder-llm-key" : apiKey);
-        passThrough(agent, "LLM_API_BASE");
-        passThrough(agent, "LLM_MODEL");
+        bindIfPresent(agent, "LLM_API_BASE");
+        bindIfPresent(agent, "LLM_MODEL");
     }
 
-    private static void passThrough(SutStack.AgentBuilder agent, String name) {
+    private static void bindIfPresent(SutStack.AgentBuilder agent, String name) {
         String value = System.getenv(name);
         if (value != null && !value.isBlank()) {
-            agent.env(name, value);
+            agent.property(name, value);
         }
     }
 
@@ -239,7 +246,7 @@ abstract class AbstractSkillHubSyncSitTest {
 
     // -------------------------------------------------------------- 磁盘面
 
-    /** 受管 active 目录下已落盘的技能目录数。 */
+    /** 受管 active 目录下已落盘的技能目录数（一层 directoryKey）。 */
     protected static long activeSkillDirCount(Path localDir) throws IOException {
         Path active = localDir.resolve(".skillhub/active");
         if (!Files.exists(active)) {
@@ -247,6 +254,29 @@ abstract class AbstractSkillHubSyncSitTest {
         }
         try (var paths = Files.walk(active, 1)) {
             return paths.filter(Files::isDirectory).filter(p -> !p.equals(active)).count();
+        }
+    }
+
+    /**
+     * 受管 active 树里真正的技能目录（{@code active/<directoryKey>/<localName>/}，含 SKILL.md）。
+     * 适配器落盘是两层结构（SkillPathSafety.directoryKey/localName），不是按资产 ID 直铺。
+     */
+    protected static List<Path> activeSkillPaths(Path localDir) throws IOException {
+        Path active = localDir.resolve(".skillhub/active");
+        if (!Files.exists(active)) {
+            return List.of();
+        }
+        try (var paths = Files.walk(active, 2)) {
+            return paths.filter(Files::isDirectory)
+                    .filter(dir -> {
+                        try (var children = Files.list(dir)) {
+                            return children.anyMatch(child -> child.getFileName().toString()
+                                    .equalsIgnoreCase("SKILL.md"));
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
+                    .toList();
         }
     }
 

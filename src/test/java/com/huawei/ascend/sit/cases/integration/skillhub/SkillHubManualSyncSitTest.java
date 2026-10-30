@@ -30,8 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>202 受理：{@code POST /manage/skillhub/sync} → 202 + syncId + state=RUNNING +
  *       reportPath；结果经 {@code GET /manage/skillhub/report} 查询。</li>
  *   <li>409 单飞：在途轮次内再触发 → 409 + 正在执行的 syncId（不排队）。</li>
- *   <li>429 统一冷却：轮次间冷却窗内触发 → 429 + state=COOLDOWN + retryAfterSeconds&gt;0
- *       （手动不能绕过冷却制造流量）。</li>
+ *   <li>429 统一冷却：Hub 故障退避冷却窗内触发 → 429 + state=COOLDOWN + retryAfterSeconds&gt;0
+ *       （手动不能绕过冷却制造流量；冷却由 Hub 侧失败的指数退避产生，成功轮次清零）。</li>
  *   <li>管理令牌：{@code X-SkillHub-Admin-Token} 缺失/错误 → 401。</li>
  * </ul>
  */
@@ -139,19 +139,20 @@ class SkillHubManualSyncSitTest extends AbstractSkillHubSyncSitTest {
     }
 
     @Test
-    @DisplayName("SC-MANUAL-05: 冷却窗内手动触发 → 429 COOLDOWN + retryAfterSeconds>0")
+    @DisplayName("SC-MANUAL-05: 冷却窗（Hub 故障退避）内手动触发 → 429 COOLDOWN + retryAfterSeconds>0")
     void manualSyncUnifiedCooldown(@TempDir Path localDir) throws Exception {
         try (SkillHubSyncMockServer hub = SkillHubSyncMockServer.start()) {
             hub.addSkill("sit-man-d", "SIT Man D", "1.0.0", "MARK-MAN-D-100");
 
+            // 冷却窗来源：HubRequestBackoff 在 Hub 故障后开启（成功轮次会清零冷却，
+            // 2026-10-29 代码核对：onSuccess → nextAllowed=EPOCH）。先制造一轮系统性失败。
+            hub.setCatalogStatus(500);
             try (RunningAgent agent = startAgent(hub, localDir, a -> { })) {
-                awaitAnyCompletedReport(agent.base(), ROUND_TIMEOUT);
+                JsonNode failed = awaitAnyCompletedReport(agent.base(), ROUND_TIMEOUT);
+                assertThat(failed.path("result").asText())
+                        .as("前置：Hub 故障轮应 FAILED（开启退避冷却）").isEqualTo("FAILED");
 
-                SyncResponse first = postSync(agent.base());
-                assertThat(first.status()).as("前一轮应可触发").isEqualTo(202);
-                awaitCompletedReport(agent.base(), first.json().path("syncId").asText(), ROUND_TIMEOUT);
-
-                // 前一轮刚完成，冷却窗内立即再触发：预期 429（统一冷却，不排队）
+                // 冷却窗内立即手动触发：预期 429（统一冷却，手动不能绕过、不排队）
                 SyncResponse immediate = postSyncOnce(agent.base());
                 assertThat(immediate.status())
                         .as("SC-MANUAL-05: 冷却窗内手动触发应 429").isEqualTo(429);
@@ -163,10 +164,17 @@ class SkillHubManualSyncSitTest extends AbstractSkillHubSyncSitTest {
                 assertThat(body.path("syncId").asText(""))
                         .as("SC-MANUAL-05: 冷却未受理不应编造 syncId").isEmpty();
 
-                // 冷却耗尽后应可再次触发（postSync 自带等待重试）
+                // Hub 恢复 + 冷却耗尽后应可再次触发并收敛（postSync 自带等待重试；
+                // 恢复轮可能先一步抢到单飞，此时受理响应为 409+正在执行的 syncId）
+                hub.setCatalogStatus(200);
                 SyncResponse afterCooldown = postSync(agent.base());
                 assertThat(afterCooldown.status())
-                        .as("SC-MANUAL-05: 冷却结束后应恢复受理").isEqualTo(202);
+                        .as("SC-MANUAL-05: 冷却结束后应恢复受理（202）或并入在途轮（409）")
+                        .isIn(202, 409);
+                JsonNode done = awaitCompletedReport(agent.base(),
+                        afterCooldown.json().path("syncId").asText(), ROUND_TIMEOUT);
+                assertThat(done.path("result").asText())
+                        .as("SC-MANUAL-05: 恢复后轮次应 SUCCESS").isEqualTo("SUCCESS");
             }
         }
     }

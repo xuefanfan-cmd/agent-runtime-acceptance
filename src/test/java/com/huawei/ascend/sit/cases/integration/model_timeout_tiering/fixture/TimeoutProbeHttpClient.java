@@ -565,4 +565,128 @@ public final class TimeoutProbeHttpClient {
             return exceptionType != null;
         }
     }
+
+    /**
+     * FEAT-058 §3.14 TC-BLOCKING-HEADER-WAIT side-channel driver — issues
+     * {@code POST /probe/blocking/query} to the demo-side
+     * {@link com.openjiuwen.example.timeouttiering.service.BlockingProbeController}
+     * (landed 2026-10-30 per SIT-REQUEST-feat-058-demo-side-extensions). The
+     * blocking controller calls {@code model.invoke(...)} on the one-shot
+     * {@code blockingProbeModel} bean (maxRetries=0, retryOnTemporary=false),
+     * so the blocking header-wait + stream-idle layers surface cleanly with
+     * {@code stream=false} and no retry-loop collapsing.
+     *
+     * <p>Response is a plain JSON {@code Map<String,Object>} (not SSE) with
+     * fields:
+     * <ul>
+     *   <li>{@code completed} (Boolean) — true iff the invoke returned
+     *       {@code AssistantMessage}; false iff caught a throwable;
+     *   <li>{@code content} (String, when completed=true) — assistant message
+     *       content;
+     *   <li>{@code exception_type} (String, when completed=false) — e.g.
+     *       "ModelError" (BaseError subtype simple name after recursive cause
+     *       unwrap);
+     *   <li>{@code message} (String, when completed=false) — exception message,
+     *       e.g. "model call timeout at BEFORE_FIRST_SEGMENT, effective timeout
+     *       8.0s, reason: header_wait timeout after 8.0s";
+     *   <li>{@code error_details} (Map, when completed=false) — the structured
+     *       {@code BaseError.getDetails()} verbatim; carries the FEAT-058
+     *       four-field contract {@code phase, layer, timeout_seconds, stream}.
+     * </ul>
+     *
+     * @param requestTimeout driver-side HTTP timeout; must exceed the configured
+     *                       timeout window + buffer (e.g. ≥15s for s2-blocking's
+     *                       8s legacy timeout).
+     */
+    public BlockingResponse queryBlocking(Duration requestTimeout) throws Exception {
+        Objects.requireNonNull(requestTimeout, "requestTimeout");
+
+        HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/probe/blocking/query"))
+                .timeout(requestTimeout)
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        try {
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return parseBlocking(resp);
+        } catch (java.net.http.HttpTimeoutException callerAborted) {
+            return BlockingResponse.aborted(callerAborted.getMessage());
+        }
+    }
+
+    private BlockingResponse parseBlocking(HttpResponse<String> resp) {
+        int status = resp.statusCode();
+        String raw = resp.body();
+        if (raw == null || raw.isBlank()) {
+            return new BlockingResponse(status, null, null, null, null, null, raw, false, null);
+        }
+        try {
+            Map<String, Object> parsed = MAPPER.readValue(raw, new TypeReference<>() {});
+            Boolean completed = parsed.get("completed") instanceof Boolean b ? b : null;
+            String content = parsed.get("content") instanceof String s ? s : null;
+            String exceptionType = parsed.get("exception_type") instanceof String s ? s : null;
+            String message = parsed.get("message") instanceof String s ? s : null;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> errorDetails = parsed.get("error_details") instanceof Map<?, ?> m
+                    ? (Map<String, Object>) m : null;
+            return new BlockingResponse(status, completed, content, exceptionType, message,
+                    errorDetails, raw, false, null);
+        } catch (Exception notJson) {
+            return new BlockingResponse(status, null, null, null, null, null, raw, false, null);
+        }
+    }
+
+    /**
+     * Response record for {@link #queryBlocking(Duration)}. Fields map 1:1 to the
+     * demo-side {@code BlockingProbeController} JSON response body.
+     */
+    public record BlockingResponse(
+            int statusCode,
+            Boolean completed,
+            String content,
+            String exceptionType,
+            String message,
+            Map<String, Object> errorDetails,
+            String rawBody,
+            boolean callerAborted,
+            String callerAbortReason) {
+
+        static BlockingResponse aborted(String reason) {
+            return new BlockingResponse(-1, null, null, null, null, null, null, true, reason);
+        }
+
+        public boolean completedNaturally() {
+            return Boolean.TRUE.equals(completed);
+        }
+
+        public boolean terminatedByException() {
+            return exceptionType != null;
+        }
+
+        /**
+         * Adapter that synthesises a {@link QueryResponse} view of this blocking
+         * response so the {@link ErrorEnvelopeAsserter} chain (built around
+         * QueryResponse) can be reused for the FEAT-058 four-field contract
+         * assertion. The synthetic {@code errorStatusCode} is set to
+         * {@code 181008} iff the invoke terminated via a {@code ModelError}
+         * carrying the four-field details; otherwise null (asserter will fail
+         * cleanly).
+         */
+        public QueryResponse toQueryResponse() {
+            Integer errorStatusCode = null;
+            if (terminatedByException() && errorDetails != null
+                    && errorDetails.containsKey("phase")
+                    && errorDetails.containsKey("layer")) {
+                // Demo wraps BaseError into HTTP 200 Map; synthesize the SDK code so
+                // ErrorEnvelopeAsserter.assertTimeoutStatusCode() can validate the
+                // ModelError contract once-removed. 181008 is MODEL_CALL_TIMEOUT —
+                // consistent with the exception_type=ModelError + four-field details
+                // the BaseError.getDetails() carries verbatim.
+                errorStatusCode = ErrorEnvelopeAsserter.MODEL_CALL_TIMEOUT_CODE;
+            }
+            return new QueryResponse(statusCode, content, null, errorStatusCode,
+                    errorDetails, rawBody, null, callerAborted, callerAbortReason);
+        }
+    }
 }

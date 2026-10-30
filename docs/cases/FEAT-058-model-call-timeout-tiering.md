@@ -66,10 +66,10 @@ related_docs:
 | 5 | 空闲超时检出死链 | `FEAT-058.idle-timeout-detects-dead-link` | S3 | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` idle + `IdleBoundInputStream` 单测 | 与 MUST#3 同根因；上游修复后一起转 runnable |
 | 6 | 分层超时配置项（独立 + 默认回落） | `FEAT-058.layered-config-with-default-fallback` | S0 + S2（legacy 兼容） | runnable | `ModelTimeoutConfigTest` + resolver 回落链 UT | TC-DEFAULT-BASELINE 覆盖未声明回落；TC-HEADER-WAIT-LEGACY 覆盖 legacy `timeout` 兼容 |
 | 7 | 单次调用超时参数接线（per-call idle override） | `FEAT-058.per-call-idle-override` | 增量（demo 无直接场景） | **blocked_by_upstream** | `OpenAIModelTimeoutTieringTest` per-call 分支 + core+memory 全部 `resolvePerCallIdleTimeout` 调用点 UT（PR!400 已覆盖） | 增量 TC-PER-CALL-IDLE-OVERRIDE；依赖 AFTER_FIRST_SEGMENT 可观察，blocked_by B1 |
-| 7 | 单次调用超时参数接线（**agent-level idle override**） | `FEAT-058.agent-level-idle-override` | 增量（demo 载体缺口） | **blocked_by: demo 载体扩展** | `ReActAgentConfig` 字段单测 | 增量 TC-AGENT-LEVEL-IDLE-OVERRIDE；demo 需 `TimeoutProbeAgentFactory` 暴露 `setModelStreamIdleSeconds` 注入入口（见 §3.15 + `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md`）|
+| 7 | 单次调用超时参数接线（**agent-level idle override**） | `FEAT-058.agent-level-idle-override` | 增量（demo 2026-10-30 已补齐） | **runnable（待 ECS 复跑验证）** | `ReActAgentConfig` 字段单测 | 增量 TC-AGENT-LEVEL-IDLE-OVERRIDE；demo 侧 `TimeoutProbeAgentFactory.build` 条件注入 `setModelStreamIdleSeconds` + `s3-agent-level-idle` profile 2026-10-30 已落地 |
 | 8 | 仓内全部模型 HTTP 栈采用同一分层语义 | `FEAT-058.unified-stack-tiering-across-clients` | 增量（demo README 建议） | runnable | 五个 client 子类（OpenAI/OpenAiCompatible/DashScope/SiliconFlow/DeepSeek）各自 timeout 单测 | 增量 TC-UNIFIED-STACK-COVERAGE；按对齐表附录 B 替代命名：多 client 子类共享 resolver；走 legacy header-wait 路径，不依赖 B1 |
 | 9 | 阻塞调用超时语义一致（**stream_idle 侧**） | `FEAT-058.blocking-same-tiering-semantics` | S5 | runnable | `OpenAIModelTimeoutTieringTest` blocking 分支 | §3.6 TC-BLOCKING-SAME-SEMANTICS 覆盖 "头到齐 → body 首字节" 窗口的 stream_idle 层（MUST#9 窄义） |
-| 9 | 阻塞调用超时语义一致（**header_wait 侧**） | `FEAT-058.blocking-header-wait-side` | 增量（demo 载体缺口） | **blocked_by: demo 载体扩展** | `OpenAIModelTimeoutTieringTest` blocking 分支 | 增量 TC-BLOCKING-HEADER-WAIT；demo 需新增 `/probe/blocking/query` endpoint（见 §3.14 + `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md`）|
+| 9 | 阻塞调用超时语义一致（**header_wait 侧**） | `FEAT-058.blocking-header-wait-side` | 增量（demo 2026-10-30 已补齐） | **runnable（待 ECS 复跑验证）** | `OpenAIModelTimeoutTieringTest` blocking 分支 | 增量 TC-BLOCKING-HEADER-WAIT；demo 侧 `BlockingProbeController` + `blockingProbeModel` bean + `s2-blocking` profile 2026-10-30 已落地 |
 | 10 | 超时错误表面可区分（三类错误 + 181008） | `FEAT-058.error-surface-distinguishable` | S1 + S2 + S3 + S5 | partial | `OpenAIModelTimeoutTieringTest` details assertion | S3 blocked_by B1；非 S3 的三类（connect / header-wait / blocking）全部 runnable；TC-ERROR-DETAILS-PAYLOAD 聚合断言 |
 | 11 | 超时与取消区分 | `FEAT-058.cancel-not-timeout` | S6 | runnable | `OpenAIModelTimeoutTieringTest` + `ModelCircuitBreakerTest` | caller `--max-time 3` 取消 + stub `long-hold-for-cancel`；弱层断言 "无 [181008] 虚警" |
 | 12 | 超时错误阶段信息三段口径（phase/timeout_seconds/layer/stream） | `FEAT-058.error-details-four-fields` | S1 + S2 + S5（S3 blocked） | partial | `OpenAIModelTimeoutTieringTest` details assertion | 由 TC-ERROR-DETAILS-PAYLOAD 聚合断言；S3 维度 blocked_by B1 |
@@ -234,7 +234,7 @@ related_docs:
 
 > **2026-10-28 batch triage 议题四 landed 回灌**：原设计 blocked_by_upstream B1（HttpRequest.timeout 当总时长执行）于 10-23 HANDOFF 归因到 JDK 24+ 环境问题后 RETRACTED。开发侧 10-28 落地 demo 侧通道：新增 `/probe/per-call` endpoint（**走 `Model.stream(prompt, options)` 不走 ReActAgent**）、新增 `s3-per-call` profile、新增 `perCallProbeModel` bean（one-shot 构造 retry=0 避免 retry 叠加干扰）；prompt 硬编码 "probe per-call"（不接 request body）。SIT 侧 fixture 新增 `TimeoutProbeHttpClient.queryPerCall(Duration, Integer)` + `PerCallResponse` record；原 TC `@Disabled` 已删（commit 跟本次 batch 一起 push）。
 
-> **PR#354 评审 1 回灌**：原设计把 per-call override（`ModelInvokeOptions.timeout`）与 agent 级常驻字段（`ReActAgentConfig.modelStreamIdleSeconds`）在同一 TC 内叠加，导致"第二腿期望 timeout_seconds=300"的断言歧义。本版 TC 收窄为**仅覆盖 `ModelInvokeOptions.timeout` 的 per-call 语义**（agent 级 `modelStreamIdleSeconds` 作为 streamIdleSeconds 第三个合法源的 SIT 覆盖，由 §3.15 **TC-AGENT-LEVEL-IDLE-OVERRIDE** 独立承接，blocked_by: demo 载体扩展），第二腿改为"client 级 600s 回退、stall 310s 不触发超时"，判据无歧义。
+> **PR#354 评审 1 回灌**：原设计把 per-call override（`ModelInvokeOptions.timeout`）与 agent 级常驻字段（`ReActAgentConfig.modelStreamIdleSeconds`）在同一 TC 内叠加，导致"第二腿期望 timeout_seconds=300"的断言歧义。本版 TC 收窄为**仅覆盖 `ModelInvokeOptions.timeout` 的 per-call 语义**（agent 级 `modelStreamIdleSeconds` 作为 streamIdleSeconds 第三个合法源的 SIT 覆盖，由 §3.15 **TC-AGENT-LEVEL-IDLE-OVERRIDE** 独立承接，demo 载体扩展 2026-10-30 已落地），第二腿改为"client 级 600s 回退、stall 310s 不触发超时"，判据无歧义。
 
 ### 3.10 TC-RANGE-VALIDATION（配置区间 fail-fast）
 
@@ -289,31 +289,31 @@ related_docs:
 >
 > **跨 FEAT 归属澄清**：anchor 日志行是 FEAT-058 MUST#11 的可观测承诺；`USER_CANCELLED` 分类名是 FEAT-064 L2 §1.2.14 的分类集 M14 的成员。本两条 TC 验的是 anchor，主属 FEAT-058；SIT 测试类用 `@Tag("feat-058") @Tag("feat-064")` 双 Tag 承接。
 
-### 3.14 TC-BLOCKING-HEADER-WAIT（MUST#9 阻塞路径 header_wait 侧） — **blocked_by: demo 载体扩展**
+### 3.14 TC-BLOCKING-HEADER-WAIT（MUST#9 阻塞路径 header_wait 侧） — **runnable（demo 2026-10-30 已落地，待 ECS 复跑验证）**
 
 | 字段 | 内容 |
 |---|---|
 | 定位 | **MUST#9 的 header_wait 侧判据**，与 §3.6 TC-BLOCKING-SAME-SEMANTICS（stream_idle 侧）配对覆盖 L2 §1.2.9 的两个独立观测点。原 r3 口径将 MUST#9 窄义窗口归 stream_idle 层承载，但 header_wait 层在阻塞路径下的触发事实未在 wire 层被 SIT 外部观察到——理由：当前 `TimeoutProbeAgentFactory` 构造 `ReActAgent` 走 `model.stream(...)`，`/v1/query` 全程流式；`CancelProbeController` 虽有 blocking 入口但耦合 300ms cancel 调度。本 TC 填补这一 gap。 |
-| Given | probe-agent 启动于 **`s2-blocking` profile**（demo 侧新增 s2 的 blocking 变体，复用 `openjiuwen.service.llm.timeout=8s` legacy header-wait 窗口，仅切换 invoke 路径为阻塞）；stub-server `header-wait-silent` 模式；demo 侧**新增 `BlockingProbeController`**（`/probe/blocking/query` endpoint，走 `model.invoke(prompt)` 阻塞路径，retry=0，不调度 future.cancel；详见 `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §1） |
+| Given | probe-agent 启动于 **`s2-blocking` profile**（demo 侧 2026-10-30 已新增，复用 `openjiuwen.service.llm.timeout=8s` legacy header-wait 窗口 + 阻塞 invoke 路径）；stub-server `header-wait-silent` 模式；demo 侧 **`BlockingProbeController`**（`/probe/blocking/query` endpoint，走 `model.invoke(prompt)` 阻塞路径，retry=0，不调度 future.cancel；详见 `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §1） |
 | When | SIT driver `POST /probe/blocking/query`（driver timeout ≥ 15s） |
 | Then | HTTP 200 响应 Map 含：`completed==false` + `exception_type=="ModelError"` + `message` 含 `"effective timeout 8.0s"` 子串；`error_details.phase=="BEFORE_FIRST_SEGMENT"` + **`error_details.layer=="header_wait"`**（**MUST#9 header_wait 侧**：响应头字节未到齐，走 `IdleGuardedBodyReader` 对应的 `PreparedRequest.timeout` 承载）+ `error_details.timeout_seconds==8.0`（±0.5s）+ **`error_details.stream==false`**（阻塞路径关键字段） |
 | PASS | 四字段齐备 + phase=BEFORE_FIRST_SEGMENT + layer=header_wait + timeout=8.0 + stream=false |
 | FAIL | 任一字段偏离 / layer=stream_idle（阻塞路径未进入 header_wait 分支）/ stream=true（阻塞被误识别为流式） |
-| INCONCLUSIVE | demo fat jar 未包含 `BlockingProbeController` class（POST 返 404）→ **blocked_by: demo 载体扩展需求 2026-10-30**（见 §4 状态跟踪） |
-| 载体 | `Feat058BlockedByUpstreamTest.blockingHeaderWaitPathObservesLayer`（@Disabled 占位，待 demo 侧扩展落地后转到 `Feat058RunnablePathTest`） |
+| INCONCLUSIVE | demo fat jar 未包含 `BlockingProbeController` class / `blockingProbeModel` bean / `s2-blocking` profile（POST 返 404 或 Spring 启动失败） |
+| 载体 | `Feat058RunnablePathTest.blockingHeaderWaitPathObservesLayer`（2026-10-30 demo 落地后已从 `Feat058BlockedByUpstreamTest` 迁移至此并翻 runnable） |
 
-### 3.15 TC-AGENT-LEVEL-IDLE-OVERRIDE（MUST#7 agent-level streamIdleSeconds 源） — **blocked_by: demo 载体扩展**
+### 3.15 TC-AGENT-LEVEL-IDLE-OVERRIDE（MUST#7 agent-level streamIdleSeconds 源） — **runnable（demo 2026-10-30 已落地，待 ECS 复跑验证）**
 
 | 字段 | 内容 |
 |---|---|
-| 定位 | **MUST#7 的 agent-level 源判据**。L2 §1.2.7 为 `streamIdleSeconds` 定义三个合法生效源（优先级 per-call > agent-level > client-level）：per-call `ModelInvokeOptions.timeout` 由 §3.9 TC-PER-CALL-IDLE-OVERRIDE 覆盖、client-level `openjiuwen.service.llm.stream-idle-seconds` 由 §3.4/§3.6 覆盖；**agent-level `ReActAgentConfig.modelStreamIdleSeconds` 完全未覆盖**——理由：当前 `TimeoutProbeAgentFactory.build(...)` 构造 `ReActAgent` 时**不调用** `setModelStreamIdleSeconds(...)`，agent-level 字段的生效路径对 SIT 无可观察入口（代码事实锚点：`TimeoutProbeAgentFactory.java:55-62`）。本 TC 填补这一 gap。 |
-| Given | probe-agent 启动于 **`s3-agent-level-idle` profile**（demo 侧新增，client 级 `stream-idle-seconds=600s` 作为 baseline + agent 级 `modelStreamIdleSeconds=300.0` 通过 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` → `TimeoutProbeAgentFactory.build()` 条件注入 `agentConfig.setModelStreamIdleSeconds(300.0)` 注入；详见 `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §2）；stub-server `after-first-segment-idle` 模式 + `LLM_STUB_FIRST_SEGMENT_MS=310000`（首块后沉默 310s） |
+| 定位 | **MUST#7 的 agent-level 源判据**。L2 §1.2.7 为 `streamIdleSeconds` 定义三个合法生效源（优先级 per-call > agent-level > client-level）：per-call `ModelInvokeOptions.timeout` 由 §3.9 TC-PER-CALL-IDLE-OVERRIDE 覆盖、client-level `openjiuwen.service.llm.stream-idle-seconds` 由 §3.4/§3.6 覆盖；**agent-level `ReActAgentConfig.modelStreamIdleSeconds`** 由本 TC 覆盖。 |
+| Given | probe-agent 启动于 **`s3-agent-level-idle` profile**（demo 侧 2026-10-30 已新增：client 级 `stream-idle-seconds=600s` 作为 baseline + agent 级 `modelStreamIdleSeconds=300.0` 通过 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` → `TimeoutProbeAgentFactory.build()` 条件注入 `agentConfig.setModelStreamIdleSeconds(300.0)`；详见 `docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §2）；stub-server `after-first-segment-idle` 模式 + `LLM_STUB_FIRST_SEGMENT_MS=310000`（首块后沉默 310s） |
 | When | SIT driver `POST /v1/query` body `{"message":"ping"}`（driver timeout ≥ 320s） |
 | Then | 恰一条 `[181008]` + phase=`AFTER_FIRST_SEGMENT`；禁 `BEFORE_CONNECT` / `BEFORE_FIRST_SEGMENT`；error payload：`details.phase=="AFTER_FIRST_SEGMENT"` + `details.layer=="stream_idle"` + **`details.timeout_seconds==300.0`**（±1.0s）——**关键判据**：agent-level 300s 生效、覆盖 client-level 600s；若 timeout_seconds==600.0 则证明 agent-level 字段未被 SDK 消费（MUST#7 违约） + `details.stream==true` |
 | PASS | 四字段齐备 + phase=AFTER_FIRST_SEGMENT + layer=stream_idle + **timeout=300.0**（agent-level 覆盖生效） + stream=true |
 | FAIL | timeout_seconds==600.0（agent-level 未生效，client-level 兜底）/ 任一其他字段偏离 |
-| INCONCLUSIVE | demo fat jar 未包含 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` 字段 / `TimeoutProbeAgentFactory.build` 未调用 `setModelStreamIdleSeconds` → **blocked_by: demo 载体扩展需求 2026-10-30**（见 §4 状态跟踪） |
-| 载体 | `Feat058BlockedByUpstreamTest.agentLevelIdleOverridesClientLevel`（@Disabled 占位，待 demo 侧扩展落地后转到 `Feat058RunnablePathTest`） |
+| INCONCLUSIVE | demo fat jar 未包含 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` 字段 / `TimeoutProbeAgentFactory.build` 未调用 `setModelStreamIdleSeconds` / 未装配 `s3-agent-level-idle` profile |
+| 载体 | `Feat058RunnablePathTest.agentLevelIdleOverridesClientLevel`（2026-10-30 demo 落地后已从 `Feat058BlockedByUpstreamTest` 迁移至此并翻 runnable） |
 
 ---
 
@@ -334,8 +334,8 @@ related_docs:
 | TC-UNIFIED-STACK-COVERAGE | **landed PASS（待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题二 Path A 裁定：外部 provider enum value `OpenAiCompatible` → `OpenRouter`（agent-core-java-0.1.17 已改名；底层 impl 类 `OpenAiCompatibleModelClient` 类名未变，L2 MUST#8 以 impl 类家族计覆盖面，L2 契约未违约）。本仓 cases §3.11 + `Feat058RunnablePathTest.java:416` 字样已同步刷新。待 ECS 复跑 5 provider 完整走通后标 landed PASS。关联：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`）+ 开发侧 `DEV-REPLY-batch-triage-20261028.md`（commit `44067785`）|
 | **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |
 | **TC-CANCEL-OBS-S19** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S18 共 2/2）** |
-| **TC-BLOCKING-HEADER-WAIT** | **blocked_by: demo 载体扩展** | demo 载体缺口：`TimeoutProbeAgentFactory` 走 `model.stream(...)` 全程流式，`CancelProbeController` 耦合 300ms cancel 调度 | 2026-10-30 PR#354 r3 评审 Issue #2 新识别 gap；SIT 已归档载体扩展需求（`docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §1）；demo 侧补 `BlockingProbeController` + `blockingProbeModel` + `s2-blocking` profile 后，`Feat058BlockedByUpstreamTest.blockingHeaderWaitPathObservesLayer` 转 runnable 到 `Feat058RunnablePathTest` |
-| **TC-AGENT-LEVEL-IDLE-OVERRIDE** | **blocked_by: demo 载体扩展** | demo 载体缺口：`TimeoutProbeAgentFactory.build(...)` 不调用 `agentConfig.setModelStreamIdleSeconds(...)`，agent-level 源无 SIT 可观察入口 | 2026-10-30 PR#354 r3 评审 Issue #1 新识别 gap；SIT 已归档载体扩展需求（`docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md` §2）；demo 侧 `TimeoutProbeAgentProperties` 加 `modelStreamIdleSeconds` 字段 + `TimeoutProbeAgentFactory.build` 条件注入 + `s3-agent-level-idle` profile 后，`Feat058BlockedByUpstreamTest.agentLevelIdleOverridesClientLevel` 转 runnable |
+| **TC-BLOCKING-HEADER-WAIT** | **runnable（待 ECS 复跑验证）** | — | 2026-10-30 demo 侧落地 `BlockingProbeController` + `blockingProbeModel` bean + `s2-blocking` profile（path: `D:\openjiuwen-java\2012\agent-solution\common\example\timeout-tiering-model-call-demo`）；SIT 侧 `TimeoutProbeHttpClient.queryBlocking` + `BlockingResponse` record 已补；用例已从 `Feat058BlockedByUpstreamTest` 迁移至 `Feat058RunnablePathTest.blockingHeaderWaitPathObservesLayer` 并翻 runnable；待 ECS 一次 batch 复跑验证四字段契约 |
+| **TC-AGENT-LEVEL-IDLE-OVERRIDE** | **runnable（待 ECS 复跑验证）** | — | 2026-10-30 demo 侧落地 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` 字段 + `TimeoutProbeAgentFactory.build` 条件注入 `setModelStreamIdleSeconds` + `s3-agent-level-idle` profile（path: 同上）；SIT 侧 `AGENT_LEVEL_IDLE_SECONDS=300.0` env 注入；用例已从 `Feat058BlockedByUpstreamTest` 迁移至 `Feat058RunnablePathTest.agentLevelIdleOverridesClientLevel` 并翻 runnable；待 ECS 一次 batch 复跑验证 `timeout_seconds==300.0`（非 600.0） |
 
 ### 2026-10-28 全盘复跑小结（Feat058RunnablePathTest 8 TC + Feat058Feat064CancelObservabilityTest 2 TC + Feat058BlockedByUpstreamTest 3 TC）
 

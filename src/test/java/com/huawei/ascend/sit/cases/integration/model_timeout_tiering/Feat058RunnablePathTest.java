@@ -9,6 +9,7 @@ import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.Sut
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.SutLogTailer.TimeoutPhase;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutDemoLauncher;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient;
+import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient.BlockingResponse;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient.QueryResponse;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
@@ -493,6 +494,164 @@ final class Feat058RunnablePathTest {
                                 .isEqualTo(referenceStream);
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * TC-BLOCKING-HEADER-WAIT (cases §3.14) — MUST#9 header_wait side on
+     * blocking path. Pairs with {@link #blockingPathSameTieringSemantics}
+     * (stream_idle side on blocking path) to cover both L2 §1.2.9
+     * observation points.
+     *
+     * <p>Profile {@code s2-blocking} reuses legacy
+     * {@code openjiuwen.service.llm.timeout=8s} as the header-wait window and
+     * routes the single invoke through
+     * {@link com.openjiuwen.example.timeouttiering.service.BlockingProbeController#queryBlocking}
+     * (one-shot {@code model.invoke(...)}, maxRetries=0). stub mode
+     * {@code header-wait-silent} accepts TCP + swallows the request so no
+     * response headers ever arrive — the SDK's {@code PreparedRequest.timeout}
+     * (header-wait window) must trip at ~8s.
+     *
+     * <p>Expect:
+     * <ul>
+     *   <li>HTTP 200 wrapper (demo serializes BaseError into Map body);
+     *   <li>{@code completed=false}, {@code exception_type="ModelError"};
+     *   <li>{@code message} contains {@code "effective timeout 8.0s"};
+     *   <li>{@code error_details.phase=BEFORE_FIRST_SEGMENT}
+     *       (headers never arrived);
+     *   <li>{@code error_details.layer=header_wait} (MUST#9 header_wait side —
+     *       {@code IdleGuardedBodyReader} never got the chance to engage because
+     *       the body never started);
+     *   <li>{@code error_details.timeout_seconds=8.0±0.5};
+     *   <li>{@code error_details.stream=false} (blocking path marker).
+     * </ul>
+     *
+     * <p>Demo-side extensions landed 2026-10-30 per
+     * {@code docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md §1}:
+     * {@code BlockingProbeController} + {@code blockingProbeModel} bean +
+     * {@code s2-blocking} Spring profile.
+     */
+    @Test
+    void blockingHeaderWaitPathObservesLayer() throws Exception {
+        assumeFatJarsPresent();
+
+        Map<String, String> stubEnv = commonEnv();
+        stubEnv.put("LLM_STUB_DEFAULT_MODE", "header-wait-silent");
+        try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
+                .envAll(stubEnv)
+                .build()
+                .start();
+             TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
+                     .profile("s2-blocking")
+                     .envAll(probeEnv(stub))
+                     .build()
+                     .start()) {
+
+            TimeoutProbeHttpClient http = new TimeoutProbeHttpClient(probe.baseUrl());
+            // driver wait = 20s (8s legacy timeout + buffer for Spring MVC overhead)
+            BlockingResponse resp = http.queryBlocking(Duration.ofSeconds(20));
+
+            assertThat(resp.statusCode())
+                    .as("blocking probe wraps BaseError into HTTP 200 Map body")
+                    .isEqualTo(200);
+            assertThat(resp.completed())
+                    .as("completed=false expected (header-wait silence must trip)")
+                    .isFalse();
+            assertThat(resp.exceptionType())
+                    .as("exception_type must be ModelError for header-wait timeout")
+                    .isEqualTo("ModelError");
+            assertThat(resp.message())
+                    .as("message must contain 'effective timeout 8.0s' marker")
+                    .contains("effective timeout 8.0s");
+
+            // Reuse the ErrorEnvelopeAsserter via the QueryResponse adapter so the
+            // four-field contract check is identical to the SSE-wire TCs.
+            new ErrorEnvelopeAsserter(resp.toQueryResponse())
+                    .assertTimeoutStatusCode()
+                    .assertAllFourFieldsPresent()
+                    .assertPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)
+                    .assertLayer(ErrorEnvelopeAsserter.LAYER_HEADER_WAIT)
+                    .assertTimeoutSeconds(8.0, 0.5)
+                    .assertStream(false);
+        }
+    }
+
+    /**
+     * TC-AGENT-LEVEL-IDLE-OVERRIDE (cases §3.15) — MUST#7 agent-level source
+     * of {@code streamIdleSeconds}. L2 §1.2.7 defines three legal sources with
+     * priority per-call &gt; agent-level &gt; client-level; per-call is
+     * covered by {@link Feat058BlockedByUpstreamTest#perCallIdleOverrideDoesNotPolluteClientConfig}
+     * (§3.9) and client-level by {@link #blockingPathSameTieringSemantics}
+     * (§3.6). This TC exercises the agent-level source
+     * ({@code ReActAgentConfig.modelStreamIdleSeconds}) in isolation.
+     *
+     * <p>Profile {@code s3-agent-level-idle} pins client-level
+     * {@code stream-idle-seconds=600s} (baseline) and agent-level
+     * {@code demo.timeout-probe.model-stream-idle-seconds=300.0} (override).
+     * {@code TimeoutProbeAgentFactory.build} conditionally invokes
+     * {@code agentConfig.setModelStreamIdleSeconds(...)} when the property is
+     * non-null. stub mode {@code after-first-segment-idle} with
+     * {@code LLM_STUB_FIRST_SEGMENT_MS=310000} emits the first chunk then
+     * holds silence 310s.
+     *
+     * <p>Critical assertion: {@code timeout_seconds} must be {@code 300.0}
+     * (agent-level wins over client-level 600s). {@code timeout_seconds=600.0}
+     * would mean the agent-level field was not consumed by the SDK (MUST#7
+     * breach).
+     *
+     * <p>Demo-side extensions landed 2026-10-30 per
+     * {@code docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md §2}:
+     * {@code TimeoutProbeAgentProperties.modelStreamIdleSeconds} field +
+     * conditional {@code setModelStreamIdleSeconds} injection in
+     * {@code TimeoutProbeAgentFactory.build} + {@code s3-agent-level-idle}
+     * Spring profile.
+     */
+    @Test
+    void agentLevelIdleOverridesClientLevel() throws Exception {
+        assumeFatJarsPresent();
+
+        Map<String, String> stubEnv = commonEnv();
+        stubEnv.put("LLM_STUB_DEFAULT_MODE", "after-first-segment-idle");
+        // stub holds silence 310s after first chunk — exceeds agent-level 300s
+        // but under client-level 600s so this scenario trips at agent-level only.
+        stubEnv.put("LLM_STUB_FIRST_SEGMENT_MS", "310000");
+        try (TimeoutDemoLauncher stub = TimeoutDemoLauncher.llmStubServer()
+                .envAll(stubEnv)
+                .build()
+                .start()) {
+            Map<String, String> probeEnvMap = probeEnv(stub);
+            // Agent-level override via ${AGENT_LEVEL_IDLE_SECONDS:300.0}; pinning
+            // 300.0 explicitly keeps the TC resilient to future yaml default
+            // changes.
+            probeEnvMap.put("AGENT_LEVEL_IDLE_SECONDS", "300.0");
+            try (TimeoutDemoLauncher probe = TimeoutDemoLauncher.probeAgent()
+                    .profile("s3-agent-level-idle")
+                    .envAll(probeEnvMap)
+                    .build()
+                    .start()) {
+
+                TimeoutProbeHttpClient http = new TimeoutProbeHttpClient(probe.baseUrl());
+                // driver wait = 400s (300s agent-level trip + buffer for SSE flush)
+                QueryResponse resp = http.query(PROMPT, Duration.ofSeconds(400));
+
+                new ErrorEnvelopeAsserter(resp)
+                        .assertTimeoutStatusCode()
+                        .assertAllFourFieldsPresent()
+                        .assertPhase(TimeoutPhase.AFTER_FIRST_SEGMENT)
+                        .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
+                        // Critical: 300.0 == agent-level override; 600.0 would be
+                        // client-level — the latter means MUST#7 breach (agent-level
+                        // field not consumed by SDK).
+                        .assertTimeoutSeconds(300.0, 1.0)
+                        .assertStream(true);
+
+                SutLogTailer tailer = new SutLogTailer(probe.logFile());
+                assertThat(tailer.countOfPhase(TimeoutPhase.AFTER_FIRST_SEGMENT))
+                        .as("exactly one AFTER_FIRST_SEGMENT 181008 line expected")
+                        .isEqualTo(1);
+                assertThat(tailer.countOfPhase(TimeoutPhase.BEFORE_CONNECT)).isZero();
+                assertThat(tailer.countOfPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)).isZero();
             }
         }
     }

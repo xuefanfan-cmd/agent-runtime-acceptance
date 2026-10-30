@@ -11,6 +11,7 @@ import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.Tim
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient;
 import com.huawei.ascend.sit.cases.integration.model_timeout_tiering.fixture.TimeoutProbeHttpClient.QueryResponse;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -247,6 +248,108 @@ final class Feat058BlockedByUpstreamTest {
                     .as("exactly one 181008 line (from first call only — proves per-call override released)")
                     .isEqualTo(1);
         }
+    }
+
+    /**
+     * TC-BLOCKING-HEADER-WAIT (cases §3.14) — MUST#9 header_wait side on
+     * blocking path. Pairs with TC-BLOCKING-SAME-SEMANTICS (stream_idle
+     * side) to cover both L2 §1.2.9 observation points.
+     *
+     * <p>blocked_by: demo 载体扩展需求 2026-10-30. The current
+     * {@code TimeoutProbeAgentFactory} wires {@code model.stream(...)} and
+     * {@code /v1/query} runs streaming end-to-end;
+     * {@code CancelProbeController} has a blocking entry but it couples
+     * 300ms cancel scheduling, which forbids observing "natural header_wait
+     * timeout without cancel". The demo side needs to add:
+     * <ul>
+     *   <li>{@code BlockingProbeController} with {@code POST /probe/blocking/query}
+     *       calling {@code model.invoke(prompt)} once, retry=0, no
+     *       cancel scheduling;
+     *   <li>{@code blockingProbeModel} bean (one-shot, maxRetries=0,
+     *       retryOnTemporary=false);
+     *   <li>Spring profile {@code s2-blocking} (s2 variant reusing legacy
+     *       {@code openjiuwen.service.llm.timeout=8s} header-wait window,
+     *       only switching invoke path to blocking).
+     * </ul>
+     * <p>Full handoff spec: {@code docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md}.
+     *
+     * <p>Expect once demo-side lands: HTTP 200 response Map carries
+     * {@code completed=false} + {@code exception_type=ModelError} +
+     * {@code message} contains {@code "effective timeout 8.0s"};
+     * {@code error_details.phase=BEFORE_FIRST_SEGMENT},
+     * {@code error_details.layer=header_wait} (MUST#9 header_wait side,
+     * since response headers never arrive and
+     * {@code IdleGuardedBodyReader}'s {@code PreparedRequest.timeout}
+     * carries the header-wait window), {@code error_details.timeout_seconds=8.0},
+     * {@code error_details.stream=false} (blocking path marker).
+     */
+    @Test
+    @Disabled("blocked_by: demo 载体扩展需求 2026-10-30 — demo needs BlockingProbeController + "
+            + "blockingProbeModel + s2-blocking profile (s2 variant with blocking invoke path); see "
+            + "docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md §1. "
+            + "Flip from @Disabled to runnable (and move to Feat058RunnablePathTest) "
+            + "once demo HANDOFF confirms /probe/blocking/query returns the four-field "
+            + "error_details envelope.")
+    void blockingHeaderWaitPathObservesLayer() {
+        // Intentionally empty: method body will be filled once the demo side
+        // exposes /probe/blocking/query. The TC's acceptance script and
+        // expected envelope are specified in the SIT-REQUEST hand-off doc
+        // (see @Disabled reason). Keeping the method in-tree so that
+        // flipping to runnable is a single-line change.
+    }
+
+    /**
+     * TC-AGENT-LEVEL-IDLE-OVERRIDE (cases §3.15) — MUST#7 agent-level
+     * source of {@code streamIdleSeconds}. L2 §1.2.7 defines three legal
+     * sources with priority per-call &gt; agent-level &gt; client-level;
+     * per-call is covered by {@link #perCallIdleOverrideDoesNotPolluteClientConfig}
+     * (§3.9) and client-level by TC-AFTER-FIRST-SEGMENT-IDLE (§3.4) /
+     * TC-BLOCKING-SAME-SEMANTICS (§3.6). The agent-level source
+     * ({@code ReActAgentConfig.modelStreamIdleSeconds}) is currently
+     * unobserved.
+     *
+     * <p>blocked_by: demo 载体扩展需求 2026-10-30. The current
+     * {@code TimeoutProbeAgentFactory.build(...)} does not call
+     * {@code agentConfig.setModelStreamIdleSeconds(...)}, so the
+     * agent-level field has no SIT-observable injection point
+     * ({@code TimeoutProbeAgentFactory.java:55-62}). The demo side needs
+     * to add:
+     * <ul>
+     *   <li>{@code TimeoutProbeAgentProperties.modelStreamIdleSeconds}
+     *       ({@code Double}, nullable; non-null triggers the setter);
+     *   <li>Conditional
+     *       {@code if (props.getModelStreamIdleSeconds() != null)
+     *           agentConfig.setModelStreamIdleSeconds(props.getModelStreamIdleSeconds());}
+     *       in {@code TimeoutProbeAgentFactory.build()};
+     *   <li>Spring profile {@code s3-agent-level-idle} with client-level
+     *       {@code stream-idle-seconds=600s} (baseline) and
+     *       {@code demo.timeout-probe.model-stream-idle-seconds=300.0}
+     *       (agent-level override).
+     * </ul>
+     * <p>Full handoff spec: {@code docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md}.
+     *
+     * <p>Expect once demo-side lands: exactly one {@code [181008]} at
+     * phase={@code AFTER_FIRST_SEGMENT}, layer={@code stream_idle},
+     * {@code timeout_seconds=300.0} — the critical assertion:
+     * {@code timeout_seconds} must be {@code 300.0} (agent-level wins
+     * over client-level 600s). {@code timeout_seconds=600.0} would mean
+     * the agent-level field was not consumed by the SDK (MUST#7 breach).
+     */
+    @Test
+    @Disabled("blocked_by: demo 载体扩展需求 2026-10-30 — demo needs "
+            + "TimeoutProbeAgentProperties.modelStreamIdleSeconds field + "
+            + "TimeoutProbeAgentFactory.build conditional setModelStreamIdleSeconds "
+            + "injection + s3-agent-level-idle profile; see "
+            + "docs/review/SIT-REQUEST-feat-058-demo-side-extensions-20261030.md §2. "
+            + "Flip from @Disabled to runnable (and move to Feat058RunnablePathTest) "
+            + "once demo HANDOFF confirms timeout_seconds=300.0 (not 600.0) proves "
+            + "agent-level source consumption.")
+    void agentLevelIdleOverridesClientLevel() {
+        // Intentionally empty: method body will be filled once the demo side
+        // exposes agent-level modelStreamIdleSeconds injection. The TC's
+        // acceptance script and expected envelope are specified in the
+        // SIT-REQUEST hand-off doc (see @Disabled reason). Keeping the
+        // method in-tree so that flipping to runnable is a single-line change.
     }
 
     private void assumeFatJarsPresent() {

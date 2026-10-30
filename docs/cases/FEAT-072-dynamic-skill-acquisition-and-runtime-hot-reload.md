@@ -79,36 +79,37 @@ CONFIG_INVALID_*）、#961（fail-fast 诊断）、#964（关闭态零连接）�
 ## 5. 测试场景矩阵
 
 场景 ID 与 TestPlan §6 一一对应；"主断言"列是该场景的 Oracle 摘要（完整判定点见
-TestPlan）。"自动化落点"为本仓 `cases/integration/skillhub/` 的类#方法；状态为
-"已执行（手工）+已转化"的行，手工证据在 139 执行记录，自动化证据待 139 执行回填。
+TestPlan）。"自动化落点"为本仓 `cases/integration/skillhub/` 的类#方法。状态列格式
+"已执行（手工批次X）+已执行（自动化）"：手工证据在 139 执行记录；自动化证据为
+2026-10-30 在 139 的全套执行（30/30 全绿，commit 1509af7，`sit-final.log`）。
 
 | ID | 场景 | 主断言（Oracle） | 自动化落点 | 状态 |
 |---|---|---|---|---|
-| SC-ADD-01 | 启动期全量同步 | STARTUP 轮 SUCCESS/committed，added=全量，active 树与 manifest 落盘一致 | `SkillHubStartupSyncSitTest#startupSyncInstallsAllVisibleSkills` | 已执行（手工批次1）+已转化 |
-| SC-ADD-01b | 私有资产排除 | Hub 私有资产不进目录列表、不参与同步 | `SkillHubStartupSyncSitTest#startupSyncExcludesPrivateAssets` | 已执行（冒烟）+已转化 |
-| SC-ADD-05 | 默认最新的事后可见标记 | items 携带 previous/target/appliedVersion + changeReason + validationMode=PACKAGE_SHA256 | `SkillHubStartupSyncSitTest#startupReportCarriesFieldLevelMarkers` | 已执行（批次5）+已转化 |
-| SC-VER-02 | 版本演化（默认 latest） | 1.0.1→1.0.2 replaced/CONTENT_CHANGED/generation+1/路径不漂移 | `SkillHubVersionRulesSitTest#defaultLatestFollowsNewVersion` | 已执行（批次4）+已转化 |
-| SC-VER-03 | PIN 锁定不跟随 | PIN=1.0.1 时 Hub 发 1.0.2 → unchanged 留旧、不下载 | `SkillHubVersionRulesSitTest#pinnedVersionDoesNotFollowLatest` | 已执行（批次9）+已转化 |
-| SC-VER-10 | PIN 未知版本 | failedItems 单项失败、不安装、不静默转 latest | `SkillHubVersionRulesSitTest#pinToUnknownVersionFailsTheItemOnly` | 已执行（批次9）+已转化 |
-| SC-VER-08 | 规则文件热读 | 修改 version-rules-file 不重启，下一轮按新规则收敛 | `SkillHubVersionRulesSitTest#externalRulesFileIsHotReadEachRound` | 已执行（批次9）+已转化 |
-| SC-REPL-05 | 同版本仅元数据变化 | metadataOnly 记账、不重下载、generation 不推进 | `SkillHubVersionRulesSitTest#sameVersionMetadataOnlyRepublish` | 已执行（批次8）+已转化 |
-| SC-MANUAL-01 | 手动异步受理 | 202+syncId+reportPath，report 出 SUCCESS/committed/triggerSource=MANUAL | `SkillHubManualSyncSitTest#manualSyncAcceptedAsyncAndReported` | 已执行（批次6）+已转化 |
-| SC-MANUAL-02 | 管理令牌鉴权 | 错误/缺失 X-SkillHub-Admin-Token → 401，正确令牌放行 | `SkillHubManualSyncSitTest#manualSyncRequiresAdminToken` | 已执行（批次6）+已转化 |
-| SC-MANUAL-04 | 409 单飞冲突 | 在途轮内再触发 → 409+正在执行的 syncId，不排队 | `SkillHubManualSyncSitTest#manualSyncSingleFlightConflict` | 已执行（批次22）+已转化 |
-| SC-MANUAL-05 | 429 统一冷却 | 轮次间冷却窗内触发 → 429/COOLDOWN/retryAfterSeconds>0，冷却后恢复 | `SkillHubManualSyncSitTest#manualSyncUnifiedCooldown` | 已执行（批次22）+已转化 |
-| SC-POLL-01 | 周期触发生效 | Hub 变化无手动触发即被周期轮收敛 | `SkillHubPollingSitTest#periodicPollConvergesHubChangeWithoutManualTrigger` | 已执行（批次6 PASS-D）+已转化 |
-| SC-POLL-02 | 间隔静态配置 | 相邻周期轮间隔≥所配间隔；修改需重启（限制已记录） | `SkillHubPollingSitTest#periodicRoundsHonorStaticInterval` | 已执行（实测确认）+已转化（部分：重启生效限制为文档性记录） |
-| SC-DEL-01 | 删除下线与守卫 | 单删 removed=1 磁盘收敛；12>10 全拦 + removalBlocked + 新增照常 + PARTIAL | `SkillHubRemovalSitTest#removedSkillIsUninstalled`、`#removalGuardBlocksOversizedRemovalBatch` | 已执行（批次7/22）+已转化 |
-| SC-DEL-02 | 删除复查 | 待删 id 复查仍可解析（转私有）→ 取消删除保留本地 | `SkillHubRemovalSitTest#removalRecheckCancelsDeleteWhenStillResolvable` | 已执行（PR950 回归）+已转化 |
-| SC-READY-01 | 未就绪与恢复退避 | 启动轮 FAILED/CATALOG 不落空技能；恢复轮间隔≥30s；Hub 恢复后收敛 | `SkillHubNotReadySitTest#notReadyThenRecoveryWithBackoff` | 已执行（reg8111）+已转化 |
-| SC-CTRL-01 | 开关矩阵 | enabled=false 零 Hub 连接/无 .skillhub 树/管理端点 404；poll=false 无周期刷新 | `SkillHubControlSwitchSitTest#disabledMeansZeroHubContact`、`#disabledDoesNotAssembleManagementEndpoint`、`#enabledWithoutPollDoesNotRefreshPeriodically` | 已执行（R7/PR964）+已转化 |
-| SC-MIGR-01 | 存量布局非破坏清点 | 旧直铺目录保留原位内容不变；新技能进 .skillhub/active；重启幂等 | `SkillHubLegacyLayoutSitTest#legacyLayoutIsInventoriedNonDestructively` | 已执行（批次7）+已转化 |
-| SC-INST-01 | 多副本收敛 | 双实例 installedFingerprint 一致（不承诺代数相同）；手动触发仅命中目标实例 | `SkillHubMultiInstanceSitTest#twoInstancesConvergeAndManualSyncTargetsOneInstance` | 已执行（批次22）+已转化 |
-| SC-REG-01 | 关闭态存量全链路 | 旧链路本地技能进提示词可答，零 Hub 接触、零 .skillhub 介入 | `SkillHubDisabledLegacySitTest#legacySkillPathUsableWhenDisabled` | 已执行（老流程A PASS-REG）+已转化（LLM 门控） |
-| SC-REPL-01 | 热加载端到端 | 升级后回答切换为新 marker、目录路径不漂移 | `SkillHubHotReloadPromptSitTest#hotReloadReachesPromptAfterUpgrade` | 已执行（批次5）+已转化（LLM 门控） |
-| SC-CRASH-01 | 在途轮崩溃恢复 | 进程死亡重启后收敛完整状态（磁盘=manifest=报告），不服务半状态 | `SkillHubCrashRecoverySitTest#crashDuringRoundRecoversToConsistentState` | 已执行（批次7）+已转化（进程级注入以受管强停近似 kill -9，见 §6） |
-| SC-CRASH-02 | 提交后重启幂等 | unchanged、零重下载、generation 不变 | `SkillHubCrashRecoverySitTest#restartAfterCommitIsIdempotent` | 已执行（批次7）+已转化 |
-| SC-FAIL-CFG | 配置守卫（BUG-4） | 非法 rules/visible 文件 → FAILED/CONFIG/CONFIG_INVALID_* 定位，不笼统 ROUND_FAILED | `SkillHubConfigGuardSitTest#invalidVersionRulesFileFailsAtConfigStage`、`#invalidVisibleSkillsFileFailsAtConfigStage`、`#emptyRulesFileMeansNoPin` | 已执行（reg8112/8113）+已转化 |
+| SC-ADD-01 | 启动期全量同步 | STARTUP 轮 SUCCESS/committed，added=全量，active 树与 manifest 落盘一致 | `SkillHubStartupSyncSitTest#startupSyncInstallsAllVisibleSkills` | 已执行（手工批次1）+已执行（自动化） |
+| SC-ADD-01b | 私有资产排除 | Hub 私有资产不进目录列表、不参与同步 | `SkillHubStartupSyncSitTest#startupSyncExcludesPrivateAssets` | 已执行（冒烟）+已执行（自动化） |
+| SC-ADD-05 | 默认最新的事后可见标记 | items 携带 previous/target/appliedVersion + changeReason + validationMode=PACKAGE_SHA256 | `SkillHubStartupSyncSitTest#startupReportCarriesFieldLevelMarkers` | 已执行（批次5）+已执行（自动化） |
+| SC-VER-02 | 版本演化（默认 latest） | 1.0.1→1.0.2 replaced/CONTENT_CHANGED/generation+1/路径不漂移 | `SkillHubVersionRulesSitTest#defaultLatestFollowsNewVersion` | 已执行（批次4）+已执行（自动化） |
+| SC-VER-03 | PIN 锁定不跟随 | PIN=1.0.1 时 Hub 发 1.0.2 → unchanged 留旧、不下载 | `SkillHubVersionRulesSitTest#pinnedVersionDoesNotFollowLatest` | 已执行（批次9）+已执行（自动化） |
+| SC-VER-10 | PIN 未知版本 | failedItems 单项失败、不安装、不静默转 latest | `SkillHubVersionRulesSitTest#pinToUnknownVersionFailsTheItemOnly` | 已执行（批次9）+已执行（自动化） |
+| SC-VER-08 | 规则文件热读 | 修改 version-rules-file 不重启，下一轮按新规则收敛 | `SkillHubVersionRulesSitTest#externalRulesFileIsHotReadEachRound` | 已执行（批次9）+已执行（自动化） |
+| SC-REPL-05 | 同版本仅元数据变化 | metadataOnly 记账、不重下载、generation 不推进 | `SkillHubVersionRulesSitTest#sameVersionMetadataOnlyRepublish` | 已执行（批次8）+已执行（自动化） |
+| SC-MANUAL-01 | 手动异步受理 | 202+syncId+reportPath，report 出 SUCCESS/committed/triggerSource=MANUAL | `SkillHubManualSyncSitTest#manualSyncAcceptedAsyncAndReported` | 已执行（批次6）+已执行（自动化） |
+| SC-MANUAL-02 | 管理令牌鉴权 | 错误/缺失 X-SkillHub-Admin-Token → 401，正确令牌放行 | `SkillHubManualSyncSitTest#manualSyncRequiresAdminToken` | 已执行（批次6）+已执行（自动化） |
+| SC-MANUAL-04 | 409 单飞冲突 | 在途轮内再触发 → 409+正在执行的 syncId，不排队 | `SkillHubManualSyncSitTest#manualSyncSingleFlightConflict` | 已执行（批次22）+已执行（自动化） |
+| SC-MANUAL-05 | 429 统一冷却 | 轮次间冷却窗内触发 → 429/COOLDOWN/retryAfterSeconds>0，冷却后恢复 | `SkillHubManualSyncSitTest#manualSyncUnifiedCooldown` | 已执行（批次22）+已执行（自动化） |
+| SC-POLL-01 | 周期触发生效 | Hub 变化无手动触发即被周期轮收敛 | `SkillHubPollingSitTest#periodicPollConvergesHubChangeWithoutManualTrigger` | 已执行（批次6 PASS-D）+已执行（自动化） |
+| SC-POLL-02 | 间隔静态配置 | 相邻周期轮间隔≥所配间隔；修改需重启（限制已记录） | `SkillHubPollingSitTest#periodicRoundsHonorStaticInterval` | 已执行（实测确认）+已执行（自动化，部分：重启生效限制为文档性记录） |
+| SC-DEL-01 | 删除下线与守卫 | 单删 removed=1 磁盘收敛；12>10 全拦 + removalBlocked + 新增照常 + PARTIAL | `SkillHubRemovalSitTest#removedSkillIsUninstalled`、`#removalGuardBlocksOversizedRemovalBatch` | 已执行（批次7/22）+已执行（自动化） |
+| SC-DEL-02 | 删除复查 | 待删 id 复查仍可解析（转私有）→ 取消删除保留本地 | `SkillHubRemovalSitTest#removalRecheckCancelsDeleteWhenStillResolvable` | 已执行（PR950 回归）+已执行（自动化） |
+| SC-READY-01 | 未就绪与恢复退避 | 启动轮 FAILED/CATALOG 不落空技能；恢复轮间隔≥30s；Hub 恢复后收敛 | `SkillHubNotReadySitTest#notReadyThenRecoveryWithBackoff` | 已执行（reg8111）+已执行（自动化） |
+| SC-CTRL-01 | 开关矩阵 | enabled=false 零 Hub 连接/无 .skillhub 树/管理端点 404；poll=false 无周期刷新 | `SkillHubControlSwitchSitTest#disabledMeansZeroHubContact`、`#disabledDoesNotAssembleManagementEndpoint`、`#enabledWithoutPollDoesNotRefreshPeriodically` | 已执行（R7/PR964）+已执行（自动化） |
+| SC-MIGR-01 | 存量布局非破坏清点 | 旧直铺目录保留原位内容不变；新技能进 .skillhub/active；重启幂等 | `SkillHubLegacyLayoutSitTest#legacyLayoutIsInventoriedNonDestructively` | 已执行（批次7）+已执行（自动化） |
+| SC-INST-01 | 多副本收敛 | 双实例 installedFingerprint 一致（不承诺代数相同）；手动触发仅命中目标实例 | `SkillHubMultiInstanceSitTest#twoInstancesConvergeAndManualSyncTargetsOneInstance` | 已执行（批次22）+已执行（自动化） |
+| SC-REG-01 | 关闭态存量业务全链路 | 业务对话/上下文照常、技能问答回"无技能"（优雅空）、管理面 404、零 Hub 接触、零 .skillhub 介入 | `SkillHubDisabledLegacySitTest#disabledStateBusinessAsUsualWithZeroHubContact` | 已执行（老流程A PASS-REG）+已执行（自动化，LLM 门控） |
+| SC-REPL-01 | 热加载端到端 | 升级后提示词技能注册项持续在场（无空窗）、磁盘 SKILL.md 换新 marker、路径不漂移 | `SkillHubHotReloadPromptSitTest#hotReloadReachesPromptAfterUpgrade` | 已执行（批次5）+已执行（自动化，LLM 门控） |
+| SC-CRASH-01 | 在途轮崩溃恢复 | 进程死亡重启后收敛完整状态（磁盘=manifest=报告），不服务半状态 | `SkillHubCrashRecoverySitTest#crashDuringRoundRecoversToConsistentState` | 已执行（批次7）+已执行（自动化；进程级注入以受管强停近似 kill -9，见 §6） |
+| SC-CRASH-02 | 提交后重启幂等 | unchanged、零重下载、generation 不变 | `SkillHubCrashRecoverySitTest#restartAfterCommitIsIdempotent` | 已执行（批次7）+已执行（自动化） |
+| SC-FAIL-CFG | 配置守卫（BUG-4） | 非法 rules/visible 文件 → FAILED/CONFIG/CONFIG_INVALID_* 定位，不笼统 ROUND_FAILED | `SkillHubConfigGuardSitTest#invalidVersionRulesFileFailsAtConfigStage`、`#invalidVisibleSkillsFileFailsAtConfigStage`、`#emptyRulesFileMeansNoPin` | 已执行（reg8112/8113）+已执行（自动化） |
 
 ### 5.1 显式未承接项（不在本轮 PASS 口径内）
 
@@ -153,7 +154,7 @@ SUT 是**真实部署的业务 Agent**（真实制品 jar + 真实模型可选�
 | 守卫语义 | 删除数>10 全拦本轮删除、新增照常、PARTIAL+removalBlocked；复查可解析→取消删除 | L2 §3.3 AC-12；PR #950 |
 | 完整性 | 崩溃/重启后磁盘=manifest=报告 installedCount，不服务半状态 | L2 §3.6 AC-14/15 |
 | 开关矩阵 | enabled=false 零 Hub 连接、无受管树、管理端点 404 | L2 §6.5；PR #964 |
-| 热加载 | 升级后提示词 marker 切换、directoryKey 不漂移 | FEAT 验收出口；TestPlan SC-REPL-01 |
+| 热加载 | 升级后提示词技能注册项持续在场（无空窗）、磁盘内容换新、directoryKey 不漂移 | FEAT 验收出口；TestPlan SC-REPL-01 |
 
 ## 8. 执行策略
 
@@ -161,13 +162,19 @@ SUT 是**真实部署的业务 Agent**（真实制品 jar + 真实模型可选�
   手工执行并记录（批次 1–25）；2026-10-29 在回归基线 common@3512c0aaa（PR #950/#958/
   #961/#964）上完成回归并闭环缺陷（issues #506/#521/#523/#527 全部 close，回归结论见
   issue 评论）。
+- **自动化首次全套执行**：2026-10-30 在 139 上 `mvn test -Dtest='SkillHub*SitTest'`
+  **30/30 全绿**（commit 1509af7；LLM 门控用例以 Bailian glm-5.3 真实模型驱动；
+  日志 `/root/feat072/stage0/demo072/sit-final.log`）。转化过程中的契约对齐修复见
+  附录 A.3。
 - **自动化转化**（本档交付物）：上述场景转化为 acceptance 仓可执行黑盒用例（§5 落点），
   Hub 换为进程内替身，消除真实 Hub 部署依赖；执行前置仅剩 JDK 21 + `~/.m2` 有 0.1.2
   demo 制品 + （可选）真实 LLM 环境变量。
 - **LLM key 的供给方式**：仓库全局 `sut.java.system-properties.LLM_API_KEY` 为空串且以
   `-D` 注入会覆盖环境变量；用例基座把 key 以最高优先级 `--LLM_API_KEY=<env>` Spring
-  参数注入（值只在运行时从环境读取，不落文件、不落日志）。`LLM_API_BASE`/`LLM_MODEL`
-  经环境变量透传。
+  参数注入（值只在运行时从环境读取，不落文件、不落日志）。**`LLM_API_BASE`/`LLM_MODEL`
+  同样以 `--` Spring 参数注入**（`bindIfPresent`）——它们也被全局 `-D` 值
+  （workspace 端点 + qwen3.8-max）覆盖，环境变量透传会静默失效（2026-10-29 实测 403
+  "Workspace endpoint access denied"，2026-10-30 修复后 LLM 用例全绿）。
 - **统一冷却**：轮次间存在冷却窗（实测 17–18s 量级），用例基座对 429 自动等待重试；
   冷却契约本身由 `SkillHubManualSyncSitTest#manualSyncUnifiedCooldown` 判定。
 - **执行命令**（在 139 或任意具备前置的 Linux 主机）：
@@ -178,12 +185,14 @@ SUT 是**真实部署的业务 Agent**（真实制品 jar + 真实模型可选�
       -DgroupId=com.openjiuwen.example -DartifactId=skillhub-runtime-demo \
       -Dversion=0.1.2 -Dpackaging=jar
   # 全量（提示词探针类需要 LLM_API_KEY/LLM_API_BASE/LLM_MODEL 环境变量）
-  mvn test -Dtest.env=openjiuwen -Dtest='SkillHub*SitTest'
+  mvn test -Dtest.env=openjiuwen -Dagent-runtime-java.version=0.1.3 -Dtest='SkillHub*SitTest'
+  # 注：-Dagent-runtime-java.version=0.1.3 是基线要求（0.1.2 规格缺
+  # ServeRequest.lastUserParts()，pre-existing 用例编译不过）
   ```
 
-- **退出策略**：手工执行已形成验收结论（见 3 事实来源的执行/回归记录）；自动化转化的
-  PASS 作为可回归资产，首次在 139 执行后回填本矩阵"状态"列（区分 手工已执行 / 自动化
-  已执行）。
+- **退出策略**：手工执行已形成验收结论（见 3 事实来源的执行/回归记录）；自动化转化
+  已于 2026-10-30 首次在 139 全套执行通过（30/30），矩阵"状态"列已回填
+  （手工证据 + 自动化执行双层口径）。
 
 ## 9. 与 TestPlan 的区别与联系
 
@@ -211,3 +220,31 @@ SUT 是**真实部署的业务 Agent**（真实制品 jar + 真实模型可选�
   retryAfterSeconds>0 与冷却后恢复，不锁死具体秒数。
 - **BUG-10 勘误**：DRAIN_TIMEOUT 代码默认 60s，15s 为 demo yml 覆盖值——已记入 docs#42
   文档差异；本矩阵不设排空超时的独立自动化（在途保护归 SC-CONC，P1 挂账）。
+
+### 附录 A.3 转化过程中的 mock↔SUT 契约对齐学习（2026-10-30，代码核对 + 全套执行验证）
+
+替身 Hub 复刻真实 Hub 契约时踩到的六处差异，均已修复并随 30/30 全绿验证：
+
+1. **SKILL.md frontmatter 约束**：`description` 必须是非空字符串；值中含 ": " 的标量
+   必须加引号（SnakeYAML 解析约束，`SkillPathSafety.inspectSkill` 拒绝空 description）。
+   替身生成 SKILL.md/plugin.yaml 时统一给值加引号。
+2. **包字节确定性**：真实 Hub 对同一资产版本恒定返回同一字节流（checksum=收件口径）；
+   `new ZipEntry(name)` 会嵌入当前时间戳，2s DOS 边界即可造成轮内/轮间 checksum 漂移，
+   制造 CHECKSUM_MISMATCH/METADATA_CHANGED 假阳性——替身 zip 条目固定时间戳
+   （`FIXED_ZIP_TIME`）。
+3. **metadataOnly 语义**：SUT 的同版本元数据更新仅指 displayName 变化
+   （`reusesInstalledPackage` 命中 → `applyMetadataOnly` 只改 displayName/version/checksum）；
+   包内任何文件变化走 contentDigest → replaced。替身的
+   `republishSameVersionMetadataOnly` 只改 displayName。
+4. **删除复查口径**：复查是**目录列表重取**（`planRemovals → containsSkills`，全量
+   catalog 再拉一次）而非 artifacts 直达端点——"转私有后 artifacts 端点仍可解析"不构成
+   复查命中；SC-DEL-02 改为轮内目录快照漂移（本轮列表消失、复查列表仍在 →
+   CATALOG_CHANGED）。
+5. **受管树磁盘布局**：`active/<32hex directoryKey>/<sk-显示名-key>/` 两层结构
+   （`SkillPathSafety.directoryKey/localName`），不是按 assetId 直铺；断言用
+   `activeSkillPaths` 助手（walk 两层找含 SKILL.md 的目录）。
+6. **提示词探针的可达面**：demo 的提示词只注入技能注册项（名称/路径），SKILL.md 内容
+   按需经 read_file 工具读取，而 demo 未接线该工具（SUT 日志
+   `react_skill_read_tool_missing available_tool_count=0`；批次 2 q102.json 手工实测同
+   现象）。故"marker 出现在回答中"在此 SUT 不可达——提示词探针用手工批次同款
+   "不要调用工具，报技能名"手法（技能注册项在场性），内容层由磁盘断言承接。

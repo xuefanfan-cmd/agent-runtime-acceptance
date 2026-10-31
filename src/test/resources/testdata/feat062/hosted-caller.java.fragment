@@ -1,0 +1,18 @@
+@Bean @ConditionalOnProperty(name="feat062.hosted-caller",havingValue="true")
+static org.springframework.beans.factory.config.BeanPostProcessor feat062HostedCallerHandlers(
+        ObjectProvider<TravelHotelLlmProperties> properties,
+        org.springframework.beans.factory.config.AutowireCapableBeanFactory beanFactory) {
+    return new org.springframework.beans.factory.config.BeanPostProcessor() {
+        public Object postProcessBeforeInitialization(Object bean, String name) {
+            String id = name.equals("travelHotelHandler") ? "travel-hotel"
+                    : name.equals("travelHotelAlternateHandler") ? "travel-hotel-alt" : null;
+            if (id == null) return bean;
+            // Keep the Demo's sole HostedAgentDefinitions bean and real hotel tools.
+            var handler = new com.openjiuwen.service.adapters.agentcore.ext.agentfw.JiuwenCoreAgentExtHandler(
+                    TravelHotelApplication.buildHotelAgent(properties.getObject(), false, null, id));
+            // Replacement happens after normal bean population; apply the existing product injections.
+            beanFactory.autowireBean(handler);
+            return handler;
+        }
+    };
+}

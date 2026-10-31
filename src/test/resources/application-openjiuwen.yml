@@ -317,6 +317,10 @@ sut:
       artifact: agent-deep-research
       version: 0.1.1
       llm-api-key-property: openjiuwen.demo.deep-research.api-key
+    hosted-mixed:
+      group: com.openjiuwen.example
+      artifact: multi-mixed-agents-hosted-demo
+      version: 0.1.1
     hosted-deep:
       group: com.openjiuwen.example
       artifact: multi-deep-research-hosted-demo

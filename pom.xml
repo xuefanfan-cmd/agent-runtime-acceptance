@@ -263,6 +263,13 @@
             <version>${rocketmq-client.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- Existing FEAT-033 config contract tests import this public API. -->
+        <dependency>
+            <groupId>com.openjiuwen</groupId>
+            <artifactId>agent-core-ext-context-compression</artifactId>
+            <version>0.1.3</version>
+            <scope>test</scope>
+        </dependency>
         <!-- FEAT-031 public Studio IR SDK and offline fetch contracts. -->
         <dependency>
             <groupId>com.openjiuwen</groupId>

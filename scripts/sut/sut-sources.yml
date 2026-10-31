@@ -85,4 +85,5 @@ envs:
       - { source: agent-solution, module: common/example/multi-deep-research-demo }
       - { source: agent-solution, module: common/example/multi_react_travel_hosted_demo }
       - { source: agent-solution, module: common/example/multi_deep_research_hosted_demo }
+      - { source: agent-solution, module: common/example/multi_mixed_agents_hosted_demo }
       - { source: agent-solution, module: common/example/versatile-orchestration-demo }

@@ -1,0 +1,167 @@
+package com.openjiuwen.example.travel.ROLE;
+
+import com.openjiuwen.service.app.hosting.InstanceCatalog;
+import com.openjiuwen.service.app.controller.a2a.client.*;
+import com.openjiuwen.service.app.a2a.catalog.*;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.openjiuwen.service.adapters.agentcore.ext.extension.AgentInstanceCustomizer;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.example.travel.mainplan.tools.RequestUserInputTool;
+import com.openjiuwen.example.travel.mainplan.rails.UserInputInterruptRail;
+import java.util.*;
+import java.util.concurrent.*;
+
+/** Test-only read/trigger adapter: returns the real public contracts without modifying results. */
+@org.springframework.boot.autoconfigure.AutoConfiguration
+@Profile("feat062-contract")
+@Import(Feat062ContractConfiguration.Probe.class)
+public class Feat062ContractConfiguration {
+    HOSTED_CONFIGURATION
+    @Bean
+    static org.springframework.beans.factory.config.BeanPostProcessor feat062BindStandardCustomizers(
+            ObjectProvider<AgentInstanceCustomizer> customizers, org.springframework.core.env.Environment environment) {
+        return new org.springframework.beans.factory.config.BeanPostProcessor() {
+            public Object postProcessBeforeInitialization(Object bean, String name) {
+                if(bean instanceof com.openjiuwen.service.adapters.agentcore.ext.agentfw.JiuwenCoreAgentExtHandler handler) {
+                    handler.configureInstanceCustomization(environment.getProperty("spring.application.name"),customizers.orderedStream().toList());
+                }
+                return bean;
+            }
+        };
+    }
+    static final java.util.concurrent.atomic.AtomicInteger decryptCount=new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger sourceLoads=new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger sourceFailures=new java.util.concurrent.atomic.AtomicInteger();
+    @Bean @Primary @ConditionalOnProperty(name="feat062.decrypt-token",havingValue="true")
+    com.openjiuwen.service.adapters.common.credential.CredentialDecryptor feat062Decryptor() {
+        return value -> {
+            if(value==null||!value.startsWith("ENC(")) return value;
+            try {
+                byte[] packed=Base64.getDecoder().decode(value.substring(4,value.length()-1));
+                byte[] key=Base64.getDecoder().decode(System.getenv("FEAT062_CIPHER_KEY"));
+                var cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE,new javax.crypto.spec.SecretKeySpec(key,"AES"),
+                    new javax.crypto.spec.GCMParameterSpec(128,Arrays.copyOfRange(packed,0,12)));
+                decryptCount.incrementAndGet();
+                return new String(cipher.doFinal(Arrays.copyOfRange(packed,12,packed.length)),java.nio.charset.StandardCharsets.UTF_8);
+            } catch(Exception error) { throw new IllegalStateException("FEAT062 local cipher fixture",error); }
+        };
+    }
+    @Bean @Primary @ConditionalOnProperty(name="feat062.source-file")
+    RemoteCatalogSource feat062Source(@Value("${feat062.source-file}") String path) {
+        return new RemoteCatalogSource() {
+            final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+            public RemoteCatalogSnapshot load() {
+                sourceLoads.incrementAndGet();
+                try {
+                    var input=json.readTree(java.nio.file.Files.readString(java.nio.file.Path.of(path)));
+                    if(input.path("fail").asBoolean()) {
+                        sourceFailures.incrementAndGet();
+                        throw new IllegalStateException("FEAT062 controlled source exception");
+                    }
+                    List<RemoteCatalogEntry> entries=new ArrayList<>();
+                    for(var entry:input.path("entries")) {
+                        var card=org.a2aproject.sdk.jsonrpc.common.json.JsonUtil.fromJson(entry.path("card").toString(),org.a2aproject.sdk.spec.AgentCard.class);
+                        List<RemoteInstanceCandidate> candidates=new ArrayList<>();
+                        for(var c:entry.path("instances")) candidates.add(new RemoteInstanceCandidate(c.path("instanceId").asText(),c.path("url").asText(),c.path("weight").asInt()));
+                        entries.add(new RemoteCatalogEntry(entry.path("agentId").asText(),card,entry.path("timeoutSeconds").asInt(10),entry.path("isStreaming").asBoolean(true),candidates,null));
+                    }
+                    return new RemoteCatalogSnapshot(input.path("version").asLong(),entries);
+                } catch(RuntimeException error) { throw error; }
+                catch(Exception error) { throw new IllegalStateException("FEAT062 source input: " + error.getMessage(),error); }
+            }
+            public void close() { }
+        };
+    }
+    @Bean @Primary @ConditionalOnProperty(name="feat062.empty-instances",havingValue="true")
+    InstanceCatalog feat062EmptyInstances() { return List::of; }
+    @Bean @ConditionalOnProperty(name="feat062.throw-listener",havingValue="true")
+    Object feat062Listener() {
+        return new Object() {
+            final java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
+            @org.springframework.context.event.EventListener
+            public void changed(RemoteAgentCatalogChangedEvent event) {
+                if(once.compareAndSet(false,true)) throw new IllegalStateException("FEAT062 single event-consumer failure");
+            }
+        };
+    }
+    @Bean @ConditionalOnProperty(name="feat062.interrupt-trip", havingValue="true")
+    AgentInstanceCustomizer feat062TripInput() {
+        return (id, actual) -> {
+            if (id.equals("travel-trip") && actual instanceof ReActAgent agent) {
+                var tool = new RequestUserInputTool();
+                Runner.resourceMgr().addTool(tool, agent.getCard().getId());
+                agent.getAbilityManager().add(tool.getCard());
+                agent.registerRail(new UserInputInterruptRail());
+            }
+        };
+    }
+    @Bean @ConditionalOnProperty(name="feat062.unavailable-probe", havingValue="true")
+    AgentInstanceCustomizer feat062UnavailableProbe() {
+        return (id, actual) -> {
+            if (id.equals("travel-mainplan") && actual instanceof ReActAgent agent) {
+                var spec = new com.openjiuwen.service.adapters.agentcore.ext.external.RemoteA2aToolInstaller.RemoteA2aToolSpec(
+                        "travel-trip", "feat062-unavailable-probe", "Arrange the requested business itinerary through travel-trip.",
+                        Map.of("type", "object", "properties", Map.of("remoteInput", Map.of("type", "string")),
+                                "required", List.of("remoteInput")));
+                agent.registerRail(new com.openjiuwen.service.adapters.agentcore.ext.external.RemoteA2aInterruptRail(List.of(spec)));
+            }
+        };
+    }
+    @Bean @ConditionalOnProperty(name="feat062.readiness-file")
+    AgentInstanceCustomizer feat062Readiness(ObjectProvider<InstanceCatalog> catalogs,
+            @Value("${feat062.readiness-file}") String path) {
+        return (id, actual) -> {
+            Map<String,Object> observed=new LinkedHashMap<>(); observed.put("agentId",id);
+            try { observed.put("count",catalogs.getObject().instances().size()); observed.put("status",200); }
+            catch(com.openjiuwen.service.app.hosting.HostedIngressResolver.SelectionException error) {
+                observed.put("status",error.status()); observed.put("reason",error.reason());
+            }
+            try { java.nio.file.Files.writeString(java.nio.file.Path.of(path),
+                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(observed)); }
+            catch(java.io.IOException error) { throw new IllegalStateException("readiness observer",error); }
+        };
+    }
+    @RestController @Profile("feat062-contract")
+    public static class Probe {
+        final RemoteAgentCaller caller;
+        final InstanceCatalog instances;
+        final ObjectProvider<A2ARemoteAgentCardRegistry> catalogs;
+        Probe(RemoteAgentCaller caller, InstanceCatalog instances, ObjectProvider<A2ARemoteAgentCardRegistry> catalogs) {
+            this.caller=caller; this.instances=instances; this.catalogs=catalogs;
+        }
+        @GetMapping("/feat062/instances")
+        public Object instances() { return instances.instances(); }
+        @GetMapping("/feat062/decrypt-count")
+        public int decryptCount() { return decryptCount.get(); }
+        @GetMapping("/feat062/source-observations")
+        public Map<String,Integer> sourceObservations() {
+            return Map.of("loads", sourceLoads.get(), "failures", sourceFailures.get());
+        }
+        @GetMapping("/feat062/catalog")
+        public Object catalog() { return catalogs.getObject().snapshot(); }
+        @ExceptionHandler(Exception.class)
+        @ResponseStatus(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+        public Map<String,Object> observedFailure(Exception error) {
+            Throwable cause=error;
+            while((cause instanceof java.util.concurrent.CompletionException || cause instanceof java.util.concurrent.ExecutionException)
+                    && cause.getCause()!=null) cause=cause.getCause();
+            return Map.of("error",cause.getClass().getName(),"message",String.valueOf(cause.getMessage()));
+        }
+        @PostMapping("/feat062/call")
+        public CompletableFuture<RemoteCallOutcome> call(@RequestBody Map<String,Object> input) {
+            RemoteCall call = new RemoteCall((String)input.get("agent"), (String)input.get("message"),
+                    (String)input.getOrDefault("context", UUID.randomUUID().toString()),
+                    (String)input.get("task"), Map.of(), Map.of(), Boolean.TRUE.equals(input.get("streaming")));
+            return caller.callOutcome(call, new RemoteAgentCaller.EventObserver() {
+                public void onStatus(org.a2aproject.sdk.spec.TaskStatusUpdateEvent event) { }
+                public void onArtifact(org.a2aproject.sdk.spec.TaskArtifactUpdateEvent event) { }
+            });
+        }
+    }
+}

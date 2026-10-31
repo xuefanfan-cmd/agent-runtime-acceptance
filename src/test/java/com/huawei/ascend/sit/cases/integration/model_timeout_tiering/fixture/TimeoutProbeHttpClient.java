@@ -19,6 +19,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * HTTP client for the FEAT-058 timeout-tiering-model-call-demo
@@ -110,7 +112,7 @@ public final class TimeoutProbeHttpClient {
         int status = resp.statusCode();
         String raw = resp.body();
         if (raw == null || raw.isBlank()) {
-            return new QueryResponse(status, null, null, null, null, raw, null, false, null);
+            return new QueryResponse(status, null, null, null, null, raw, null, 0, false, null);
         }
         // 2026-10-22 实证勘误（T-M1d）：probe-agent 响应为 SSE 流（Content-Type: text/event-stream），
         // 而非单 JSON；原 MAPPER.readTree(raw) 会直接抛，所有字段落空，S0 happy path 都读不到
@@ -137,6 +139,7 @@ public final class TimeoutProbeHttpClient {
         Integer errorStatusCode = null;
         Map<String, Object> errorDetails = null;
         Map<String, Object> lastAnswerPayload = null;
+        int railRetryCount = 0; // C-4 (PR!472): count of model_retry events with retry_tier=rail
         for (String line : raw.split("\n")) {
             String stripped = line.strip();
             if (!stripped.startsWith("data:")) {
@@ -152,17 +155,21 @@ public final class TimeoutProbeHttpClient {
             } catch (Exception notJson) {
                 continue;
             }
-            // Skip type=model_retry events: their payload carries the upstream HTTP
-            // status_code (429/500/etc), NOT the SDK error code (181009/181001). Reading
-            // status_code from model_retry would misclassify the retry event's HTTP
-            // status as the terminal error code and shadow the real error (which lands
-            // either in a later type=error event or in the terminal type=answer with
-            // payload.result_type=error — the latter per 2026-10-22 Reply §二 1 is the
-            // current wire shape for ModelError/PermanentModelError object-path cases).
-            // Cross-ref: FEAT-064 observation report 2026-10-27 §二 B 组 self-admitted
-            // parseSse bug (docsReview commit ee5ed0b).
+            // C-4 (PR!472): model_retry events now carry retry_tier=client|rail.
+            // We still skip status_code extraction from model_retry (its payload
+            // carries the upstream HTTP status_code, not the SDK error code, which
+            // would misclassify the event — see original comment above). But we DO
+            // extract retry_tier to count Rail guardrail retries. The field may sit
+            // at the event top level or inside payload; try both.
             String eventType = evt.path("type").asText("");
             if ("model_retry".equals(eventType)) {
+                JsonNode tierNode = evt.path("retry_tier");
+                if (tierNode.isMissingNode() || !tierNode.isTextual()) {
+                    tierNode = evt.path("payload").path("retry_tier");
+                }
+                if (tierNode.isTextual() && "rail".equals(tierNode.asText())) {
+                    railRetryCount++;
+                }
                 continue;
             }
             JsonNode p = evt.has("payload") && evt.get("payload").isObject() ? evt.get("payload") : evt;
@@ -231,7 +238,7 @@ public final class TimeoutProbeHttpClient {
             }
         }
         return new QueryResponse(status, output, resultType, errorStatusCode, errorDetails,
-                raw, lastAnswerPayload, false, null);
+                raw, lastAnswerPayload, railRetryCount, false, null);
     }
 
     private QueryResponse parseSingleJson(int status, String raw) {
@@ -315,7 +322,7 @@ public final class TimeoutProbeHttpClient {
             // leave fields null; caller inspects rawBody for diagnostics.
         }
         return new QueryResponse(status, output, resultType, errorStatusCode, errorDetails,
-                raw, parsed, false, null);
+                raw, parsed, 0, false, null);
     }
 
     private static String stripTrailingSlash(String s) {
@@ -409,11 +416,12 @@ public final class TimeoutProbeHttpClient {
             Map<String, Object> errorDetails,
             String rawBody,
             Map<String, Object> parsedBody,
+            int railRetryCount,
             boolean callerAborted,
             String callerAbortReason) {
 
         static QueryResponse aborted(String reason) {
-            return new QueryResponse(-1, null, null, null, null, null, null, true, reason);
+            return new QueryResponse(-1, null, null, null, null, null, null, 0, true, reason);
         }
 
         public boolean isTimeoutError() {
@@ -686,7 +694,7 @@ public final class TimeoutProbeHttpClient {
                 errorStatusCode = ErrorEnvelopeAsserter.MODEL_CALL_TIMEOUT_CODE;
             }
             return new QueryResponse(statusCode, content, null, errorStatusCode,
-                    errorDetails, rawBody, null, callerAborted, callerAbortReason);
+                    errorDetails, rawBody, null, 0, callerAborted, callerAbortReason);
         }
     }
 }

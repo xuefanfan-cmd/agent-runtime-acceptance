@@ -470,11 +470,17 @@ final class Feat064ErrorTaxonomyAndRetryTest {
      * TC-STREAM-RATE-LIMITED-FIRST-SEGMENT-AFTER (cases §3.20, ST-S03 子型
      * — r6 relabel S02→S03). stub mode {@code stream-rate-limited-first-segment-after}
      * emits the first SSE segment OK, then injects a 429. {@code FirstSegmentRetryIterator}
-     * MUST NOT whole-call retry past the first segment (MUST#7 "首段后不透明重试");
-     * Rail is also bypassed at that boundary. Expect: numericCode ∈
-     * {181009, 181001} (the exact code is schema-dependent — DashScope family
-     * maps 429-after-first to TEMPORARY; OpenAI family keeps RATE_LIMITED) +
-     * zero retry log lines + strong-eq 1 stub call.
+     * MUST NOT whole-call retry past the first segment (MUST#7 "首段后不透明重试").
+     * Rail ({@code ClassifiedModelFailureRail}) DOES fire one guardrail round (the
+     * outer rail is not bounded by the first-segment rule in the pre-C-4 implementation),
+     * delivering exactly 2 stub calls and 1 {@code retry_tier=rail} wire event.
+     * Expect: numericCode ∈ {181009, 181001} + zero inner retry log lines +
+     * strong-eq 2 stub calls + 1 Rail retry wire event.
+     *
+     * <p>C-4 (PR!472) upgrade: stub==2 and assertRailRetryOccurred() pin the Rail
+     * guardrail behaviour at the wire level. Session interval formula
+     * {@code max(配置值, stream_idle+grace)} prevents 111135 collision on the
+     * Rail second round.
      *
      * <p>Demo S21 covers this scenario per 2026-10-28 dev confirmation —
      * SIT does not need to construct a custom stream.
@@ -500,9 +506,10 @@ final class Feat064ErrorTaxonomyAndRetryTest {
                             ErrorEnvelopeAsserter.MODEL_CALL_ERROR);
 
             new ErrorEnvelopeAsserter(trace.response)
-                    .assertNoRetryLog(trace.tailer)
+                    .assertNoRetryLog(trace.tailer)           // inner Retrier: 0 retries (first-segment boundary)
                     .assertStubCallCount(trace.stats,
-                            "stream-rate-limited-first-segment-after", 1);
+                            "stream-rate-limited-first-segment-after", 2) // C-4: Rail adds 1 extra round
+                    .assertRailRetryOccurred();               // C-4 (PR!472): retry_tier=rail wire event visible
 
             assertThat(trace.tailer.totalTimeoutCount())
                     .as("stream-rate-limited-first-segment-after must not emit any 181008")

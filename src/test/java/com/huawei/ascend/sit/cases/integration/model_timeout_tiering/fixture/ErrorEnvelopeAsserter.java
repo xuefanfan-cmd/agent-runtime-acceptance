@@ -299,6 +299,48 @@ public final class ErrorEnvelopeAsserter {
     }
 
     /**
+     * C-4 (PR!472): assert that at least one {@code model_retry} SSE event with
+     * {@code retry_tier=rail} was observed in this response. This verifies that
+     * the Rail guardrail ({@code ClassifiedModelFailureRail}) fired and emitted
+     * a wire-visible lifecycle event before delivering the terminal error envelope.
+     *
+     * <p>Use for FEAT-058 S5 (blocking-path stream_idle) and FEAT-064 §3.20
+     * (rate-limited first-segment-after) where Rail is expected to retry exactly
+     * once before budget exhaustion.
+     */
+    public ErrorEnvelopeAsserter assertRailRetryOccurred() {
+        int actual = response.railRetryCount();
+        if (actual == 0) {
+            throw new AssertionError(
+                    "Expected at least one retry_tier=rail model_retry SSE event "
+                            + "but railRetryCount=0. "
+                            + "Check that C-4 (PR!472) jar is in use and that "
+                            + "TimeoutProbeHttpClient.parseSse correctly reads "
+                            + "the retry_tier field from model_retry events."
+                            + "\n--- raw body ---\n" + response.rawBody());
+        }
+        return this;
+    }
+
+    /**
+     * C-4 (PR!472): assert the exact number of {@code model_retry} SSE events
+     * with {@code retry_tier=rail} observed in this response.
+     *
+     * @param expected exact Rail retry event count (typically 1 for default
+     *                 {@code DEFAULT_MAX_GUARDRAIL_RETRIES=1} Rail budget)
+     */
+    public ErrorEnvelopeAsserter assertRailRetryCount(int expected) {
+        int actual = response.railRetryCount();
+        if (actual != expected) {
+            throw new AssertionError(
+                    "Expected railRetryCount=" + expected
+                            + " (model_retry events with retry_tier=rail) but got " + actual
+                            + "\n--- raw body ---\n" + response.rawBody());
+        }
+        return this;
+    }
+
+    /**
      * MUST#12 aggregate: the four fields are each independently present. This
      * check does not verify values — pair with the per-field asserts.
      */

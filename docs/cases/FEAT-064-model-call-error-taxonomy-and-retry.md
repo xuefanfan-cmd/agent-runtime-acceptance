@@ -563,6 +563,35 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 | TC-CROSS-FAMILY-OPENAI-VS-SILICONFLOW | **runnable（r5 新增 ST-O01；r6 订正 DeepSeek→SiliconFlow）** | 载体层：`TimeoutDemoLauncher.probeAgent()` 需支持 TC 侧覆写 `LLM_PROVIDER`（r5 新增，见 §2.2） | **SIT 待新增**：§3.21 新 TC `crossFamilyOpenAIAndSiliconFlowClassifyAuthFailureIdentically` + fixture `LLM_PROVIDER` override 开孔；r6 订正：DeepSeek 反射代理到 OpenAIModelClient 非独立栈，SiliconFlow 自带 Retrier/SseIterator/handlers 才是真二族 |
 | TC-STREAM-DISCONNECT-FIRST-SEGMENT-AFTER-STRICT **r6 新增** | **runnable（r6 新增 ST-S02 真型，strict pin 181001 唯一）** | demo stub mode `stream-disconnect-first-segment-after` 需 demo-handoff 新增（首段后纯 TCP close 无 payload） | **SIT 待新增**：§3.22 新 TC `streamDisconnectFirstSegmentAfterStrictPinsTemporary`；strict pin numericCode==181001 唯一 + stub count==1 + T3 `category=TEMPORARY, reason=NOT_RETRYABLE`（纯 disconnect 判为 permanent-error 终态） |
 
+### 2026-10-30 实证小结（PR!472+PR!478 新 jar 全量跑）
+
+**ECS 跑测结果**：**3 FAIL 持续 / RetryConfig 5/5 PASS / RealEndpoint §3.19 根因订正**
+
+- 使用 jar：`agent-core-java-0.1.17.jar`（md5 `7c5813ecb551b708b83bf7ebccc6d54c`，PR!472 C-4 + PR!478 SSE EOF 修复）；`timeout-probe-agent-0.1.0.jar`（md5 `5c3549317e63744b092ee2d5116303ed`）；`llm-stub-server-0.1.0.jar`（md5 `4a9934126bd01bd57307d865a1d0a54e`）
+- 使用 model（real-endpoint 侧）：`qwen-flash-character`（阿里云百炼，`https://llm-nj0zwkkqemzwtqlu.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`）
+
+**Feat064RetryConfigAndCrossProviderTest**：**5/5 PASS**（rateLimitedSwitchOff / temporarySwitchOff / maxRetriesZero / crossProvider / negativeMaxRetries）
+
+**Feat064RealEndpointSamplingTest**：**2/3 PASS**（realEndpointHappyPath / realEndpointAuthFailure PASS；§3.19 FAIL）
+
+**Feat064ErrorTaxonomyAndRetryTest**：**11/13 PASS**（§3.20 / §3.22 FAIL）
+
+**3 条 FAIL 跟踪项（本轮持续，均非 SIT fixture bug）**：
+
+| TC | FAIL 表现 | 10-30 新发现 | 等待动作 |
+|---|---|---|---|
+| §3.19 realEndpointContextLengthClassifiesAs181012 | `Expected 181012 but got 181001` | **根因订正（10-29 推断有误）**：10-29 认为是 context window 未超限（model 128K+），但 10-30 换 `qwen-flash-character`（8K context window）仍 FAIL；真实根因是 `RuleBasedModelErrorClassifier` 的 `CONTEXT_LENGTH_KEYWORDS` 未覆盖阿里云百炼 Qwen 格式（`"Range of input length should be [1, 8192]"` / `code=invalid_parameter_error`）。**观察报告已推 docsReview**（commit `a6bc0d3981e5`） | 等 demo 侧确认 Qwen 错误格式是否在覆盖范围内 + 修复 `RuleBasedModelErrorClassifier`；SIT 复跑 §3.19 验证 |
+| §3.20 streamRateLimitedFirstSegmentAfterShortCircuits | `stub==2`（期望 1） | PR!472 C-4 合入后仍 FAIL（C-4 修的是 FEAT-058 S5 session interval 公式，不修 Rail 首段边界检查）。根因：`ClassifiedModelFailureRail.onModelException` 无首段已到达感知，Rail 挽留 1 次 → stub 被调 2 次。**观察报告已推 docsReview**（commit `0e7ae3fe`） | 等 demo 侧分析 Rail 首段边界感知能力后修复；SIT 复跑验证 stub==1 |
+| §3.22 streamDisconnectFirstSegmentAfterStrictPinsTemporary | `stub==2`（期望 1） | PR!478 修复了 Issue #276（pure TCP close 现在被正确检测为 error，不再沉默），stub==2 证明 error IS 被检测到；但 Rail 仍在首段后触发整轮重试（stub 被调 2 次）。根因与 §3.20 同：Rail 无首段边界感知。**观察报告已推 docsReview**（commit `0e7ae3fe`，与 §3.20 合并在同一份报告中） | 同 §3.20，等 Rail 首段边界修复 |
+
+**待开发侧动作**（SIT 侧 PR 落地前不动用例代码）：
+1. demo 侧确认 Qwen `"Range of input length"` / `invalid_parameter_error` 格式是否应被 `CONTEXT_LENGTH_KEYWORDS` 覆盖，修复分类器 → 影响 §3.19
+2. demo/core 侧修复 `ClassifiedModelFailureRail.onModelException` 增加首段边界感知 → 影响 §3.20 + §3.22
+
+**本件相关 docsReview 推送（2026-10-30）**：
+- `feat064-error-taxonomy-retry/SIT-OBSERVATION-feat064-rail-first-segment-retry-20261030.md`（commit `0e7ae3fe`，§3.20/§3.22 stub==2 Rail 首段边界缺陷）
+- `feat064-error-taxonomy-retry/SIT-OBSERVATION-feat064-context-length-classifier-miss-20261030.md`（commit `a6bc0d39`，§3.19 Qwen 分类器覆盖缺口）
+
 ### 2026-10-29 实证小结（Feat064 22 TC 全量跑结果）
 
 **ECS 跑测结果**：**22 TC / 19 PASS / 3 FAIL / 0 Errors / 0 Skipped / Total time 3:43 min**
@@ -581,7 +610,7 @@ Rail 若走 `context.requestRetry(delay)` 让 agent 主循环重调 model，**�
 |---|---|---|---|
 | §3.22 streamDisconnectFirstSegmentAfterStrictPinsTemporary | 10-28 rebuild stub jar 实证**没有** `handleStreamDisconnectFirstSegmentAfter` handler；cases §r6 自己标注 "demo-handoff 冒烟待确认" | 等 demo owner 补 stub mode + rebuild jar 推 docsReview | — |
 | §3.20 streamRateLimitedFirstSegmentAfterShortCircuits | `Expected stub==1 but got 2` — Rail 挽留吃 TEMPORARY（跟 S5 observation 同根）| 等 agent-core-java 侧 **C-4 PR** 落地（Rail 发 wire `model_retry` 事件 + `retry_tier` 字段 + session interval 配置联动），SIT 升级判据 | **docsReview `SIT-OBSERVATION-s5-rail-swallows-timeout-20261029.md`**（commit `a4415aae9a7d`）+ 开发侧答复 `DEV-REPLY-s5-rail-timeout-coordination-20261029.md`（commit `630251da18a1`，裁定 C-4） |
-| §3.19 realEndpointContextLengthClassifiesAs181012 | glm-5.3-prime (context 128K) 和 qwen-doc-turbo (context 256K) 都远超 128 KiB prompt → 不触发 context_length_exceeded；input_tokens 16407-16420 远 < 256K | 换真正 ≤16K context 的 model（阿里云百炼平台待确认 `qwen-turbo` 标准 8K 等）；或接受 §3.19 的 **partial** 状态（cases §r6 本就标 partial，T3 category 待通道开放）| — |
+| §3.19 realEndpointContextLengthClassifiesAs181012 | glm-5.3-prime (context 128K) 和 qwen-doc-turbo (context 256K) 都远超 128 KiB prompt → 不触发 context_length_exceeded；input_tokens 16407-16420 远 < 256K | 换真正 ≤16K context 的 model（阿里云百炼平台待确认 `qwen-turbo` 标准 8K 等）；或接受 §3.19 的 **partial** 状态（cases §r6 本就标 partial，T3 category 待通道开放）| — |<br>**⚠ 2026-10-30 根因订正**：上述分析有误，换 `qwen-flash-character`（8K context window）仍 FAIL；真实根因是分类器关键字表未覆盖 Qwen `"Range of input length"` 格式，见 10-30 小结。
 
 **9 条 FAIL → PASS 的 fix 转化**（SIT 本次 session 实证得到的转绿清单）：
 - 分类 B T3 Pattern bug 修完 → §3.3/§3.4/§3.5/§3.6/§3.17 real-endpoint auth-failed + Feat064RetryConfig 5 TC（含 §3.10/§3.11/§3.12/§3.13/§3.21）**合计 10 条**

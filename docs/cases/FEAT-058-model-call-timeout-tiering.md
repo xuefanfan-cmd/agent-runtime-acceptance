@@ -326,16 +326,31 @@ related_docs:
 | TC-HEADER-WAIT-LEGACY | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（68.75s）—— 同上，BEFORE_FIRST_SEGMENT + header_wait 8s 转绿 |
 | TC-AFTER-FIRST-SEGMENT-IDLE | **landed PASS** | — | ✅ 2026-10-28 ECS 复跑 PASS（develop-head PR!242+PR!442+PR!449 rebuild bundle 新 jar，commit `ab9e03ba6581`）。10-27 wire-eof 根因（#260 SSE 结构化错误后 chunked 流中断）由新 jar 顺带修完，AFTER_FIRST_SEGMENT 相位 wire body 正常返回，TC 从 wire-eof-rooted-in-mvc-bug 直接转绿 |
 | TC-NO-TOTAL-CAP-STREAM | **landed PASS** | — | ✅ 2026-10-27 /v1 后缀 fc15b30 修完 ECS 实证 PASS（96.99s，MUST#4 契约 wire 可观察性验证通过）|
-| TC-BLOCKING-SAME-SEMANTICS | **landed PASS（路径 Y 待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题三裁定路径 Y：layer=stream_idle + timeout=300.0（替代原路径 X 判据 layer=header_wait + timeout=8.0）；SIT 侧已改 stub LLM_STUB_BLOCKING_IDLE_MS=310000 + probe --stream-idle-seconds=300 + driver 400s + asserter LAYER_STREAM_IDLE；待 ECS 一次 batch 复跑验证 |
+| TC-BLOCKING-SAME-SEMANTICS | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（1822s，PR!472+PR!478 新 jar）。路径 Y 判据：BEFORE_FIRST_SEGMENT + stream_idle + timeout≈300s + stream=true；Rail 挽留 1 次（C-4 session interval 公式修正后不再撞 111135）；最终 181008 正确透传。 |
 | TC-CANCEL-NOT-TIMEOUT | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（69.01s，弱层判据） |
-| TC-ERROR-DETAILS-PAYLOAD | **landed PASS（跟 S5 路径 Y 同步，待复跑验证）** | — | ✅ 2026-10-28 跟 TC-BLOCKING-SAME-SEMANTICS 第三段同步改路径 Y；第三段 asserter LAYER_HEADER_WAIT → LAYER_STREAM_IDLE；phase ↔ layer 映射更新为非 1:1（§3.8）；待 ECS 一次 batch 复跑验证 |
-| TC-PER-CALL-IDLE-OVERRIDE | **landed PASS（待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题四 landed：demo 侧补 PerCallProbeController 侧通道 + s3-per-call profile（commit `ab9e03ba6581`）；SIT 侧 fixture 补 queryPerCall + PerCallResponse record + 删 @Disabled + 两腿判据按 §3.9 实现；待 ECS 一次 batch 复跑验证 |
+| TC-ERROR-DETAILS-PAYLOAD | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（PR!472+PR!478 新 jar）。三段 trace 均通过：BEFORE_CONNECT + connect / BEFORE_FIRST_SEGMENT + header_wait / BEFORE_FIRST_SEGMENT + stream_idle；第三段路径 Y 判据（stream_idle + timeout≈300s + stream=true）随 S5 同批验证。 |
+| TC-PER-CALL-IDLE-OVERRIDE | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（10:17 min，PR!472+PR!478 新 jar）。两腿判据均通过：第一腿 per-call override 300s 触发 AFTER_FIRST_SEGMENT；第二腿 client 级 600s 回退不触发超时。 |
 | TC-RANGE-VALIDATION | **landed PASS** | — | ✅ 2026-10-28 ECS 实证 PASS（2.72s）；异常栈改层：从 agent-core-java `ModelClientConfig$Builder.build` 下沉到 agent-service-app `LlmConfigResolver.validateTimeoutTiering:222`，错误消息改为 `openjiuwen.service.llm.connect-timeout must be between 5 and 15 seconds`；TC `containsAnyOf("ModelClientConfig","connect","range","must be between")` 判据 "connect" + "must be between" 覆盖新消息 → PASS 不受影响 |
-| TC-UNIFIED-STACK-COVERAGE | **landed PASS（待复跑验证）** | — | ✅ 2026-10-28 batch triage 议题二 Path A 裁定：外部 provider enum value `OpenAiCompatible` → `OpenRouter`（agent-core-java-0.1.17 已改名；底层 impl 类 `OpenAiCompatibleModelClient` 类名未变，L2 MUST#8 以 impl 类家族计覆盖面，L2 契约未违约）。本仓 cases §3.11 + `Feat058RunnablePathTest.java:416` 字样已同步刷新。待 ECS 复跑 5 provider 完整走通后标 landed PASS。关联：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`）+ 开发侧 `DEV-REPLY-batch-triage-20261028.md`（commit `44067785`）|
+| TC-UNIFIED-STACK-COVERAGE | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（PR!472+PR!478 新 jar）。5 provider（OpenAI / OpenRouter / DashScope / SiliconFlow / DeepSeek）均通过；provider enum value `OpenAiCompatible` → `OpenRouter` 改名（batch triage 议题二 Path A）已在判据中同步。关联：`SIT-OBSERVATION-provider-enum-rename-20261028.md`（commit `a54e76eda6e5`）+ 开发侧 `DEV-REPLY-batch-triage-20261028.md`（commit `44067785`）|
 | **TC-CANCEL-OBS-S18** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S19 共 2/2）** |
 | **TC-CANCEL-OBS-S19** | **landed** | — | **ECS 2026-10-27 实测 PASS（跟 S18 共 2/2）** |
-| **TC-BLOCKING-HEADER-WAIT** | **runnable（待 ECS 复跑验证）** | — | 2026-10-30 demo 侧落地 `BlockingProbeController` + `blockingProbeModel` bean + `s2-blocking` profile（path: `D:\openjiuwen-java\2012\agent-solution\common\example\timeout-tiering-model-call-demo`）；SIT 侧 `TimeoutProbeHttpClient.queryBlocking` + `BlockingResponse` record 已补；用例已从 `Feat058BlockedByUpstreamTest` 迁移至 `Feat058RunnablePathTest.blockingHeaderWaitPathObservesLayer` 并翻 runnable；待 ECS 一次 batch 复跑验证四字段契约 |
-| **TC-AGENT-LEVEL-IDLE-OVERRIDE** | **runnable（待 ECS 复跑验证）** | — | 2026-10-30 demo 侧落地 `TimeoutProbeAgentProperties.modelStreamIdleSeconds` 字段 + `TimeoutProbeAgentFactory.build` 条件注入 `setModelStreamIdleSeconds` + `s3-agent-level-idle` profile（path: 同上）；SIT 侧 `AGENT_LEVEL_IDLE_SECONDS=300.0` env 注入；用例已从 `Feat058BlockedByUpstreamTest` 迁移至 `Feat058RunnablePathTest.agentLevelIdleOverridesClientLevel` 并翻 runnable；待 ECS 一次 batch 复跑验证 `timeout_seconds==300.0`（非 600.0） |
+| **TC-BLOCKING-HEADER-WAIT** | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（PR!472+PR!478 新 jar）。四字段契约通过：BEFORE_FIRST_SEGMENT + header_wait + timeout≈8.0s + stream=false（阻塞路径）。 |
+| **TC-AGENT-LEVEL-IDLE-OVERRIDE** | **landed PASS** | — | ✅ 2026-10-30 ECS 全量跑 PASS（618s，PR!472+PR!478 新 jar）。agent-level `modelStreamIdleSeconds=300.0` 覆盖 client-level 600s，timeout_seconds==300.0 验证通过（非 600.0）。 |
+
+### 2026-10-30 全量跑收官（PR!472 + PR!478 新 jar）
+
+- **使用 jar**：`timeout-probe-agent-0.1.0.jar`（md5 `5c3549317e63744b092ee2d5116303ed`）+ `agent-core-java-0.1.17.jar`（md5 `7c5813ecb551b708b83bf7ebccc6d54c`）+ `llm-stub-server-0.1.0.jar`（md5 `4a9934126bd01bd57307d865a1d0a54e`）；PR!472（C-4 session interval 修正 + `retry_tier` wire 字段）+ PR!478（SSE EOF pure TCP close 检测修复）均已合入
+- **命令**：`./mvnw test -Dtest='Feat058RunnablePathTest,Feat058BlockedByUpstreamTest,Feat058Feat064CancelObservabilityTest'`
+- **总耗时**：01:45h（Feat058BlockedByUpstreamTest 1333s + Feat058RunnablePathTest 4931s + CancelObservability 36s）
+- **结果**：**15/15 PASS，BUILD SUCCESS**
+
+| 测试类 | TC 数 | 结果 |
+|---|---|---|
+| Feat058BlockedByUpstreamTest | 3 | ✅ 全 PASS |
+| Feat058RunnablePathTest | 10 | ✅ 全 PASS |
+| Feat058Feat064CancelObservabilityTest | 2 | ✅ 全 PASS |
+
+**FEAT-058 正式结案，15/15 PASS。** S3（afterFirstSegmentIdle）和 errorDetails 两条历史 FAIL 均随 PR!472 C-4 转绿。
 
 ### 2026-10-28 全盘复跑小结（Feat058RunnablePathTest 8 TC + Feat058Feat064CancelObservabilityTest 2 TC + Feat058BlockedByUpstreamTest 3 TC）
 

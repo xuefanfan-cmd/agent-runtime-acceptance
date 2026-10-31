@@ -245,7 +245,10 @@ final class Feat058RunnablePathTest {
                     .assertPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)
                     .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
                     .assertTimeoutSeconds(300.0, 1.0)
-                    .assertStream(false);
+                    .assertStream(true); // s5 走 ReAct streaming 路径，model call 是 stream；
+                                        // stub 侧 blocking（LLM_STUB_BLOCKING_IDLE_MS）≠ model call blocking。
+                                        // 真正的 blocking model call（model.invoke，MUST#9）由
+                                        // blockingHeaderWaitPathObservesLayer（s2-blocking profile）覆盖。
         }
     }
 
@@ -380,7 +383,7 @@ final class Feat058RunnablePathTest {
         new ErrorEnvelopeAsserter(blockingResp).assertAllFourFieldsPresent()
                 .assertPhase(TimeoutPhase.BEFORE_FIRST_SEGMENT)
                 .assertLayer(ErrorEnvelopeAsserter.LAYER_STREAM_IDLE)
-                .assertStream(false);
+                .assertStream(true); // s5 同 blockingPathSameTieringSemantics：ReAct streaming 路径
     }
 
     /**

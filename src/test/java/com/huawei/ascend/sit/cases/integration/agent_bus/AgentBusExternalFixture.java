@@ -2,6 +2,7 @@ package com.huawei.ascend.sit.cases.integration.agent_bus;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Assumptions;
 
@@ -43,7 +44,7 @@ public final class AgentBusExternalFixture {
         return new AgentBusExternalFixture(rdcUrl, directGatewayUrl, busGatewayUrl);
     }
 
-    static AgentBusExternalFixture requireDirect() {
+    public static AgentBusExternalFixture requireDirect() {
         String rdc = value("agent.bus.rdc-url", "AGENT_BUS_RDC_URL", null);
         String direct = value("agent.bus.gateway.direct-url", "AGENT_BUS_DIRECT_GATEWAY_URL", null);
         Assumptions.assumeTrue(rdc != null && direct != null,
@@ -51,7 +52,7 @@ public final class AgentBusExternalFixture {
         return new AgentBusExternalFixture(rdc, direct, null);
     }
 
-    static AgentBusExternalFixture requireBus() {
+    public static AgentBusExternalFixture requireBus() {
         String rdc = value("agent.bus.rdc-url", "AGENT_BUS_RDC_URL", null);
         String bus = value("agent.bus.gateway.bus-url", "AGENT_BUS_BUS_GATEWAY_URL", null);
         Assumptions.assumeTrue(rdc != null && bus != null,
@@ -72,8 +73,76 @@ public final class AgentBusExternalFixture {
         registerRuntime(agentId, serviceId, endpointUrl, "1.0", 100);
     }
 
-    void registerRuntime(String agentId, String serviceId, String endpointUrl,
-                         String contractVersion, int weight) throws Exception {
+    /**
+     * Register an agent instance via the RDC v2 unified API (POST /v2/agents/{agentId}/instances).
+     * This is required because the Gateway queries RDC via v2 API, and v1-registered instances
+     * are invisible to v2 consumers (no card snapshot in registry_v2_card_snapshot table).
+     */
+    public String registerRuntimeV2(String agentId, String serviceId, String endpointUrl,
+                                  String contractVersion, int weight) throws Exception {
+        // Parse endpointUrl to extract address and port
+        java.net.URL url = new java.net.URL(endpointUrl);
+        String address = url.getHost();
+        int port = url.getPort() != -1 ? url.getPort() : url.getDefaultPort();
+        String endpointPath = url.getPath().isEmpty() ? "/a2a" : url.getPath();
+
+        ObjectNode body = JSON.createObjectNode();
+        body.put("address", address);
+        body.put("port", port);
+        body.put("endpointPath", endpointPath);
+        body.put("serviceId", serviceId);
+        body.put("weight", weight);
+        body.put("maxConcurrency", 32);
+        body.put("region", "acceptance");
+        body.put("frameworkType", "JIUWEN");
+        body.put("contractVersion", contractVersion);
+        body.put("capabilityVersion", "1.0");
+
+        // Agent card JSON — name must equal agentId (v2 identity invariant)
+        // Include url and interfaces so Gateway's additive-free rewriter can rewrite them
+        ObjectNode card = JSON.createObjectNode();
+        card.put("name", agentId);
+        card.put("description", "E2E test agent: " + agentId);
+        card.put("version", "1.0");
+        card.put("url", endpointUrl);  // Gateway rewrites to {public-base-url}/a2a/agents/{agentId}
+        ObjectNode caps = card.putObject("capabilities");
+        caps.put("streaming", true);
+        caps.put("pushNotifications", false);
+        card.putArray("defaultInputModes").add("text");
+        card.putArray("defaultOutputModes").add("text");
+        // interfaces with JSONRPC transport — Gateway rewrites url to gateway path
+        ArrayNode interfaces = card.putArray("interfaces");
+        ObjectNode iface = interfaces.addObject();
+        iface.put("transport", "JSONRPC");
+        iface.put("url", endpointUrl);
+        card.putArray("skills");
+        body.put("agentCardJson", JSON.writeValueAsString(card));
+
+        String v2Url = rdcUrl + "/v2/agents/" + segment(agentId) + "/instances";
+        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(v2Url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("X-Tenant-ID", TENANT)
+                .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                .build());
+        assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
+        // Parse instanceId from response (needed for precise deregister when DEV-007 corrupts card URLs)
+        try {
+            JsonNode root = JSON.readTree(response.body());
+            return root.path("instanceId").asText(root.path("id").asText());
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public String registerRuntimeV2(String agentId, String serviceId, String endpointUrl) throws Exception {
+        return registerRuntimeV2(agentId, serviceId, endpointUrl, "1.0", 100);
+    }
+
+    public void registerRuntime(String agentId, String serviceId, String endpointUrl,
+                               String contractVersion, int weight) throws Exception {
         ObjectNode body = JSON.createObjectNode();
         body.put("tenantId", TENANT);
         body.put("agentId", agentId);
@@ -96,18 +165,106 @@ public final class AgentBusExternalFixture {
         assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
     }
 
-    void deregisterRuntime(String agentId) throws Exception {
+    public void deregisterRuntime(String agentId) throws Exception {
         HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(rdcUrl
                         + "/api/registry/deregister/" + segment(TENANT) + "/" + segment(agentId)))
                 .timeout(Duration.ofSeconds(10)).DELETE().build());
         assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
     }
 
+    /** Deregister an instance via RDC v2 API (DELETE /v2/agents/{agentId}/instances/{instanceId}). */
+    public HttpResponse<String> deregisterRuntimeV2(String agentId, String instanceId) throws Exception {
+        String url = rdcUrl + "/v2/agents/" + segment(agentId) + "/instances/" + segment(instanceId);
+        return send(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("X-Tenant-ID", TENANT)
+                .DELETE().build());
+    }
+
+    /** Deregister by address:port via v2 query + delete.
+     *  RDC v2 query response does not return address/port at top level (DEV-006),
+     *  so we parse card.rawJson to extract the URL for matching. */
+    public void deregisterByAddressV2(String agentId, String address, int port) throws Exception {
+        JsonNode instances = queryInstancesV2(agentId);
+        if (instances.isArray()) {
+            for (JsonNode inst : instances) {
+                String instanceId = inst.path("instanceId").asText(inst.path("id").asText());
+                // Try top-level fields first (in case DEV-006 is fixed in future)
+                String instAddress = inst.path("address").asText();
+                int instPort = inst.path("port").asInt();
+                // If top-level fields missing (DEV-006), parse card.rawJson
+                if (instAddress.isEmpty() || instPort == 0) {
+                    String rawJson = inst.path("card").path("rawJson").asText();
+                    if (!rawJson.isEmpty()) {
+                        JsonNode card = JSON.readTree(rawJson);
+                        String url = card.path("url").asText();
+                        if (!url.isEmpty()) {
+                            java.net.URL parsed = new java.net.URL(url);
+                            instAddress = parsed.getHost();
+                            instPort = parsed.getPort() != -1 ? parsed.getPort() : parsed.getDefaultPort();
+                        }
+                    }
+                }
+                if (address.equals(instAddress) && port == instPort) {
+                    deregisterRuntimeV2(agentId, instanceId);
+                }
+            }
+        }
+    }
+
+    /** Send heartbeat to all instances of an agent via v2 API (PUT /v2/agents/{agentId}/instances/{instanceId}/heartbeat).
+     *  Use this in long-running tests to prevent TTL expiration (default 30s). */
+    public void heartbeatAllV2(String agentId) throws Exception {
+        JsonNode instances = queryInstancesV2(agentId);
+        if (instances.isArray()) {
+            for (JsonNode inst : instances) {
+                String instanceId = inst.path("instanceId").asText(inst.path("id").asText());
+                if (!instanceId.isEmpty()) {
+                    String url = rdcUrl + "/v2/agents/" + segment(agentId) + "/instances/" + segment(instanceId) + "/heartbeat";
+                    send(HttpRequest.newBuilder(URI.create(url))
+                            .timeout(Duration.ofSeconds(10))
+                            .header("Authorization", "Bearer " + TOKEN)
+                            .header("X-Tenant-ID", TENANT)
+                            .PUT(HttpRequest.BodyPublishers.noBody())
+                            .build());
+                }
+            }
+        }
+    }
+
+    /** Deregister all instances of an agent via v2 API (by instanceId, not address:port).
+     *  Use this in @AfterEach to prevent instance accumulation across tests (DEV-008). */
+    public void deregisterAllV2(String agentId) throws Exception {
+        JsonNode instances = queryInstancesV2(agentId);
+        if (instances.isArray()) {
+            for (JsonNode inst : instances) {
+                String instanceId = inst.path("instanceId").asText(inst.path("id").asText());
+                if (!instanceId.isEmpty()) {
+                    deregisterRuntimeV2(agentId, instanceId);
+                }
+            }
+        }
+    }
+
+    /** Query instances via RDC v2 API (GET /v2/agents/{agentId}/instances). */
+    public JsonNode queryInstancesV2(String agentId) throws Exception {
+        String url = rdcUrl + "/v2/agents/" + segment(agentId) + "/instances";
+        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("X-Tenant-ID", TENANT)
+                .GET().build());
+        assertThat(response.statusCode()).as(response.body()).isBetween(200, 299);
+        JsonNode root = JSON.readTree(response.body());
+        return root.isArray() ? root : root.path("instances").isArray() ? root.path("instances") : root;
+    }
+
     public HttpResponse<String> direct(String agentId, String text) throws Exception {
         return post(directGatewayUrl, create(agentId, text, false), "application/json", TOKEN);
     }
 
-    HttpResponse<String> directStreaming(String agentId, String text) throws Exception {
+    public HttpResponse<String> directStreaming(String agentId, String text) throws Exception {
         return post(directGatewayUrl, create(agentId, text, true), "text/event-stream", TOKEN);
     }
 
@@ -138,11 +295,45 @@ public final class AgentBusExternalFixture {
         return post(bus ? busGatewayUrl : directGatewayUrl, body, "application/json", token);
     }
 
-    JsonNode queryByAgent(String agentId) throws Exception {
+    /** POST to path-entry URL: /a2a/agents/{agentId} (path-mode routing). */
+    public HttpResponse<String> directPathEntry(String agentId, String body, String token) throws Exception {
+        String url = directGatewayUrl + "/a2a/agents/" + segment(agentId);
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(90))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        if (token != null) req.header("Authorization", "Bearer " + token);
+        return http.send(req.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    /** GET discovery endpoint: /a2a/agents/{agentId}/.well-known/agent-card.json */
+    public HttpResponse<String> discoverCard(String agentId) throws Exception {
+        String url = directGatewayUrl + "/a2a/agents/" + segment(agentId) + "/.well-known/agent-card.json";
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Accept", "application/json")
+                .GET().build();
+        return http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    /** POST raw body to a specific path under the direct gateway (e.g. /a2a/agents/{agentId}). */
+    public HttpResponse<String> postToPath(String path, String body, String accept, String token) throws Exception {
+        String url = directGatewayUrl + path;
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(90))
+                .header("Content-Type", "application/json")
+                .header("Accept", accept)
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        if (token != null) req.header("Authorization", "Bearer " + token);
+        return http.send(req.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    public JsonNode queryByAgent(String agentId) throws Exception {
         return queryByAgent(TENANT, agentId, null);
     }
 
-    JsonNode queryByAgent(String tenant, String agentId, String contractVersion) throws Exception {
+    public JsonNode queryByAgent(String tenant, String agentId, String contractVersion) throws Exception {
         String query = contractVersion == null ? "" : "?contractVersion=" + segment(contractVersion);
         HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(rdcUrl
                         + "/api/registry/instances/" + segment(tenant) + "/" + segment(agentId) + query))

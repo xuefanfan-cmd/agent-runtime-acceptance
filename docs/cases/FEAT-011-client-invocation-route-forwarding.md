@@ -1,16 +1,17 @@
 ---
 feature_id: FEAT-011
-feature_title: 网关组件客户端调用路由转发
-sut: 正式 agent-gateway（DIRECT）-> registry-discovery-center -> Runtime；ReAct/DeepAgent/WorkflowAgent 风险导向 E2E
-status: partial
-status_note: 当前 Gateway 重连合同 13/13 PASS；ReAct 与 DeepAgent Gateway E2E 各 PASS 1/1；owner TTL 等依赖场景保持 not-automated
-tags: [blackbox, integration, gateway, feat-011]
+feature_title: 网关组件客户端调用路由转发（端到端部署验证）
+sut: agent-gateway（DIRECT 直连网关模式）+ RDC（nacos）+ agent-runtime（静态/动态两种接入）
+status: active
+status_note: 对齐开发侧端到端验证报告（2026-10-26）；覆盖场景 A 直连网关 + 静态/动态模式差异
+tags: [blackbox, integration, e2e, gateway, feat-011, feat-014]
 ---
 
-# FEAT-011 - 网关组件客户端调用路由转发测试设计
+# FEAT-011/014 - agent 接入网关端到端部署验证测试设计
 
-> 从 Gateway 统一 A2A facade 调用真实 travel Agent，保留既有入口治理、创建选路、同步/流式直连和
-> 同 Task 业务续跑设计，并增量验证本期 `GetTask`、`SubscribeToTask`、Task owner 路由和断流释放行为。
+> 验证 agent 在直连状态下接入网关后是否正常工作。接入网关包括 A2A 协议中的**静态模式**与**动态模式**，
+> 主要表现为 agent 启动参数（Spring profile）的不同。
+> 依据：开发侧端到端验证报告 `FEAT-011-014-端到端部署验证报告-直连网关与总线模式.md`（2026-10-26）。
 
 ## 1. 设计依据与测试范围
 
@@ -18,243 +19,722 @@ tags: [blackbox, integration, gateway, feat-011]
 
 | 输入 | 锁定版本 |
 |---|---|
-| Feature | `03-Upstream-Docs/develop/02-features/FEAT-011-client-invocation-route-forwarding.md` |
-| L2 | `03-Upstream-Docs/develop/03-architecture/L2-Low-Level-Design/agent-gateway/Feat-Func-011-client-invocation-route-forwarding.md` |
-| Feature/L2 仓 | `03-Upstream-Docs/main`，读取日期 2026-08-20 |
-| acceptance 仓 | `main@0bafc628d07e5105b50a30f83022d27ac92c6d8d`；本文为隔离工作树设计变更 |
-| Gateway fixture 仓 | `common@adc364a39d7153e1322f52474d9b2dc48b53ab47` |
-| 测试 Agent/RDC | travel 三 JAR 与 `com.openjiuwen:registry-discovery-center:0.1.0`，由 `application-openjiuwen.yml` 拉起 |
-
-当前权威设计/L2 和最新代码已包含 `GetTask`、`SubscribeToTask` 北向分发、owner 粘滞路由与 SSE Bridge，
-不能再沿用“查询/重订阅 deferred”的旧结论。`CancelTask` 仍不交付；代码只用于确认入口与准备度，
-SIT Oracle 仍来自权威设计，代码存在不等于真实链路已通过。
+| Feature | `develop/02-features/FEAT-011-client-invocation-route-forwarding.md`（PR #370，`updated: 2026-10-24`） |
+| L2 | `develop/03-architecture/L2-Low-Level-Design/agent-gateway/Feat-Func-011-client-invocation-route-forwarding.md` |
+| 开发侧端到端报告 | `FEAT-011-014-端到端部署验证报告-直连网关与总线模式.md`（2026-10-26，场景 A/B 全部真实进程验证通过） |
+| 前序报告 | `FEAT-048-062-端到端真实部署验证报告-直连模式-nacos后端.md`（2026-10-22，直连模式 21 项全过） |
+| acceptance 仓 | `main`；本文为用例设计与落地映射 |
 
 ### 1.2 范围
 
-本方案保留既有 Gateway DIRECT 黑盒行为，并增量验证：创建取得 taskId 后记录 owner、`GetTask` 只读路由、
-`SubscribeToTask` 回原 owner、快照/SSE 透明桥接、断开只释放连接以及终态竞态错误透传。
+本方案验证 **agent 接入网关后的端到端正确性**，覆盖两条路径 + 三种接入模式：
 
-Gateway 内部过滤器顺序、缓存/索引结构、路由算法代码、注册上架、Agent Card 语义发现、总线路径和 Agent 执行均不作为本特性断言对象。
+| 场景 | 路径 | 核心验证点 |
+|---|---|---|
+| **场景 A：直连网关模式** | Client → agent-gateway（`--gateway.path-mode=direct`）→ RDC → Runtime | 治理面、发现端点、路径入口一致性、路由行为、路由降级、R2R 全链闭环 |
 
-正式 Gateway JAR 已可本地构建；真实 E2E 仍受 travel fixture JAR、LLM、测试凭据和 RDC 接线门禁。
-直接调用 Runtime 只作定位对照，不能证明 FEAT-011 PASS。
+| 模式 | Spring profile | 接入网关方式 |
+|---|---|---|
+| **静态模式** | `hub-static` / `leaf-static` | `remote-agents` 静态声明网关路径地址，静态拉卡落在网关发现端点 |
+| **动态模式** | `hub-dynamic` / `leaf-dynamic` | 注册到 RDC，D1/D4 解析实例直连转发 |
+| **混合模式** | `hub-hybrid` | CatalogArbiter 仲裁，动态遮静态 |
 
-## 2. 拓扑与证据
+### 1.3 明确不测
+
+- CancelTask 正向转发（Feature 标为 OUT，只保留入口拒绝探针 A3）
+- 创建跨实例安全重发/幂等（后续 DFX 承接）
+- RDC 产品本身（FEAT-048/062 承接）
+- Agent 模型/工具/记忆/知识库质量
+- 多 Gateway 副本共享 owner 索引
+- 精确 TTL 数值（只验行为级可定位性）
+
+## 2. 部署拓扑
+
+### 2.1 场景 A：直连网关模式
 
 ```text
-black-box client -> Gateway(DIRECT) -> RDC -> travel-mainplan -> travel-trip -> travel-hotel
+基础设施：
+  nacos-ai-e2e 容器 :8848    RDC 后端（注册数据面）
+  rdc-pg 容器       :5433    RDC PostgreSQL
+
+进程（5 个，全部 java -jar）：
+  RDC      :8092   agent-rdc-0.1.3.jar          --openjiuwen.registry.backend=nacos
+  gateway  :18082  agent-gateway-demo-0.1.2.jar --gateway.path-mode=direct
+  hub-R2R  :18091  direct-e2e-demo-0.1.0.jar    --spring.profiles.active=hub-static
+  hotel-A  :18093  direct-e2e-demo-0.1.0.jar    --spring.profiles.active=leaf-dynamic
+  hotel-B  :18094  direct-e2e-demo-0.1.0.jar    --spring.profiles.active=leaf-dynamic
 ```
 
-- acceptance 负责拉起 PostgreSQL、RDC 和 hotel -> trip -> mainplan；两个 mainplan 实例用于验证选择与粘滞时，使用相同 agentId、不同 endpoint canary。
-- 本期部署前提已确认：单 Gateway 实例，测试期间不重启。多 Gateway 共享 owner、Gateway 重启恢复均不在本期范围。
-- 正常请求只访问 Gateway；client 不配置/获取 runtime endpoint 或 routeHandle。
-- 主要证据为 Gateway HTTP/SSE 输出和被选 Agent 的唯一业务/请求 canary；RDC/Agent 请求计数与增量 wire log 是辅助证据。
-- 认证、租户或校验失败必须证明 Agent 请求增量为 0；失败正文扫描 endpoint、routeHandle、topic、实例 canary。
-- 多 Runtime 合同场景只断言后续查询/订阅回到创建所得 Task 的原 owner；不把 RDC 的候选排序或加权算法作为本特性 Oracle。
-- runtime/RDC 连接重置使用 acceptance 现有 `FaultLink.resetPeer()/restore()`；连接/idle timeout 使用独立外部延迟代理（Toxiproxy latency toxic 或等价黑盒 HTTP/SSE 代理）并把 Gateway timeout 配为测试值，不能依赖现有 `FaultLink` 提供尚不存在的 latency API。所有日志证据只读取启动前记录的 offset 之后内容。
+**关键部署纪律**：
+- hub 选 `hub-static` 而非 `hub-hybrid`：hybrid 的动态目录会遮蔽静态同名声明，导致 hotel 绕过网关直连
+- `E2E_HOTEL_URL` 指向 `:18082/a2a/agents/travel-hotel`（网关路径入口），不是 `:18093`（直连 hotel）
+- hotel-A/B 用 `leaf-dynamic` 注册到 RDC，供 D1 双实例轮转
+- `outbound-headers.Authorization: Bearer e2e-gateway-token`：指向网关路径地址的出站调用携带网关凭据
 
-## 3. 最小用例矩阵
+### 2.2 证据与 Oracle 约束
 
-| 子用例 ID | Story/来源 | 类型 | 执行状态 | 自动化状态 | 覆盖 | 主要证据 | 等价覆盖/排除 |
-|---|---|---|---|---|---|---|---|
-| `FEAT-011.direct.create-and-stream` | Feature §2/§4/§5.1.2；L2 IN-2-4 | blackbox | blocked, P0 | implemented | 显式/默认路由、同步/流式超时、SSE、拓扑隐藏、断开释放 | Gateway HTTP/SSE、Agent canary、公开审计 | 需外部 DIRECT 栈 URL |
-| `FEAT-011.direct.governance-and-routing-failure` | Feature §2/§5.1.0/§5.1.3；L2 IN-1/5 | blackbox | blocked, P0 | implemented | 鉴权、租户清洗、参数、创建幂等、审计、选路失败 | HTTP 错误、Agent 零增量、审计 | 需外部 DIRECT 栈 URL |
-| `FEAT-011.direct.sticky-continuation` | Feature §5.1.2；L2 IN-6/7 | blackbox | blocked, P0 | implemented | 用户输入/工具结果续跑粘滞和关联失败 | taskId、实例请求审计、Task 结果 | 需外部 DIRECT 栈 URL |
-| `F011-R01-R03` | 当前 Feature/L2 查询恢复 | contract + E2E | partial, P0 | partial；GetTask owner/无重建、完整快照、未知 owner、失效 routeHandle、Runtime TaskNotFound 透传和 owner Runtime 不可达均 PASS；owner TTL 待合法 Oracle 后自动化 | owner 路由、快照透明、重复 GetTask 无副作用、路由解析受控失败、下游 `-32001` 原样保留 | Gateway/Runtime 请求序列、Task 快照、canary | 原 1 秒 TTL 用例 Oracle 无效，已移除且不作为产品问题 |
-| `F011-S01-S04` | 当前 Feature/L2 SSE 重订阅 | contract + E2E | runnable, P0 | implemented；owner/无重建、主动断开释放、SSE media type 和终态错误 4/4 PASS | 回原 owner、首帧快照、无新建、断开不 Cancel、终态竞态 | 原始 SSE、下游 method 序列、taskId、Bridge 释放日志 | Gateway ISSUE #137/#138 已精确回归并关闭 |
-| `F011-E01` | 当前 Feature 真实链路 | E2E | runnable, P0 | implemented，Failsafe PASS 1/1 | ReAct travel 经 Gateway 断点重连 | 正式制品、业务 canary、拓扑清洗 | 92.995 秒，0 skipped/failure/error |
-| `F011-E02` | DeepAgent 长流真实链路 | E2E | runnable, P1 | implemented，Failsafe PASS 1/1 | DeepAgent 经 Gateway 恢复原 owner Task | 正式制品、原 taskId、业务 marker | 120.017 秒；远程节点恰好一次 Oracle partial |
-| `FEAT-011.deferred.cancel` | 当前 L2 未实现 | boundary | deferred | design-only | CancelTask | 白名单拒绝证据 | 不生成成功路径测试 |
-| `FEAT-011.deferred.gray-fallback` | Feature §2 SHOULD/§6；L2 730 边界 | blackbox | deferred | design-only | 租户/版本/比例/健康灰度与回退 | 待公开策略配置和稳定 Oracle | SHOULD 已处置，不混入基础选路 |
-
-### 当前交付能力追踪
-
-| L2 730 交付能力 | 覆盖用例 |
+| 证据 | 用途 |
 |---|---|
-| 认证、租户、参数、创建幂等、结构化审计 | `FEAT-011.direct.governance-and-routing-failure` |
-| 显式/default Agent、RDC 多实例首项、routeHandle 内部解析、选路失败 | 前两条用例合并覆盖 |
-| SendMessage、转发/响应超时、SendStreamingMessage、idle timeout、SSE release | `FEAT-011.direct.create-and-stream` |
-| 端侧工具结果和 continueInput 同 Task 粘滞、owner 缺失失败 | `FEAT-011.direct.sticky-continuation` |
-| 统一 A2A 入口、Task owner 边界、拓扑隐藏 | 三条用例共同覆盖 |
-| GetTask 查询、owner 路由、快照透明和重复查询 | `F011-R01-R03` |
-| SubscribeToTask、SSE Bridge、断开释放和终态竞态 | `F011-S01-S04` |
-| ReAct travel Gateway 真实链路 | `F011-E01` |
-| CancelTask | `FEAT-011.deferred.cancel` |
-| 灰度与回退 SHOULD | `FEAT-011.deferred.gray-fallback` |
+| Gateway HTTP/SSE 输出 | 状态码、media type、快照字段、终态 message |
+| 网关卡 JSON | `supportedInterfaces` 指向网关路径、`preferredTransport=JSONRPC` |
+| RDC D1/D2 响应 | 实例列表 ONLINE、卡 `{name, rawJson}` 包裹解包 |
+| 进程日志 `A2A NEW task` | 双实例落点分布 |
+| Surefire/Allure XML | 结果归档 |
+
+约束：协议层错误（VALIDATION_*、ROUTE_*）以 HTTP 200 + JSON-RPC error 承载；仅传输层异常（AUTH 401、坏 JSON 400、超限 413、root 无候选 503）映射非 200。
+
+## 3. 用例总矩阵
+
+### 3.1 场景 A：直连网关模式（A/B/C/D/E/F 六组）
+
+| ID | 用例 | 类型 | 优先级 | 自动化状态 | 覆盖 |
+|---|---|---|---|---|---|
+| `F011-A1` | 无凭据 401 | contract | P0 | implemented | AUTH_MISSING |
+| `F011-A2` | 坏 Bearer 401 | contract | P0 | implemented | AUTH_INVALID |
+| `F011-A3` | CancelTask 拒绝 | contract | P0 | implemented | VALIDATION_METHOD |
+| `F011-A4` | 非法 JSON 400 | contract | P0 | implemented | 传输层错误 |
+| `F011-A5` | GetTask 缺 taskId | contract | P0 | implemented | VALIDATION_TASK_ID |
+| `F011-A6` | create 缺 agentId | contract | P0 | implemented | VALIDATION_AGENT_ID |
+| `F011-A7` | agentId 空串 | contract | P1 | implemented | 同 A6 |
+| `F011-A8` | 超大 payload 413 | contract | P0 | implemented | PAYLOAD_TOO_LARGE |
+| `F011-B1` | 网关卡读取 | contract | P0 | implemented | 发现端点 |
+| `F011-B2` | 改写幂等 | contract | P0 | implemented | 卡 md5 一致 |
+| `F011-B3` | 未知 agentId 404 | contract | P0 | implemented | 防枚举 |
+| `F011-C1` | 路径入口正常调用（3 变体） | blackbox | P0 | implemented | 路径入口闭环 |
+| `F011-C2` | 声明与路径不一致 | contract | P0 | implemented | VALIDATION_AGENT_ID |
+| `F011-C3` | 未知路径 agent | contract | P0 | implemented | ROUTE_NO_CANDIDATES |
+| `F011-D1` | root 同步调用（中文） | blackbox | P0 | implemented | TASK_STATE_COMPLETED |
+| `F011-D2` | GetTask 查询 | blackbox | P0 | implemented | 任务态返回 |
+| `F011-D3` | sticky 续传 | blackbox | P0 | implemented | 同 taskId resume |
+| `F011-D4` | 流式 SSE | blackbox | P0 | implemented | 12 帧完整序列 |
+| `F011-D5` | 终态订阅 | blackbox | P0 | implemented | 终态帧 |
+| `F011-D6` | HITL 中断续传链 | blackbox | P0 | implemented | 三条腿中断传播 |
+| `F011-D7` | 双实例分布 | blackbox | P1 | implemented | 6 连发落点 |
+| `F011-E1` | 无可路由候选 503 | contract | P0 | implemented | ROUTE_NO_CANDIDATES |
+| `F011-E2a` | 任务归属未知 | contract | P0 | implemented | ROUTE_OWNERSHIP_UNKNOWN |
+| `F011-E2b` | 对照验证 | blackbox | P0 | implemented | TASK_STATE_COMPLETED |
+| `F011-F0` | R2R 前置核验 | blackbox | P0 | implemented | D1/D2/网关卡 |
+| `F011-F1` | R2R 全链闭环 | e2e | P0 | implemented | TASK_STATE_COMPLETED + LLM |
+| `F011-CB1` | CALLBACK 入口转发 | contract | P1 | implemented | push-notifications/callback 原样转发 |
+| `F011-CB2` | CALLBACK 鉴权 | contract | P1 | implemented | 401/413/503/502 |
+| `F011-D8` | 加权分布统计 | blackbox | P1 | implemented | 双实例二项分布 |
+| `F011-D9` | Namespace 隔离 | blackbox | P1 | implemented | 跨租户不交叉 |
+| `F011-D10` | TTL 收敛 | blackbox | P1 | implemented | 下线 TTL 内收敛 |
+| `F011-D11` | 心跳保活 | blackbox | P1 | implemented | 跨 TTL 窗口可路由 |
+| `F011-D12` | 候选耗尽 | blackbox | P0 | implemented | DIRECT_TRANSPORT_UNKNOWN |
+| `F011-D13` | Scale-out 扩容 | blackbox | P1 | implemented | 新实例 TTL 内可路由 |
+| `F011-D14` | Scale-in 缩容 | blackbox | P1 | implemented | 下线 TTL 内收敛 |
+| `F011-D15` | Failover 连接拒绝 | blackbox | P1 | implemented | 死实例 failover |
+| `F011-D16` | 首事件锁定 | blackbox | P1 | implemented | 流式首帧锁定实例 |
+| `F011-D17` | 目录变更传播 | blackbox | P1 | implemented | 卡更新后新卡可见 |
+| `F011-G1` | card-delete 停止路由 | blackbox | P1 | implemented | 注销后 503 |
+| `F011-G2` | routeHandle 失效重发现 | blackbox | P1 | implemented | 全量注销后重注册 |
+| `F011-G3` | routeHandle 缓存命中 | blackbox | P2 | implemented | 连续 5 次成功 |
+| `F011-G4` | 无实例无静态兜底 | blackbox | P1 | implemented | 503 ROUTE_NO_CANDIDATES |
+| `F011-G5` | 心跳保活实例查询 | blackbox | P2 | implemented | 跨 TTL 窗口仍可查 |
+| `F011-G6` | RDC 不可用缓存续服 | blackbox | P1 | implemented | 缓存路由 |
+| `F011-G7` | 转发超时配置生效 | blackbox | P1 | implemented | 慢实例超时 |
+| `F011-G8` | streaming=false 降级 | blackbox | P2 | implemented | 同步降级 |
+| `F011-G9` | 协议错误不 failover | contract | P1 | implemented | 400 无 failover |
+| `F011-G10` | 业务失败不 failover | contract | P1 | implemented | JSON-RPC error |
+| `F011-G11` | INPUT_REQUIRED 不 failover | blackbox | P1 | implemented | 中断不切换 |
+| `F011-G12` | 3:1 加权分布 | blackbox | P1 | implemented | 权重比分布 |
+| `F011-G13` | 首事件前超时 failover | blackbox | P1 | implemented | 死实例 failover |
+| `F011-G14` | Namespace 变更不污染 | blackbox | P1 | implemented | 不交叉影响 |
+| `F011-G15` | 进程崩溃 TTL 收敛 | blackbox | P1 | implemented | 崩溃后收敛 |
+| `F011-G16` | 同 agentId 不误删 | blackbox | P1 | implemented | 不交叉删除 |
+| `F011-G17` | 跨租户拒绝 | blackbox | P1 | implemented | 503 不可达 |
+| `F011-G18` | 路径入口多身份隔离 | blackbox | P1 | implemented | GetTask 隔离 |
+| `F011-BOUNDARY` | message/stream 不存在 | contract | P2 | implemented | 400 VALIDATION_METHOD |
+
+### 3.2 静态/动态/混合模式差异（M1-M5）
+
+| ID | 场景 | 类型 | 优先级 | 自动化状态 | 覆盖 |
+|---|---|---|---|---|---|
+| `F011-M1` | 静态模式接入网关（组合 1） | e2e | P0 | to-implement | hub-static + leaf-static，走网关 |
+| `F011-M2` | 动态模式接入网关（组合 2） | e2e | P0 | to-implement | hub-static + leaf-dynamic，走网关 |
+| `F011-M3` | 混合模式-动态遮蔽（组合 3） | e2e | P1 | to-implement | hub-hybrid + leaf-dynamic，**不走网关**（负向） |
+| `F011-M3b` | 混合模式-静态保留（组合 4） | e2e | P1 | to-implement | hub-hybrid + leaf-static，走网关（静态保留） |
+| `F011-M4` | 升级窗不回静态 | blackbox | P1 | to-implement | D1 空 + 显式失败 |
+| `F011-M5` | RDC 不可用降级 | blackbox | P1 | to-implement | 静态兜底 |
 
 ## 4. 详细用例
 
-### FEAT-011.direct.create-and-stream - 直连创建与 SSE 桥接
+### 4.1 A 组：治理面
 
-- **状态/优先级**：blocked, P0；**自动化状态**：implemented，等待外部 DIRECT 栈执行。
-- **Story/来源**：Feature §2、§4、§5.1.2；L2 IN-2-4、S2。
-- **测试类型**：blackbox。
-- **Oracle 来源**：Feature 的统一 A2A、agentId/default 路由、SSE 桥接和拓扑隐藏；L2 730 DIRECT 交付边界。
-- **G**：Gateway `path-mode=DIRECT`；RDC 注册 travel-mainplan；默认 Agent 也指向 travel-mainplan；三 Agent 就绪。
-- **W**：
-  1. 带 `params.metadata.agentId=travel-mainplan` 发 SendMessage 完整差旅请求，并从 Gateway 到 runtime 的外部网络边界制造转发连接超时；
-  2. 不带 agentId 发 SendStreamingMessage，参数化正常持续输出、流式 idle timeout 和 client 主动关闭。
-- **T**：同步请求到达显式目标并返回 A2A 兼容完成结果；转发连接超时返回确定的 route/service timeout，不伪造 Task；流式请求到达默认 Agent，帧逐步到达且未被聚合；若 idle timeout 发生在已收到含 taskId 的帧之后，返回明确流错误且不得改报创建 `UNKNOWN`；Gateway 不生成业务 token；client 关闭后桥接资源在轮询窗口释放，但 runtime Task 不被自动取消；所有 client 响应均无 endpoint、routeHandle、实例地址。
-- **不应断言**：Gateway 路由算法、连接池、缓存、固定 token/帧数量或 Agent 自然语言全文。
-- **失败归类**：目标/响应/SSE 合同不符为 Failure；正式 Gateway/RDC 接线缺失为 Skipped；代理或环境异常为 Error。
-- **方法**：`feat011DirectGatewayRoutesExplicitAndDefaultAgentForSyncAndStreaming()`。
-- **标签**：类级 `@Feature("FEAT-011: 网关组件客户端调用路由转发")`、`@Tag("feat-011")`、`@Tag("integration")`、`@Tag("blackbox")`；方法级 `@Story("FEAT-011.direct.create-and-stream: 直连创建与 SSE 桥接")`、`@Tag("story-feat-011-direct-create-and-stream")`。
-- **DisplayName**：`Feat-011 Gateway 按显式或默认 agentId 直连并桥接 SSE`。
+#### F011-A1 无凭据
 
-### FEAT-011.direct.governance-and-routing-failure - 治理与选路失败
+- **Given**：Gateway 运行中，`gateway.test-credential.token=e2e-gateway-token`
+- **When**：`POST /a2a` 无 Authorization 头
+- **Then**：HTTP **401**，`{"code":"AUTH_MISSING","message":"Missing Authorization"}`
+- **FAIL 判定**：返回 200 或其他错误码；响应含 endpoint/routeHandle
 
-- **状态/优先级**：blocked, P0；**自动化状态**：implemented，等待外部 DIRECT 栈执行。
-- **Story/来源**：Feature §2、§5.1.0/§5.1.3；L2 IN-1/5、S1/S5。
-- **测试类型**：blackbox。
-- **Oracle 来源**：Feature 的入口治理、幂等、确定失败、审计和拓扑隐藏；L2 730 公开错误边界。
-- **G**：记录 Agent 请求基线；准备合法/无效 Bearer、分别绑定 tenant-A/tenant-B 的合法凭证、tenant-A 请求中的 tenant-B 自报 canary、空候选、默认 Agent 配置缺失和失效 routeHandle 场景。
-- **W**：参数化发送无认证、越权、伪造 tenant、空字符串 agentId、其他缺失/非法字段、同 tenant 同 `messageId` 同文/异文重试、另一合法 tenant 使用相同 `messageId`、缺失 `messageId` 的单次请求、未知 agentId、RDC 不可用/handle 失效及无默认 Agent 的创建请求；合法与拒绝请求各增加一行不携带 `traceparent`。
-- **T**：
-  - 未认证/越权/非法请求返回稳定 4xx，Agent 增量为 0；client 自报 tenant 被丢弃，下游只看到凭证解析的 tenant-A；
-  - 同键同文重试回放同一结果且 Agent 只受理一次；同键异文返回幂等冲突；
-  - 相同 `messageId` 在另一 tenant 中是独立幂等空间；缺失 `messageId` 的请求不被 Gateway 幂等门禁拒绝，但本用例不对其执行自动重试或声称去重；
-  - 无候选、无默认 Agent、RDC 不可用或 handle 无法解析返回 route_not_found/configuration_error/service_unavailable/route_unavailable 等确定错误，不伪造 Task；
-  - 治理通过和拒绝均产生结构化审计，包含当时已解析出的关联字段、outcome/rejectStage/目标逻辑标识；G1 拒绝允许 principal/tenant 为空，但必须有自生成 traceId，不得伪造身份字段；审计不包含 Bearer、凭证、完整业务正文、endpoint、routeHandle 或内部异常；缺 `traceparent` 时主路径不因此失败。
-- **不应断言**：过滤器顺序、RDC SQL、handle 编码、内部异常文本或特定路由算法。
-- **失败归类**：非法请求触达 Agent、幂等冲突错误或信息泄漏为 Failure；公开测试凭证/正式 Gateway 缺失为 Skipped；夹具异常为 Error。
-- **方法**：参数化 `feat011GatewayRejectsBeforeForwardingAndReturnsSanitizedRouteFailures()`。
-- **标签**：`@Tag("blackbox")`、`@Story("FEAT-011.direct.governance-and-routing-failure: 治理与选路失败")`、`@Tag("story-feat-011-direct-governance-and-routing-failure")`。
-- **DisplayName**：`Feat-011 治理或选路失败不触达 Agent 且不泄漏拓扑`。
+#### F011-A2 坏 Bearer
 
-### FEAT-011.direct.sticky-continuation - 同 Task 粘滞续跑
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + `Authorization: Bearer wrong-token`
+- **Then**：HTTP **401**
+- **FAIL 判定**：返回 200
 
-- **状态/优先级**：blocked, P0；**自动化状态**：implemented，等待外部 DIRECT 栈执行。
-- **Story/来源**：Feature §5.1.2；L2 IN-6/7、S3/S4。
-- **测试类型**：blackbox。
-- **Oracle 来源**：Feature 的 Task owner 转发边界；L2 730 的原 taskId 粘滞续跑合同。
-- **G**：同一 agentId 注册两个 mainplan 实例；测试侧确定性 LLM endpoint 使首轮稳定返回 INPUT_REQUIRED/taskId，经排序选择实例 A；随后改变新建请求的首选候选为实例 B；每次 HTTP 都准备独立 Bearer 和新 messageId。
-- **W**：通过同一 Gateway 分别发送带原 taskId/contextId 的用户补充 TextPart，以及 client 实际执行所得的单工具 observation TextPart；再发送缺 Bearer、不存在 taskId、其他 tenant taskId 和无 taskId 的伪 continuation。
-- **T**：两类合法续跑都只到实例 A，contextId、parts/metadata 原样保留且两个新 messageId 不混用，原 Task 从 INPUT_REQUIRED 推进至 COMPLETED；不得按当前候选重选实例 B；缺 Bearer 在路由前拒绝；非法关联明确失败且不静默按新建请求成功；Gateway 不解析补充输入或工具结果业务语义。
-- **不应断言**：粘滞索引/缓存实现、工具治理或 TaskStore 内部状态。
-- **失败归类**：续跑到错误实例、创建新 Task 或越权成功为 Failure；确定性 LLM/正式 Gateway 缺失为 Skipped；测试环境异常为 Error。
-- **方法**：`feat011ContinuationReturnsToOriginalTaskOwnerAndRejectsUnknownTask()`。
-- **标签**：`@Tag("blackbox")`、`@Story("FEAT-011.direct.sticky-continuation: 同 Task 粘滞续跑")`、`@Tag("story-feat-011-direct-sticky-continuation")`。
-- **DisplayName**：`Feat-011 带 taskId 的续跑回到原 Task owner`。
+#### F011-A3 CancelTask 拒绝
 
-## 5. 本期断点重连增量详细设计
+- **Given**：Gateway 运行中，CancelTask 在白名单外
+- **When**：`POST /a2a` + `{"method":"CancelTask",...}` + 有效 Bearer
+- **Then**：HTTP **200** + JSON-RPC error `-32600`，`VALIDATION_METHOD: "Method not supported: CancelTask"`
+- **FAIL 判定**：返回 404/501；或实际转发到 Runtime
 
-### 5.1 当前实施切片与范围边界
+#### F011-A4 非法 JSON
 
-Gateway 公共合同用可控 Runtime 深测 owner 路由且不按 Agent 类型复制；真实 E2E 采用风险导向组合：
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + 报文体非 JSON + 有效 Bearer
+- **Then**：HTTP **400**
+- **FAIL 判定**：返回 200
 
-```text
-对照：Client -> Runtime
-主证据：Client -> Gateway -> Runtime
-```
+#### F011-A5 GetTask 缺 params.id
 
-两条路径执行相同的“创建流式 Task -> 取得 taskId -> 断流 -> 查询/重订阅 -> 最终收敛”旅程。
-FEAT-011 PASS 必须来自 Gateway 主链路；直连结果只用于判断问题位于 Runtime/Client 还是 Gateway。
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + `{"method":"GetTask"}` + 有效 Bearer
+- **Then**：HTTP 200 + `VALIDATION_TASK_ID: "params.id is required for GetTask"`
+- **FAIL 判定**：返回 400；或实际转发到 Runtime
 
-| SUT 架构 | 当前处置 | 架构特有 Gateway 证据 |
-|---|---|---|
-| ReActAgent travel | Gateway 真实 E2E，P0 | Gateway 回原 owner；trip/hotel canary 不重复；外部无拓扑字段 |
-| DeepAgent | Gateway 长流风险 E2E，P1 | 回原 owner；search/verify 不重复；长流断开只释放 Bridge |
-| WorkflowAgent | Runtime 直连风险 E2E；Gateway 以合同层透明快照覆盖 | Workflow 快照字段透明；节点/审批不重复维度由 FEAT-001 直连探针承担 |
+#### F011-A6 create 缺 agentId
 
-本期明确不测：`CancelTask`、创建安全重发/幂等、BUS/Event Bus、多 Gateway 副本、Gateway/Runtime 重启、
-owner 迁移、Redis 共享 owner 索引、历史事件逐帧重放和 FEAT-016 注册发现本身。
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + `{"method":"SendMessage","params":{...}}`（无 `metadata.agentId`）+ 有效 Bearer
+- **Then**：HTTP 200 + `-32602` `VALIDATION_AGENT_ID: "agentId is required for create-type requests; obtain the agent path entry url via the gateway discovery endpoint"`
+- **FAIL 判定**：返回 400；或默认选某个 agent
 
-### 5.2 F011-R01-R03 - GetTask 路由与透明快照
+#### F011-A7 agentId 空串
 
-- **Given**：单实例 Gateway 通过 DIRECT 路径把创建请求发送给 Runtime A，并从响应/SSE 取得 taskId；
-  Gateway 未重启，可控合同场景另有 Runtime B。
-- **When**：通过同一 Gateway 连续或并发调用 `GetTask`，只携带原 taskId。
-- **Then**：请求只到 Runtime A，不按 agentId 重新选路；Task 快照的 status、artifacts、history、metadata
-  和 terminal message 语义等价透传；响应不含 endpoint、routeHandle 或实例地址；重复查询不触发 Agent、
-  不创建新 Task，快照只允许随 Runtime 自然前进。
-- **FAIL**：随机路由到 B、owner miss 后静默成功、快照被 Gateway 改写、查询触发执行或泄漏拓扑。
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + `metadata.agentId=""`
+- **Then**：同 A6
+- **FAIL 判定**：与 A6 行为不一致
 
-`GW-S02` 在同一方法中用 WORKING 与 COMPLETED 两次 `GetTask` 验证完整快照：`artifacts`、`history`、
-`metadata` 在状态推进前后保持语义相等，COMPLETED 的 `status.message` canary 原样返回；查询仍只到原 owner，
-无第二次创建、无 `CancelTask`、无拓扑泄漏。Surefire XML PASS 1/1。
+#### F011-A8 超大 payload
 
-`GW-R03` 黑盒变体先经 Gateway 创建 Task 并形成 sticky owner，再通过 RDC 公开注销接口移除该 agent，
-随后对原 taskId 发 `GetTask`。当前正式 Gateway 返回 HTTP 503 + `ROUTE_RESOLVE_FAILED`，两个 Runtime
-请求计数均不增加，响应不泄漏 routeHandle、endpoint 或实例地址；Surefire XML PASS 1/1。
+- **Given**：Gateway 运行中，payload 上限 65536 B
+- **When**：`POST /a2a` + 内联报文 66188 字节
+- **Then**：HTTP **413** + `PAYLOAD_TOO_LARGE: "inline payload exceeds 65536 bytes (UTF-8): 66188; use payloadRef for larger payloads"`
+- **FAIL 判定**：返回 200；或实际转发到 Runtime
 
-### 5.3 F011-S01-S04 - SSE 重订阅桥接
+### 4.2 B 组：发现端点
 
-- **Given**：原客户端 SSE 已断，Task 仍活动，Gateway 持有 taskId 到 Runtime A 的 owner 映射。
-- **When**：通过 Gateway 调用 `SubscribeToTask(params.id=taskId)`，读取首帧后再次主动断开；另覆盖 Task
-  在订阅前后进入终态的竞态。
-- **Then**：Gateway 只向 Runtime A 发送标准 `SubscribeToTask`；首帧当前快照与挂接后新事件按序透明桥接；
-  下游不出现第二个 `SendStreamingMessage` 或 `CancelTask`；taskId 不变；client 断开只释放桥接；终态的
-  `UnsupportedOperation`/等价错误被保留，Client 可回退 `GetTask`。
-- **FAIL**：重新创建 Task、路由到 B、断开触发 Cancel、伪造空成功流或把终态错误吞掉。
+#### F011-B1 网关卡读取
 
-### 5.4 F011-E01 - ReAct Gateway 真实 E2E
+- **Given**：Gateway 运行中，`gateway.discovery.auth-required=false`，travel-hotel 已注册到 RDC
+- **When**：`GET /a2a/agents/travel-hotel/.well-known/agent-card.json`（匿名）
+- **Then**：HTTP 200，卡 JSON；`supportedInterfaces` 指向网关路径 `{gw}/a2a/agents/travel-hotel`、`preferredTransport=JSONRPC`
+- **D2 包裹归一断言**：RDC D2 返回 `{name, rawJson}` 包裹，网关 unwrap 后改写；响应体不得出现 `{name, rawJson}` 包裹结构（缺陷 #4 修复后的行为）
+- **FAIL 判定**：卡内 url 指向 Runtime 直连地址；`protocolBinding` 缺失；返回 RDC `{name, rawJson}` 包裹未解包
 
-- **Given**：正式 Client、Gateway、RDC、Runtime 与 ReAct travel fixture 使用目标新构建；Gateway 单实例且不重启。
-- **When**：经 Gateway 创建长任务、取得 taskId、断流、恢复并等待终态；直连 Runtime 执行同一旅程作对照。
-- **Then**：Gateway 恢复回原 owner；业务结果和 Task 生命周期与直连对照一致；无重复 trip/hotel 动作；
-  Gateway 外部响应无内部拓扑。
-- **PASS**：Gateway/Runtime 请求序列、taskId、原始 SSE、业务 canary 和 Surefire/Allure 证据齐全。
-- **INCONCLUSIVE**：真实 Agent 未形成活动窗口或 LLM 不可用；公共合同单独判定，不得写成 PASS。
-- **blocked/not-run**：目标 JAR、公开方法或环境不可用；开发单测不能替代。
+#### F011-B2 改写幂等
 
-### 5.5 错误判定
+- **Given**：B1 已执行一次
+- **When**：二次读卡
+- **Then**：两次卡体 md5 一致
+- **FAIL 判定**：md5 不一致（改写链叠加前缀）
 
-| 场景 | 预期 |
-|---|---|
-| owner 不存在 | 明确 owner unknown/`CONTINUATION_FAILED`，不另选 Runtime |
-| sticky routeHandle 无法解析 | HTTP 503 + `ROUTE_RESOLVE_FAILED`，不触达 Runtime、不泄漏拓扑 |
-| owner Runtime 不可达 | 明确 route unavailable/forward failure，不伪造快照或空流 |
-| Runtime TaskNotFound | 保留 JSON-RPC TaskNotFound，不能只按 HTTP 200 判成功 |
-| Task 已终态不可订阅 | 保留 UnsupportedOperation/stream not available，允许 Client 回退 GetTask |
-| client 断开 | 释放桥接，不改变 Task 生命周期，不发送 CancelTask |
+#### F011-B3 未知 agentId
 
-## 6. 文件、执行与退出标准
+- **Given**：Gateway 运行中
+- **When**：`GET /a2a/agents/no-such-agent/.well-known/agent-card.json`
+- **Then**：HTTP **404**
+- **FAIL 判定**：返回 200 空卡；或错误消息泄露存在性信息
 
-保留并复跑既有 `GatewayDirectBlackboxTest` 三个历史测试；当前已存在以下 Java 初稿：
+### 4.3 C 组：路径入口一致性
 
-```text
-src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
-  GatewayReconnectBlackboxTest.java
-src/test/java/com/huawei/ascend/sit/cases/e2e/reconnect/
-  ClientGatewayRuntimeReconnectIT.java
-```
+#### F011-C1 路径入口正常调用（3 变体）
 
-执行基线：JDK 21；PowerShell 使用 `.\mvnw.cmd`，WSL/Git Bash 使用 `./mvnw`；默认 Maven 仓库
-`~/.m2/repository`；Docker 提供 PostgreSQL/Toxiproxy。正式 Gateway 已可本地构建；当前门禁是 travel fixture
-JAR、LLM、测试 Bearer/RDC 接线和真实场景执行。测试输入、证书替身、唯一 canary 和故障规则由测试资源准备。
+- **Given**：Gateway 运行中，travel-hotel 已注册
+- **When**：`POST /a2a/agents/travel-hotel` + SendMessage，三个变体：
+  - c1：`metadata.agentId=travel-hotel`（声明一致）
+  - c1b：无 `metadata.agentId`（声明缺失）
+  - c1c：`params.agentId=travel-hotel`（声明于 params）
+- **Then**：均 HTTP 200 任务创建成功
+- **FAIL 判定**：声明缺失被拒绝；声明于 params 被忽略
+
+#### F011-C2 声明与路径不一致
+
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a/agents/travel-hotel` + `metadata.agentId="travel-trip"`
+- **Then**：HTTP 200 + `-32602` `VALIDATION_AGENT_ID: "metadata.agentId does not match the path agentId"`
+- **FAIL 判定**：实际转发到 travel-trip
+
+#### F011-C3 未知路径 agent
+
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a/agents/no-such-agent`
+- **Then**：HTTP 200 + `-32603` `ROUTE_NO_CANDIDATES: "No routable instance for agent no-such-agent"`（404 归一为空候选，防枚举）
+- **FAIL 判定**：返回 404（泄露存在性）
+
+### 4.4 D 组：网关路由行为
+
+#### F011-D1 root 同步调用（中文报文）
+
+- **Given**：Gateway 运行中，travel-hotel 双实例 ONLINE
+- **When**：`POST /a2a` + SendMessage + `metadata.agentId=travel-hotel` + 中文 parts（UTF-8 文件投递）
+- **Then**：HTTP 200 `TASK_STATE_COMPLETED`，中文往返无损
+- **FAIL 判定**：中文乱码；或任务失败
+- **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D2 GetTask 查询
+
+- **Given**：D1 已创建 taskId
+- **When**：`POST /a2a` + `{"method":"GetTask","params":{"id":taskId}}`
+- **Then**：HTTP 200 返回任务态
+- **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D3 sticky 续传
+
+- **Given**：D1 已创建 taskId（owner = hotel-A 或 B）
+- **When**：`POST /a2a` + SendMessage + 同 taskId + 新 messageId
+- **Then**：HTTP 200，续传到原 owner
+- **FAIL 判定**：续传到另一实例
+- **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D4 流式 SSE
+
+- **Given**：Gateway 运行中
+- **When**：`POST /a2a` + `SendStreamingMessage` + `metadata.agentId=travel-hotel`
+- **Then**：SSE 12 帧完整序列（SUBMITTED→WORKING→artifactUpdate→chunk×N→COMPLETED）
+- **FAIL 判定**：帧聚合；缺 SUBMITTED/COMPLETED
+- **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D5 终态订阅
+
+- **Given**：D1 已创建 taskId 并已到终态
+- **When**：`POST /a2a` + `SubscribeToTask` + taskId
+- **Then**：HTTP 200 终态帧
+- **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D6 HITL 中断续传链
+
+- **Given**：Gateway 运行中，hub-R2R（mainplan + trip 同进程）
+- **When**：三条腿分别触发 INPUT_REQUIRED → 续传：
+  - root → mainplan
+  - mainplan → hotel（走网关路径入口）
+  - hotel 直入
+- **Then**：三条腿均 200，中断传播与续传符合预期
+- **FAIL 判定**：网关腿中断传播失败
+
+#### F011-D7 双实例分布
+
+- **Given**：travel-hotel 双实例 ONLINE（hotel-A :18093 + hotel-B :18094，等权 weight=100）
+- **When**：root 入口对 travel-hotel 连发 6 次 SendMessage
+- **Then**：6/6 COMPLETED；按实例落点分布（如 4:2），属等权轮转正常波动
+- **FAIL 判定**：6 次全落同一实例（轮转失效）
+
+### 4.5 E 组：路由降级
+
+#### F011-E1 无可路由候选
+
+- **Given**：Gateway 运行中，unknown-agent 未注册
+- **When**：`POST /a2a` + SendMessage + `metadata.agentId=unknown-agent`
+- **Then**：HTTP **503** + `-32603` `ROUTE_NO_CANDIDATES`
+- **FAIL 判定**：返回 200；或泄露拓扑
+
+#### F011-E2a 任务归属未知
+
+- **Given**：Gateway 运行中，taskId 不在粘滞索引中
+- **When**：`POST /a2a` + GetTask + `params.id=unknown-taskId`
+- **Then**：HTTP 200 + `-32055` `ROUTE_OWNERSHIP_UNKNOWN: "cannot establish the owner of task ..."`
+- **FAIL 判定**：伪造 Task 返回；或泄露拓扑
+
+#### F011-E2b 对照验证
+
+- **Given**：E2a 的 taskId 实际存在（经路径入口创建）
+- **When**：经正确路径入口 `POST /a2a/agents/travel-hotel` + GetTask
+- **Then**：`TASK_STATE_COMPLETED`
+- **FAIL 判定**：路径入口也查不到
+
+### 4.6 F 组：R2R 经网关全链闭环
+
+#### F011-F0 前置核验
+
+- **Given**：RDC/gateway/hub-R2R/hotel-A/hotel-B 全部启动
+- **When**：查 RDC D1 `GET /v2/agents/travel-hotel/instances`；D2 读卡；网关卡读取
+- **Then**：D1 双实例 ONLINE；D2 返回卡（`{name, rawJson}` 解包后）；网关卡改写正确（`supportedInterfaces` 指向网关路径）
+- **FAIL 判定**：实例不 ONLINE；网关卡未改写
+
+#### F011-F1 R2R 全链
+
+- **Given**：F0 通过
+- **When**：用户 → hub(mainplan) → 同进程 trip → **网关路径入口** → hotel-A/B
+- **Then**：`TASK_STATE_COMPLETED` + 真实 LLM 推理 + 中文无损；网关审计 `principalId=e2e-principal outcome=PASSED pathAgentId=travel-hotel`
+- **FAIL 判定**：`REMOTE_UNAVAILABLE`；网关 `outcome=REJECTED`
+- **代码落点**：`ClientGatewayRuntimeReconnectIT`
+
+### 4.6b CB 组：CALLBACK 入口（推送回调代理）
+
+> PR #886 新增第四入口 `PushNotificationCallbackController`，开发报告未验证。列为 P1，待开发确认回调触发方式后补充。
+
+#### F011-CB1 CALLBACK 入口转发
+
+- **Given**：Gateway 运行中，travel-hotel 已注册且有活跃 taskId（粘滞索引命中）
+- **When**：`POST /a2a/push-notifications/callback/travel-hotel` + 回调报文（含 taskId）
+- **Then**：网关原样转发至归属 runtime；HTTP 状态语义（非 JSON-RPC error 信封）
+- **FAIL 判定**：转发到非 owner 实例；或回调报文被修改
+
+#### F011-CB2 CALLBACK 鉴权与降级
+
+- **Given**：Gateway 运行中
+- **When**：分别测试无凭据 401 / 超限 413 / 上游不可用 503 / 上游失败 502
+- **Then**：对应 HTTP 状态码（CALLBACK 维持 HTTP 状态语义，非 JSON-RPC error 信封）
+- **FAIL 判定**：返回 200 + JSON-RPC error（CALLBACK 面 不走双错误面）
+
+### 4.8 M 组：静态/动态/混合模式差异（4 种排列组合）
+
+> 4 种排列组合 = hub 模式（static/hybrid）× leaf 注册方式（static/dynamic）。
+> 核心验证点：`remote-agents` URL 指向网关路径时，哪些组合走网关、哪些绕过网关。
+> hub-dynamic（纯动态）不走网关（RDC D1/D4 解析直连地址），不在"走网关"测试范围内。
+
+**核心配置参数对照**（与开发对齐的两个关键调节点）：
+
+| 组合 | `remote-agents[].url`<br>（hub 侧静态声明） | `a2a.public-url`<br>（leaf 侧注册到 RDC） | RDC 静态注入<br>（leaf-static 时） | 走网关? |
+|---|---|---|---|---|
+| 1 hub-static + leaf-static | 网关路径 `{gw}/a2a/agents/{agentId}` | 不生效（不自注册） | leaf 直连地址 `http://127.0.0.1:{port}` | ✓ |
+| 2 hub-static + leaf-dynamic | 网关路径 `{gw}/a2a/agents/{agentId}` | leaf 直连地址 `http://127.0.0.1:{port}` | — | ✓ |
+| 3 hub-hybrid + leaf-dynamic | 网关路径（被动态遮蔽，**不生效**） | leaf 直连地址（动态发现用此地址） | — | ✗ |
+| 4 hub-hybrid + leaf-static | 网关路径（静态保留，生效） | 不生效（不自注册） | — | ✓ |
+
+> **`remote-agents[].url`**（如 `E2E_HOTEL_URL`）：hub 静态声明的远端 agent 调用地址。走网关时填网关路径 `{gw}/a2a/agents/{agentId}`；直连模式填 leaf 直连地址。4 种组合中均填网关路径，但组合 3 被动态目录遮蔽不生效。
+>
+> **`a2a.public-url`**（如 `E2E_PUBLIC_URL`）：agent 注册到 RDC 时声明的自身公开地址。leaf-dynamic 时填 leaf 直连地址（网关通过 RDC D1/D4 查到此地址后转发）；leaf-static 时不自注册，此参数不生效。
+>
+> **走网关 vs 不走网关的决定因素**：不是这两个参数本身的值，而是 hub discovery 是否开启 + leaf 是否自注册到 RDC 的组合：
+> - hub discovery 关 → remote-agents 是唯一目录 → 走网关（组合 1/2）
+> - hub discovery 开 + leaf 自注册 → 动态遮蔽静态 → 不走网关（组合 3）
+> - hub discovery 开 + leaf 不自注册 → 动态目录找不到 → 静态保留 → 走网关（组合 4）
+
+| # | hub 模式 | leaf 模式 | remote-agents→网关 | 走网关? | 用例 |
+|---|---|---|---|---|---|
+| 1 | hub-static | leaf-static | ✓ | ✓ 走网关 | M1 |
+| 2 | hub-static | leaf-dynamic | ✓ | ✓ 走网关 | M2 |
+| 3 | hub-hybrid | leaf-dynamic | ✓ | ✗ 不走网关（动态遮蔽静态） | M3 |
+| 4 | hub-hybrid | leaf-static | ✓ | ✓ 走网关（静态保留） | M3b |
+
+#### F011-M1 静态模式接入网关（组合 1：hub-static + leaf-static）
+
+- **Given**：hub(hub-static) + hotel-A(leaf-static)；`remote-agents` 填网关路径地址 `{gw}/a2a/agents/travel-hotel`；RDC `rdc-instances.yml` 静态注入 hotel 实例（`target-agent → http://127.0.0.1:18093`），RDC 拉卡并发布
+- **When**：执行 D1-D5 全链路（同步/流式/GetTask/HITL/Subscribe），均经网关路径入口
+- **Then**：静态拉卡落在网关发现端点；RDC D1 可查到静态注入的实例；网关 D1/D4 路由到 hotel；全链通过
+- **FAIL 判定**：静态拉卡落在 Runtime 直连地址（绕过网关）；D1 查不到实例
+- **部署参数（agent 侧）**：`registry.registration.enabled=false`、`discovery.enabled=false`（agent 不自注册，由 RDC 静态注入）
+- **部署参数（RDC 侧）**：`rdc.deployment-discovery.instances[]` 静态注入实例地址
+- **走网关原理**：hub discovery 全关，remote-agents 是唯一目录来源，URL 指向网关路径 → 所有调用走网关
+
+#### F011-M2 动态模式接入网关（组合 2：hub-static + leaf-dynamic）
+
+- **Given**：hub(hub-static) + hotel-A/B(leaf-dynamic)；hotel 自注册到 RDC（A1 API）；hub 的 `remote-agents` 仍填网关路径地址
+- **When**：执行 D1-D5 全链路，均经网关路径入口
+- **Then**：hotel A1 自注册到 RDC；网关 D1 查实例 → D4 解析 route-handle → 直连转发到 hotel；全链通过
+- **FAIL 判定**：D1 查不到实例；route-handle 解析失败；hotel 未注册
+- **部署参数（agent 侧）**：`registry.registration.enabled=true`、`discovery.enabled=true`、`call-address-policy=resolve`（agent 自注册到 RDC）
+- **注意**：hub 侧始终用 `hub-static`（remote-agents 填网关路径地址），确保调用走网关而非直连 hotel
+- **走网关原理**：hub discovery 全关，remote-agents 是唯一目录来源，URL 指向网关路径 → 所有调用走网关
+
+#### F011-M3 混合模式-动态遮蔽（组合 3：hub-hybrid + leaf-dynamic，**不走网关**）
+
+- **Given**：hub(hub-hybrid)，`discovery.enabled=true` + `remote-agents` 静态声明 trip/hotel（URL 指向网关路径 `{gw}/a2a/agents/travel-hotel`）；hotel-A/B(leaf-dynamic) 自注册到 RDC
+- **When**：hub 调用 hotel
+- **Then**：CatalogArbiter 条目级仲裁：动态条目存在即遮蔽同名静态声明；`candidates=2` 为动态 A+B（RDC D1/D4 解析的直连地址，非网关路径）
+- **FAIL 判定**：静态声明未被遮蔽；候选混入网关路径地址
+- **关键验证**：**调用绕过网关直连 hotel**（动态目录解析的地址是 hotel 直连地址 `http://127.0.0.1:18093`，非网关路径 `http://127.0.0.1:18082/a2a/agents/travel-hotel`）。此为负向验证——证明 hub-hybrid + leaf-dynamic 不走网关
+- **对应开发报告**：FEAT-048-062 S3-2（动态遮蔽静态）+ FEAT-011-014 §2.2.3（"hub-hybrid 的动态目录会遮蔽静态同名声明导致 hotel 绕过网关直连"）
+
+#### F011-M3b 混合模式-静态保留（组合 4：hub-hybrid + leaf-static，**走网关**）
+
+- **Given**：hub(hub-hybrid)，`discovery.enabled=true` + `remote-agents` 静态声明 static-echo（URL 指向网关路径 `{gw}/a2a/agents/static-echo`）；static-echo(leaf-static) **不自注册到 RDC**（`registration.enabled=false`、`discovery.enabled=false`）
+- **When**：hub 调用 static-echo
+- **Then**：动态目录查不到 static-echo（RDC D1 无此实例）→ CatalogArbiter 保留静态声明 → 调用走网关路径 → 网关 D1/D4 路由到 static-echo
+- **FAIL 判定**：动态目录找不到时回退报错而非用静态声明；或静态声明被错误遮蔽
+- **关键验证**：**调用走网关**（静态声明 URL 指向网关路径，动态目录找不到 → 静态保留 → 走网关）
+- **对应开发报告**：FEAT-048-062 S3-1（static-echo 走静态配置委派成功）
+
+#### F011-M4 升级窗不回静态
+
+- **Given**：hub(hub-hybrid)，hotel 动态实例全部注销
+- **When**：查 D1 + D2 + 调用 hotel
+- **Then**：D1 `instances=[]` + D2 卡仍可读；调用 hotel → 显式失败 `no live instance candidate`，不回静态声明
+- **FAIL 判定**：回退到静态声明
+
+#### F011-M5 RDC 短时不可用降级
+
+- **Given**：hub(hub-hybrid)，static-echo 静态声明存在
+- **When**：kill RDC → 调用 static-echo
+- **Then**：`WARN Unified registry service unavailable, serving last known dynamic entries`；static-echo 委派 COMPLETED
+- **FAIL 判定**：异常穿透到用户
+
+### 4.9 D 组补充：多实例路由行为（D8-D17）
+
+> D8-D17 覆盖 FEAT-062 联动场景：加权分布、Namespace 隔离、TTL 收敛、心跳保活、候选耗尽、扩缩容、failover、首事件锁定、目录变更。多数需双实例部署（`AGENT_BUS_SOURCE_RUNTIME_URL_2`）。
+> **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-D8 加权分布统计
+
+- **Given**：travel-hotel 双实例 ONLINE（等权 weight=100）
+- **When**：root 入口连发 60 次 SendMessage
+- **Then**：≥2 个不同 taskId（双实例均承接请求）；大多数请求成功
+- **FAIL 判定**：全部落同一实例（轮转失效）；成功率 < 50%
+
+#### F011-D9 Namespace 隔离
+
+- **Given**：source-agent（tenant A）+ source-agent-ns2（tenant B）分别注册
+- **When**：经网关调用两个 agent + 查 RDC D1 验证实例列表
+- **Then**：两 agent 各自可路由；RDC D1 实例列表不交叉（ns1 不含 ns2 实例）
+- **FAIL 判定**：跨 namespace 实例泄漏
+
+#### F011-D10 TTL 收敛
+
+- **Given**：双实例 ONLINE，已验证双 taskId 落点
+- **When**：注销第二实例（by instanceId），等待 TTL（8s）
+- **Then**：注销后第一实例仍可路由（200 + COMPLETED）
+- **FAIL 判定**：注销后全部不可路由（DEV-007 card URL 被覆写未修复）
+
+#### F011-D11 心跳保活
+
+- **Given**：单实例 ONLINE
+- **When**：首次调用成功 → 等待 8s（超过默认 TTL 5s）→ 再次调用
+- **Then**：两次均 200 + COMPLETED（心跳续期使实例跨 TTL 窗口仍可路由）
+- **FAIL 判定**：第二次 503（心跳未续期）
+
+#### F011-D12 候选耗尽
+
+- **Given**：注册 ephemeral-agent 到不可达端口 `:59999`
+- **When**：经网关调用 ephemeral-agent
+- **Then**：HTTP 200 + JSON-RPC error `-32053` `DIRECT_TRANSPORT_UNKNOWN`（retryable=false）；不泄漏 endpointUrl/routeHandle/taskId
+- **FAIL 判定**：返回 503；或泄漏 taskId 值
+
+#### F011-D13 Scale-out 扩容
+
+- **Given**：单实例 ONLINE，8 次请求确认单一 taskId 集合
+- **When**：注册第二实例 → 等待 TTL → 12 次请求
+- **Then**：扩容后 taskId 集合 > 扩容前（新实例被网关发现并路由）
+- **FAIL 判定**：扩容后 taskId 集合无增长
+
+#### F011-D14 Scale-in 缩容
+
+- **Given**：双实例 ONLINE，已验证双 taskId 落点
+- **When**：注销第二实例 → 重新注册第一实例刷新 card URL → 等待 TTL
+- **Then**：缩容后第一实例仍可路由（200）
+- **FAIL 判定**：缩容后不可路由（DEV-007 未修复）
+
+#### F011-D15 Failover 连接拒绝
+
+- **Given**：live 实例 + dead 实例（不可达端口 `:59998`），等权
+- **When**：连发 10 次 SendMessage
+- **Then**：部分请求成功（网关 failover 从 dead 到 live）
+- **FAIL 判定**：全部失败（无 failover）
+
+#### F011-D16 首事件锁定
+
+- **Given**：双实例 ONLINE
+- **When**：发起流式请求（SendStreamingMessage）
+- **Then**：200 + SSE 首帧存在（首事件锁定到一个实例，不切换）
+- **FAIL 判定**：流式请求失败；或多实例切换
+
+#### F011-D17 目录变更传播
+
+- **Given**：读取当前网关卡 → 重新注册（version 升级到 2.0）→ 等待 TTL
+- **When**：再次读取网关卡
+- **Then**：卡仍指向网关路径（`/a2a/agents/{agentId}`），不暴露 Runtime 直连地址
+- **FAIL 判定**：卡更新后指向 Runtime 直连地址
+
+### 4.10 G 组：遗漏场景补充（G1-G18）
+
+> G 组覆盖 PR#366 后增量场景：card-delete、routeHandle 刷新/缓存、静态兜底、心跳查询、RDC 缓存续服、转发超时、streaming 降级、协议/业务错误不 failover、加权分布、超时 failover、namespace 变更、进程崩溃、同 agentId 不误删、跨租户拒绝、多身份隔离。
+> **代码落点**：`GatewayDirectBlackboxTest`
+
+#### F011-G1 card-delete 后停止路由
+
+- **Given**：source-agent 可路由
+- **When**：从 RDC 注销实例 → 等待 TTL（8s）→ 再次调用
+- **Then**：503 + `ROUTE_NO_CANDIDATES`（拓扑净化）
+- **FAIL 判定**：注销后仍可路由
+
+#### F011-G2 routeHandle 失效后重新发现
+
+- **Given**：source-agent 可路由
+- **When**：全量注销 → 等待 TTL → 重新注册（version 2.0）→ 等待 TTL → 调用
+- **Then**：200 + `TASK_STATE_COMPLETED`（网关重新发现并路由）
+- **FAIL 判定**：重新注册后仍 503
+
+#### F011-G3 routeHandle 缓存命中
+
+- **Given**：source-agent 可路由
+- **When**：连续 5 次 SendMessage
+- **Then**：5/5 均 200（routeHandle 缓存命中，不重复解析）
+- **FAIL 判定**：部分请求失败
+
+#### F011-G4 无实例注册的 agent 无静态兜底
+
+- **Given**：ghost-agent 从未注册
+- **When**：经网关调用 ghost-agent
+- **Then**：503 + `ROUTE_NO_CANDIDATES`
+- **FAIL 判定**：返回 200（错误兜底）
+
+#### F011-G5 心跳保活实例查询验证
+
+- **Given**：source-agent 单实例 ONLINE
+- **When**：查 RDC D1 实例 → 等待 8s（超过 TTL）→ 再查 D1
+- **Then**：两次查询均返回 ≥1 实例（心跳保活使实例持续可见）
+- **FAIL 判定**：TTL 后实例消失
+
+#### F011-G6 RDC 不可用时网关缓存继续服务
+
+- **Given**：source-agent 可路由（网关已缓存 card/routeHandle）
+- **When**：触发 RDC 故障（`AGENT_BUS_RDC_FAULT_URL`）→ 调用 source-agent
+- **Then**：200 或 503（网关用缓存继续服务或降级）
+- **FAIL 判定**：异常穿透到用户
+
+#### F011-G7 网关转发超时配置生效
+
+- **Given**：注册 slow-agent（慢响应实例，`AGENT_BUS_SLOW_RUNTIME_URL`）
+- **When**：经网关调用 slow-agent
+- **Then**：200/504/503（超时返回结构化错误）
+- **FAIL 判定**：无限等待
+
+#### F011-G8 streaming=false 时降级为同步
+
+- **Given**：注册 sync-agent（卡声明 `streaming=false`）
+- **When**：经网关 SendStreamingMessage 调用 sync-agent
+- **Then**：200 或 503（streaming=false 时降级为同步）
+- **FAIL 判定**：返回 SSE 但实例不支持流式
+
+#### F011-G9 协议错误不触发候选切换
+
+- **Given**：source-agent 可路由
+- **When**：`POST /a2a` + `method=UnknownMethod`
+- **Then**：400 + `VALIDATION_METHOD`（协议错误不 failover）
+- **FAIL 判定**：返回 200 或触达 Runtime
+
+#### F011-G10 业务失败不触发候选切换
+
+- **Given**：source-agent 可路由
+- **When**：SendMessage + 空文本
+- **Then**：200/400 + 非 `ROUTE_NO_CANDIDATES`/`REMOTE_UNAVAILABLE`（业务级错误不 failover）
+- **FAIL 判定**：触发 failover
+
+#### F011-G11 INPUT_REQUIRED 不触发候选切换
+
+- **Given**：hub-R2R 部署（`AGENT_BUS_HUB_R2R_URL`）
+- **When**：SendMessage 触发 INPUT_REQUIRED
+- **Then**：200 + 非 `REMOTE_UNAVAILABLE`/`ROUTE_NO_CANDIDATES`（中断状态不 failover）
+- **FAIL 判定**：INPUT_REQUIRED 触发 failover
+
+#### F011-G12 3:1 加权分布
+
+- **Given**：双实例，A weight=100、B weight=33（3:1 比）
+- **When**：连发 40 次 SendMessage
+- **Then**：大多数成功（>20）；≥2 个不同 taskId（加权分布生效）
+- **FAIL 判定**：全部落同一实例
+
+#### F011-G13 首事件前超时触发 failover
+
+- **Given**：live 实例 + dead 实例（`:59997`），等权
+- **When**：连发 8 次 SendMessage
+- **Then**：部分成功（dead 实例超时后 failover 到 live）
+- **FAIL 判定**：全部失败
+
+#### F011-G14 Namespace 变更不污染
+
+- **Given**：source-agent 可路由
+- **When**：注册 + 注销另一个 other-agent → 调用 source-agent
+- **Then**：200 + result（其他 agent 的注册/注销不影响 source-agent 路由）
+- **FAIL 判定**：source-agent 受其他 agent 变更影响
+
+#### F011-G15 进程崩溃后 TTL 收敛
+
+- **Given**：双实例（live + `:59996` dead）
+- **When**：连发 10 次 SendMessage
+- **Then**：部分成功（dead 实例经 TTL 收敛后请求落到 live）
+- **FAIL 判定**：全部失败
+
+#### F011-G16 同 agentId 不误删
+
+- **Given**：双实例（A + B）同 agentId
+- **When**：注销 A（by address）→ 查 RDC D1 → 调用
+- **Then**：D1 仍含 B 实例；调用 200（同 agentId 另一副本不受影响）
+- **FAIL 判定**：注销 A 导致 B 也消失
+
+#### F011-G17 跨租户通过网关时拒绝
+
+- **Given**：cross-tenant-agent 注册到 tenant-b（与网关 tenant 不同）
+- **When**：经网关（tenant A）调用 cross-tenant-agent
+- **Then**：503 + `ROUTE_NO_CANDIDATES`（跨租户不可达）
+- **FAIL 判定**：返回 200（跨租户泄漏）
+
+#### F011-G18 路径入口多身份任务隔离
+
+- **Given**：source-agent + second-agent 均注册，经各自路径入口创建任务
+- **When**：分别 GetTask 查询各自 taskId
+- **Then**：两个 taskId 不同；各自 GetTask 返回 `TASK_STATE_COMPLETED`，无 `ROUTE_OWNERSHIP_UNKNOWN`
+- **FAIL 判定**：GetTask 交叉（A 的 taskId 在 B 的 owner 查到或反之）
+
+#### F011-BOUNDARY message/stream 方法不存在
+
+- **Given**：source-agent 可路由
+- **When**：`POST /a2a` + `method=message/stream`
+- **Then**：400 + `VALIDATION_METHOD`（非白名单方法拒绝，不转发）
+- **FAIL 判定**：返回 200 或触达 Runtime
+
+## 5. 框架落点与执行
+
+### 5.1 测试类与场景映射
+
+| 测试类 | 场景 | 标签 | @Test 数 | 说明 |
+|---|---|---|---|---|
+| `GatewayDirectBlackboxTest` | A/B/C/D/E/G 组（集成层） | `feat-011, integration, blackbox` | 54 | 直连网关全量黑盒：A1-A8/B1-B3/C1-C3/D1-D17/E1-E2b/F1/G1-G18/BOUNDARY/CB1-CB2 |
+
+### 5.2 SUT 选取
+
+| 场景 | 角色 | 制品 | profile |
+|---|---|---|---|
+| A 直连网关 | 网关 | `agent-gateway-demo:0.1.2` | `--gateway.path-mode=direct` |
+| A 直连网关 | hub | `direct-e2e-demo:0.1.0` | `hub-static` |
+| A 直连网关 | hotel 叶子 | `direct-e2e-demo:0.1.0` | `leaf-dynamic` |
+| A 直连网关 | RDC | `agent-rdc:0.1.3` | `--openjiuwen.registry.backend=nacos` |
+
+### 5.3 执行命令
 
 ```powershell
+# 集成层（需外部 DIRECT 栈：RDC + Gateway + Runtime）
+.\mvnw.cmd -Dtest.env=openjiuwen -Dtest=GatewayDirectBlackboxTest test
+
+# 按 tag 跑全部 FEAT-011
 .\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=feat-011 test
-.\mvnw.cmd -Dtest.env=openjiuwen -Dgroups=story-feat-011-direct-create-and-stream test
+
+# 流水线
+./scripts/run-pipeline.sh --env openjiuwen --skip-provision -- -Dtest=GatewayDirectBlackboxTest
 ```
 
-测试结束关闭 Gateway/Agent/RDC 和代理，恢复故障链路并确认端口、容器、线程和临时目录清理。
-当前指定 XML 中 `GatewayReconnectBlackboxTest` 为 13 selected / 13 executed / 13 PASS / 0 skipped / 0 failure / 0 error。SSE media type、终态订阅错误和 owner Runtime 不可达均已精确回归通过。原 1 秒 TTL 用例的 Oracle 与活动 Task owner 保留语义冲突，已经移除且不作为产品问题；正确的 TTL 场景等待 TaskStore TTL、活动刷新和终态查询窗口形成合法 Oracle 后再自动化。
-跨租户 `tenantId + taskId` 尚未执行：当前测试 Gateway 只有一个可信 credential→tenant 映射，不能用自报 tenant header/body 伪造第二租户。
-ReAct Gateway E2E 已实际执行 PASS 1/1（92.995 秒），DeepAgent Gateway E2E PASS 1/1（120.017 秒），
-均为 0 skipped/failure/error；这些结果不替代 owner TTL 和跨租户等尚未执行场景。退出标准：Gateway 公共合同、
-ReAct/DeepAgent 风险 E2E 与最小受影响回归通过或有明确 INCONCLUSIVE/blocked 证据；
-不以直连 Runtime、内部表、开发单测或 fake Gateway 结果宣称 FEAT-011 通过。
+### 5.4 已知缺口
 
----
+| # | 缺口 | 影响场景 | 处置 |
+|---|---|---|---|
+| 1 | 制品版本错位 | 全部 | yml 钉 0.1.0/0.1.1，m2 实际 0.1.2；需统一版本 |
+| 2 | 接口语义断言已对齐 | E2a miss | PR #886 后所有 miss（GetTask/Subscribe/续跑）统一为 `ROUTE_OWNERSHIP_UNKNOWN(-32055)`，旧 `-32001`/`-32051` 分化已消除；断言按 `-32055` 对齐 |
+| 3 | 双实例部署门禁 | D8/D13/G12/G15/G16 | 需 `AGENT_BUS_SOURCE_RUNTIME_URL_2` 环境变量 |
+| 4 | RDC 故障门禁 | G6 | 需 `AGENT_BUS_RDC_FAULT_URL` |
+| 5 | 慢实例门禁 | G7 | 需 `AGENT_BUS_SLOW_RUNTIME_URL` |
+| 6 | hub-R2R 门禁 | D6/F1/G11 | 需 `AGENT_BUS_HUB_R2R_URL` |
+| 7 | CALLBACK 门禁 | CB1/CB2 | 需 `AGENT_BUS_CALLBACK_TEST=true` |
+| 8 | 跨租户凭据（仅一组） | 租户隔离 | 需产品补 `gateway.test-credentials[i].*` 列表 |
 
-## 7. Nacos 模式增量场景（FEAT-048 联动，dependency-gated）
+### 5.5 行为口径与断言规则
 
-> 依据 FEAT-011 需求文档 PR !172 更新（2026-09-11）：Gateway 的服务发现与 routeHandle 解析依赖统一注册中心 SPI（FEAT-048），RDC / Nacos 实现可替换；实现切换不改变本特性的路由决策、失败语义与对外行为。本节只验证"Nacos 实现下 Gateway 语义不变 + 拓扑不泄漏"；注册中心实现自身的注册/发现/解析契约归 FEAT-048 主档。
+1. **网关 JSON-RPC 错误的 HTTP 承载**：协议层错误以 HTTP 200 + JSON-RPC error 承载；仅传输层异常映射非 200（AUTH 401、坏 JSON 400、超限 413、root 无候选 503）
+2. **hub-static 选型理由**：hub-hybrid 的动态目录会遮蔽静态同名声明，hotel 走直连绕过网关；hub-static 保证 hotel 唯一地址 = 网关路径入口
+3. **网关卡端点默认匿名**：静态拉卡不带凭据；调用面 JSON-RPC 才带 Bearer
+4. **等权多实例分布**：D7 六连发可能 4:2 偏斜，属等权轮转正常波动
+5. **流式 method 名**：`SendMessage`/`SendStreamingMessage`；`message/stream` 返回 -32601
 
-### 7.1 增量用例
+## 6. 证据归档
 
-| ID | 场景 | 前置条件 | 步骤 | 期望结果 | 状态 |
-|---|---|---|---|---|---|
-| F011-N01 | Nacos 模式直连路由等价 | Gateway 以 `agent-registry.type=nacos` 运行；travel agent 已自注册 Nacos | 经 Gateway facade 发显式/默认 agentId 的 SendMessage 与 SendStreamingMessage | 路由决策、同步/流式响应、SSE 桥接与拓扑隐藏行为与 §4 `direct.create-and-stream` RDC 基线等价；client 响应不含 endpoint、routeHandle、实例地址；routeHandle 由 Nacos 实现解析但对测试保持不透明 | dependency-gated |
-| F011-N02 | Nacos 模式治理与选路失败等价 | 同上；构造无候选 agentId、Nacos 不可达、畸形 routeHandle | 经 Gateway 发对应请求 | 失败语义与 §4 `direct.governance-and-routing-failure` RDC 基线等价（route_not_found / service_unavailable 等确定错误，不伪造 Task）；Nacos 不可用时不产生下游 Agent 调用；错误正文无物理拓扑与明文凭据 | dependency-gated |
-| F011-N03 | 实现切换回滚零行为变化 | 同环境先 Nacos 后切回 rdc（或反向），travel 栈不变 | 两模式下分别复跑 Gateway 重连合同与 E2E 主链路 | Gateway 对外行为（路由、粘滞续跑、GetTask/SubscribeToTask、SSE Bridge）两模式等价；routeHandle 跨实现不互通，切换后旧 handle 相关续跑按既定失败语义处理，不产生错误实例命中 | dependency-gated |
-
-### 7.2 框架落点与门禁
-
-```text
-src/test/java/com/huawei/ascend/sit/cases/integration/agent_bus/
-  Feat048NacosGatewaySwapDeltaBlackboxTest.java   # F011-N01..N03（与 FEAT-012/016/017 联动共用）
-```
-
-门禁：Nacos 3.x 服务端（AI 开启）与携带 Nacos 实现的 Gateway 正式制品就绪前，本节用例 SKIPPED，不计 PASS；F011-N03 的切换执行须按迁移方案一次性整体切换，不做灰度双跑。
+每条用例的证据文件按开发报告格式归档到 `evidence/` 目录：
+- 请求报文：`{id}-req.json`
+- 响应报文：`{id}-resp.json` / `{id}-sse-raw.txt`
+- 关键日志：`{id}-keylogs.txt`
+- 部署命令：`deploy-process-cmdlines.txt`
+- 日志目录：`logs/{rdc,gateway,hub,hotel-a,hotel-b}.out.log`

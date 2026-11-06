@@ -50,13 +50,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("unit-like")
 final class Feat033ConfigFailFastTest {
 
+    /**
+     * Sentinel injected as the {@code apiKey} value in tests that build a
+     * {@link ModelClientConfig}. The sentinel must never surface in exception
+     * messages, exception chains, or observable logs (L2 §2.3 + §7.3 R14).
+     * Any occurrence is a zero-tolerance credential leak.
+     */
+    static final String CREDENTIAL_SENTINEL = "SENTINEL-CREDENTIAL-DO-NOT-LEAK-7f3a9c";
+
     /** L2 §7.3 red-line: no credentials / configuration content in error messages. */
     private static final List<String> SECRET_NEEDLES = List.of(
             "api-key", "api_key", "apiKey",
             "authorization", "Authorization",
             "secret", "password", "bearer", "Bearer",
             "sk-stub-fail-fast-test-key",
-            "http://127.0.0.1:65535");
+            "http://127.0.0.1:65535",
+            CREDENTIAL_SENTINEL);
 
     @Test
     void triggerTotalTokensZeroRejected() {
@@ -139,11 +148,11 @@ final class Feat033ConfigFailFastTest {
     @Test
     void modelClientWithoutModelRejected() {
         StructuredCompactProcessorConfig config = new StructuredCompactProcessorConfig();
-        // Use secret-looking apiKey + apiBase so that any accidental leak into
-        // the exception message is caught by assertNoSecrets below.
+        // Use the credential sentinel as apiKey so that any accidental leak into
+        // the exception message is caught by assertNoSecrets below (L2 §2.3 / §7.3).
         ModelClientConfig client = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)
-                .apiKey("sk-stub-fail-fast-test-key")
+                .apiKey(CREDENTIAL_SENTINEL)
                 .apiBase("http://127.0.0.1:65535/v1")
                 .timeout(1.0)
                 .build();
@@ -154,6 +163,46 @@ final class Feat033ConfigFailFastTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("model and modelClient")
                 .satisfies(e -> assertNoSecrets(e.getMessage()));
+    }
+
+    /**
+     * §3.30 sentinel sub-assertion — the credential sentinel must not surface in
+     * any build-time exception message or chain when it is used as the
+     * {@code apiKey} value. This is a dedicated zero-tolerance R14 guard
+     * independent of the pair-check logic above.
+     *
+     * <p>The sentinel is injected into {@code apiKey} only. The validator must
+     * reject the pair-less config before ever logging or echoing any config
+     * field value.
+     */
+    @Test
+    void sentinelNotLeakedInBuildTimeException() {
+        StructuredCompactProcessorConfig config = new StructuredCompactProcessorConfig();
+        ModelClientConfig client = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey(CREDENTIAL_SENTINEL)
+                .apiBase("http://127.0.0.1:65535/v1")
+                .timeout(1.0)
+                .build();
+        config.setModelClient(client);
+        // model left null — triggers pair-check IllegalArgumentException
+
+        assertThatThrownBy(config::validate)
+                .isInstanceOf(IllegalArgumentException.class)
+                .satisfies(e -> {
+                    // Primary: message must not contain the sentinel
+                    assertThat(e.getMessage())
+                            .as("exception message must not leak credential sentinel")
+                            .doesNotContain(CREDENTIAL_SENTINEL);
+                    // Chain: none of the cause messages should leak either
+                    Throwable cause = e.getCause();
+                    while (cause != null) {
+                        assertThat(cause.getMessage())
+                                .as("exception cause message must not leak credential sentinel")
+                                .doesNotContain(CREDENTIAL_SENTINEL);
+                        cause = cause.getCause();
+                    }
+                });
     }
 
     private static void assertNoSecrets(String message) {

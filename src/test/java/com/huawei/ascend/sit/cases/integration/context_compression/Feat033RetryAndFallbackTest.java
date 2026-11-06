@@ -11,9 +11,12 @@ import com.huawei.ascend.sit.cases.integration.context_compression.fixture.Compr
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 
 import static com.huawei.ascend.sit.cases.integration.context_compression.fixture.CompactProbeHarness.DEFAULT_TRIGGER_TIMEOUT;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * FEAT-033 §3 — retry pressure and deterministic fallback behaviors beyond
@@ -146,6 +149,71 @@ final class Feat033RetryAndFallbackTest {
                     .assertKind()
                     .assertLlmCallCount(0)
                     .assertNoSecretsInDetails();
+        }
+    }
+
+    /**
+     * §3.4 TC-MODEL-TIMEOUT-TOTAL-BOUND — total LLM-call wall-clock time must
+     * not exceed three times the per-call timeout (L2 §3.4: "总动作模型期限不超
+     * 过三倍 timeout").
+     *
+     * <p>Setup: s6 profile (timeout scenario); stub slow mode with
+     * {@code LLM_STUB_SLOW_RESPONSE_MILLIS=60000} (effectively infinite). The
+     * processor will time out each LLM attempt; with max 3 attempts the total
+     * wall time must remain bounded by {@code 3 × per-call-timeout} plus a
+     * reasonable overhead allowance.
+     *
+     * <p>The per-call timeout is configured in the s6 profile YAML (the SIT
+     * harness does not currently expose an env-var override for model client
+     * timeout). The assertion uses a conservative upper bound of
+     * {@code 3 × MAX_SINGLE_TIMEOUT_S + OVERHEAD_S} seconds to accommodate
+     * JVM startup and scheduling overhead. If the test hangs beyond this
+     * bound it indicates the total-time-limit is not enforced.
+     *
+     * <p>Known-gap note: if the s6 profile's configured model timeout is not
+     * exposed via an env var, it cannot be read programmatically. The TC uses
+     * {@code OBSERVED_MAX_SINGLE_TIMEOUT_S = 10} seconds as a pessimistic
+     * upper bound for a single attempt (observed from §3.16 s6 test with
+     * {@code LLM_STUB_SLOW_RESPONSE_MILLIS=10000}). Adjust if the s6 profile
+     * configures a different timeout.
+     */
+    @Test
+    void modelTimeoutTotalBoundNotExceededThreeTimes() throws Exception {
+        CompactProbeHarness.assumeFatJarsPresent();
+
+        // Pessimistic upper bound for one LLM call timeout, derived from s6
+        // profile observation (10s slow stub → one attempt completes within 10s).
+        // L2 §3.4 bound: total ≤ 3 × per_call_timeout.
+        // TC bound: 3 × 10s + 20s overhead = 50s to accommodate JVM + scheduling.
+        final int observedMaxSingleTimeoutSeconds = 10;
+        final long tcWallBoundMillis =
+                (3L * observedMaxSingleTimeoutSeconds + 20) * 1_000L; // 50s
+
+        try (Scenario s = CompactProbeHarness.launch("s6", "slow",
+                Map.of("LLM_STUB_SLOW_RESPONSE_MILLIS", "60000"),
+                Map.of())) {
+
+            Instant start = Instant.now();
+            // The trigger will block until all retry attempts time out and
+            // the processor commits deterministic fallback.
+            TriggerResponse resp = s.http().trigger("s6", Duration.ofSeconds(90));
+            long elapsed = Duration.between(start, Instant.now()).toMillis();
+
+            assertThat(resp.statusCode())
+                    .as("trigger-compact HTTP status (processor must return even on all-timeout)")
+                    .isEqualTo(200);
+
+            // Core assertion: total wall time ≤ 3 × per-call timeout + overhead.
+            assertThat(elapsed)
+                    .as("total wall time must be bounded by 3×single-timeout + overhead "
+                            + "(L2 §3.4 '总动作模型期限不超过三倍 timeout'); "
+                            + "elapsed=%dms bound=%dms", elapsed, tcWallBoundMillis)
+                    .isLessThanOrEqualTo(tcWallBoundMillis);
+
+            // The processor must have committed deterministic fallback, not hung.
+            s.tailer().assertRequired("phase=complete");
+            s.tailer().assertRequired("outcome=DETERMINISTIC_COMPACTED");
+            s.tailer().assertForbidden("outcome=LLM_COMPACTED");
         }
     }
 }

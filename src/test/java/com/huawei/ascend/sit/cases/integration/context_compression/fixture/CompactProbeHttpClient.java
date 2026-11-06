@@ -172,6 +172,48 @@ public final class CompactProbeHttpClient {
         return postNoBody("/__trace-bridge-reinstall", requestTimeout);
     }
 
+    // ── Stub sync-point side channel (SyncPointDriver endpoints) ─────────────
+    // These three methods drive the LLM stub's pause/ack/release mechanism so
+    // that SIT TCs can inject a deterministic concurrent-write or cancel race
+    // without relying on fixed-sleep timing (testplan §3.21/§3.22 forbidden
+    // clause). The endpoints live on the probe agent which proxies them to the
+    // stub server. If the demo wires them directly on the stub URL instead,
+    // callers should use CompactProbeHttpClient(stub.baseUrl()) for these calls.
+
+    /**
+     * {@code POST /__pause} — instructs the LLM stub to hold any pending
+     * response until {@link #releaseStub} is called. Returns
+     * {@code {"paused": true}} when the stub accepted the pause command.
+     */
+    public TriggerResponse pauseStub(Duration requestTimeout) throws Exception {
+        return postNoBody("/__pause", requestTimeout);
+    }
+
+    /**
+     * {@code POST /__ack?timeoutMs=N} — waits up to {@code timeoutMs}
+     * milliseconds for the probe agent to signal that the compression
+     * operation has reached the LLM-call point (i.e. the stub has received
+     * the pending request). Returns {@code {"acked": true}} when the signal
+     * arrived within the timeout; {@code {"acked": false}} on timeout.
+     *
+     * <p>Use after {@link #pauseStub} + {@link #triggerAsync} to guarantee
+     * the async compression is in-flight at the LLM call before continuing
+     * with cancel or source-mutate.
+     */
+    public TriggerResponse ackStub(long timeoutMs, Duration requestTimeout) throws Exception {
+        return postNoBody("/__ack?timeoutMs=" + timeoutMs, requestTimeout);
+    }
+
+    /**
+     * {@code POST /__release} — releases the stub from its paused state,
+     * allowing any held LLM responses to be delivered. Must be called after
+     * {@link #ackStub} to avoid leaking the stub in a permanently paused
+     * state between tests.
+     */
+    public TriggerResponse releaseStub(Duration requestTimeout) throws Exception {
+        return postNoBody("/__release", requestTimeout);
+    }
+
     private TriggerResponse postNoBody(String pathAndQuery, Duration requestTimeout) throws Exception {
         Objects.requireNonNull(requestTimeout, "requestTimeout");
         HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + pathAndQuery))

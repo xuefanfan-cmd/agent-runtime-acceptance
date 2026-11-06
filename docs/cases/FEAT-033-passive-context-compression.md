@@ -378,7 +378,7 @@ related_docs:
   - `outcome=LLM_COMPACTED`
   - 固定 sleep 时序作判据（必须走可控同步点）
 - **Java 落点**：`Feat033ConcurrencyTest.snapshotChangedNoOp()`（新类，phase-1-pending）
-- **状态**：phase-1-pending
+- **状态**：phase-1-pending（TC 已落码 e1e693f；待 demo 补 `/__pause`/`/__ack`/`/__release` 侧通道后复跑）
 
 ### 3.22 `TC-ASYNC-CANCEL-LATE-WRITEBACK` — 异步取消 + 迟到结果不写回（L2 §3.4 + R15）
 
@@ -391,7 +391,7 @@ related_docs:
 - **判据**（forbidden）：
   - 固定 sleep 时序作判据
 - **Java 落点**：`Feat033ConcurrencyTest.asyncCancelLateWriteback()`（新类，phase-1-pending）
-- **状态**：phase-1-pending
+- **状态**：phase-1-pending（TC 已落码 e1e693f；待 demo 补 `/__pause`/`/__ack`/`/__release` 侧通道后复跑）
 
 ### 3.23 `TC-IDENTIFIER-TRUNCATION` — 标识符总上限 300 截断（L2 §3.5）
 
@@ -521,8 +521,36 @@ related_docs:
   - 任一子场景能构造成功
   - 哨兵 `SENTINEL-CREDENTIAL-DO-NOT-LEAK-7f3a9c` 出现在异常 message / 堆栈 / 日志
 - **判据不基于参数名正则**（允许 `compressionCallMaxTokens / maxTokens` 等参数名出现在 message）
-- **Java 落点**：`Feat033ConfigFailFastTest`（已有 7 @Test，phase-1-landed；哨兵判据待追加）
-- **状态**：phase-1-landed（哨兵零泄漏子判据待补判）
+- **Java 落点**：`Feat033ConfigFailFastTest`（12 @Test，含哨兵零泄漏判据，phase-1-landed）
+- **状态**：phase-1-landed（2026-11-06 ECS 验证 12/12 PASS，commit e1e693f）
+
+---
+
+### 3.31 `TC-MODEL-TIMEOUT-TOTAL-BOUND` — 总模型期限不超过三倍 timeout（L2 §3.4）
+
+- **profile**：`s6`（timeout 场景）
+- **stub mode**：`slow`（`LLM_STUB_SLOW_RESPONSE_MILLIS=60000`，模拟永不响应）
+- **判据**（required）：
+  - `phase=complete` 出现，`outcome=DETERMINISTIC_COMPACTED`（三次超时后降级）
+  - 触发到完成的总 wall time ≤ 3 × per-call-timeout + 20s overhead（TC 以 50s 为保守上限）
+- **判据**（forbidden）：
+  - `outcome=LLM_COMPACTED`
+  - 总 wall time 超过上限（表示无总期限约束，会无限挂起）
+- **Java 落点**：`Feat033RetryAndFallbackTest.modelTimeoutTotalBoundNotExceededThreeTimes()`
+- **状态**：phase-1-landed（2026-11-06 ECS 验证 PASS，18s < 50s，commit e1e693f）
+
+---
+
+### 3.32 `TC-LOG-ZERO-LEAK` — 凭据/对话正文/堆栈帧日志零泄漏（L2 §5.3）
+
+- **profile**：`s1`（阳性路径，覆盖全 LLM call 链路日志）+ `s7`（5xx 错误路径，覆盖异常代码路径）
+- **注入点**：`LLM_API_KEY=SENTINEL-CREDENTIAL-DO-NOT-LEAK-7f3a9c`（凭据哨兵）；`PROBE_INJECT_USER_MESSAGE=SENTINEL-SESSION-BODY-DO-NOT-LEAK-9d2e4b`（对话哨兵，待 demo 接线）
+- **判据**（required）：
+  - probe log 不含凭据哨兵 `SENTINEL-CREDENTIAL-DO-NOT-LEAK-7f3a9c`
+  - probe log 不含对话哨兵 `SENTINEL-SESSION-BODY-DO-NOT-LEAK-9d2e4b`
+  - probe log 不含 `\tat com\.openjiuwen\.` 原始堆栈帧行（L2 §5.3 "原始异常"禁入日志）
+- **Java 落点**：`Feat033LogRedactionTest`（新类，3 @Test）
+- **状态**：phase-1-landed（2026-11-06 ECS 验证 3/3 PASS，commit e1e693f；对话哨兵 TC 待 demo 接 `PROBE_INJECT_USER_MESSAGE` env）
 
 ---
 
@@ -531,8 +559,8 @@ related_docs:
 | fixture 组件 | 职责 | 状态 |
 |---|---|---|
 | `CompactProbeDemoLauncher` | 启停两个 fat jar；传 scenario profile + stub env 覆写；端口 18193/18194 探活；JVM 退出 hook kill 子进程 | **landed** |
-| `CompactProbeHttpClient` | 直发 probe 入口：`/trigger-compact` / `/trigger-compact-via-rail` / `/__trigger-active` / `/__trigger-async` / `/__cancel` / `/__source-mutate` / `/__save-state` / `/__load-state` / `/__compression-history` / `/__span-events` / `/__assembly-info` / `/__reset-span-exporter` / `/__trace-bridge-close` / `/__trace-bridge-reinstall` | **landed**（基础版） — 待扩 `__trigger-active` / `__trigger-async` / `__cancel` / `__source-mutate` / `__save-state` / `__load-state` / `__span-events` / `__assembly-info` / `__trace-bridge-*` / `trigger-compact-via-rail` 等 r5 新增端点 |
-| `SyncPointDriver` | 封装 `/__pause` + `/__ack(timeoutMs)` + `/__release` + `/__async-result(opId,waitMs)` 调用序列 | **pending**（r5 新建） |
+| `CompactProbeHttpClient` | 直发 probe 入口：`/trigger-compact` / `/trigger-compact-via-rail` / `/__trigger-active` / `/__trigger-async` / `/__cancel` / `/__source-mutate` / `/__save-state` / `/__load-state` / `/__compression-history` / `/__span-events` / `/__assembly-info` / `/__reset-span-exporter` / `/__trace-bridge-close` / `/__trace-bridge-reinstall` / `/__pause` / `/__ack` / `/__release` | **landed**（r5 全端点 + sync-point 侧通道 e1e693f） |
+| `SyncPointDriver` | 封装 `/__pause` + `/__ack(timeoutMs)` + `/__release` + `/__async-result(opId,waitMs)` 调用序列 | **内联于 CompactProbeHttpClient**（pauseStub/ackStub/releaseStub 方法，e1e693f；独立 SyncPointDriver 类可选重构） |
 | `ProbeLogTailer` | 过滤 `StructuredCompactProcessor` 行 + `rail_dispatch_begin/end` 行 + `probe_result` 行；按 `operation` + `phase` 关联断言 | **landed**（基础版） — 待扩 rail_dispatch_* 支持 |
 | `CompressionDetailsAsserter` | 核 HTTP body + `/__compression-history` details map；`assertAlgorithmVersionString()` / `assertCounterIdIsClassName()` / `assertNoWhitelistViolation()` / `assertNoLeakedSentinel(sentinelValue)` | **landed**（基础版） — 待扩哨兵判据 |
 | `SpanEventsAsserter` | 调 `GET /__span-events`，断言宿主 recording span 上 `context.compression_state` event 存在，event attribute 含固定结果码；拒 "processor span" / `counter_id` 属性 | **pending**（r5 新建） |

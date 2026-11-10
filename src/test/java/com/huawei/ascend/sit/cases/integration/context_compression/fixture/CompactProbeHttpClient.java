@@ -201,7 +201,7 @@ public final class CompactProbeHttpClient {
      * with cancel or source-mutate.
      */
     public TriggerResponse ackStub(long timeoutMs, Duration requestTimeout) throws Exception {
-        return postNoBody("/__ack?timeoutMs=" + timeoutMs, requestTimeout);
+        return getRequest("/__ack?timeoutMs=" + timeoutMs, requestTimeout);
     }
 
     /**

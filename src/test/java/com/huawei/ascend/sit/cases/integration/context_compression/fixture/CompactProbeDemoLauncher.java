@@ -48,7 +48,7 @@ public final class CompactProbeDemoLauncher implements AutoCloseable {
             System.getProperty("user.home").replace('\\', '/'),
             "openjiuwen-java", "2012", "agent-solution", "common", "example",
             "structured-compact-sit-demo",
-            "llm-stub-server", "target", "llm-stub-server-0.1.0.jar");
+            "llm-stub-server", "target", "compact-sit-llm-stub-server-0.1.0.jar");
 
     private final String name;
     private final Path jar;

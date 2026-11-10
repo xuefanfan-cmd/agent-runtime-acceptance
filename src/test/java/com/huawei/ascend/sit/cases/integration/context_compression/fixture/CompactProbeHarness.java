@@ -153,17 +153,28 @@ public final class CompactProbeHarness {
         private final CompactProbeDemoLauncher stub;
         private final CompactProbeDemoLauncher probe;
         private final CompactProbeHttpClient http;
+        private final CompactProbeHttpClient stubHttp;
         private final ProbeLogTailer tailer;
 
         private Scenario(CompactProbeDemoLauncher stub, CompactProbeDemoLauncher probe) {
             this.stub = stub;
             this.probe = probe;
             this.http = new CompactProbeHttpClient(probe.baseUrl());
+            this.stubHttp = new CompactProbeHttpClient(stub.baseUrl());
             this.tailer = new ProbeLogTailer(probe.logFile());
         }
 
         public CompactProbeHttpClient http() {
             return http;
+        }
+
+        /**
+         * Returns an HTTP client targeting the LLM stub server (port 18194).
+         * Use this for stub-side sync-point calls:
+         * {@code /__pause}, {@code GET /__ack}, {@code /__release}.
+         */
+        public CompactProbeHttpClient stubHttp() {
+            return stubHttp;
         }
 
         public ProbeLogTailer tailer() {

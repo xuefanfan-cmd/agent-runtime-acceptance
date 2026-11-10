@@ -81,7 +81,7 @@ final class Feat033ConcurrencyTest {
             String contextId = "probe-sync-" + System.nanoTime();
 
             // Step 1: pause the stub so the in-flight LLM call is held
-            TriggerResponse pauseResp = s.http().pauseStub(SHORT);
+            TriggerResponse pauseResp = s.stubHttp().pauseStub(SHORT);
             assertThat(pauseResp.statusCode())
                     .as("/__pause HTTP status")
                     .isEqualTo(200);
@@ -93,7 +93,7 @@ final class Feat033ConcurrencyTest {
                     .isEqualTo(200);
 
             // Step 3: wait for probe to signal the LLM call is in-flight
-            TriggerResponse ackResp = s.http().ackStub(10_000L, ACK_TIMEOUT);
+            TriggerResponse ackResp = s.stubHttp().ackStub(10_000L, ACK_TIMEOUT);
             assertThat(ackResp.statusCode())
                     .as("/__ack HTTP status")
                     .isEqualTo(200);
@@ -108,7 +108,7 @@ final class Feat033ConcurrencyTest {
                     .isEqualTo(200);
 
             // Step 5: release stub — LLM responds, but snapshot is now stale
-            TriggerResponse release = s.http().releaseStub(SHORT);
+            TriggerResponse release = s.stubHttp().releaseStub(SHORT);
             assertThat(release.statusCode())
                     .as("/__release HTTP status")
                     .isEqualTo(200);
@@ -162,7 +162,7 @@ final class Feat033ConcurrencyTest {
             String contextId = "ctx-cancel-" + System.nanoTime();
 
             // Step 1: pause stub
-            TriggerResponse pauseResp = s.http().pauseStub(SHORT);
+            TriggerResponse pauseResp = s.stubHttp().pauseStub(SHORT);
             assertThat(pauseResp.statusCode())
                     .as("/__pause HTTP status")
                     .isEqualTo(200);
@@ -174,7 +174,7 @@ final class Feat033ConcurrencyTest {
                     .isEqualTo(200);
 
             // Step 3: wait for LLM call to be in-flight
-            TriggerResponse ackResp = s.http().ackStub(10_000L, ACK_TIMEOUT);
+            TriggerResponse ackResp = s.stubHttp().ackStub(10_000L, ACK_TIMEOUT);
             assertThat(ackResp.statusCode())
                     .as("/__ack HTTP status")
                     .isEqualTo(200);
@@ -189,7 +189,7 @@ final class Feat033ConcurrencyTest {
                     .isEqualTo(200);
 
             // Step 5: release stub
-            TriggerResponse release = s.http().releaseStub(SHORT);
+            TriggerResponse release = s.stubHttp().releaseStub(SHORT);
             assertThat(release.statusCode())
                     .as("/__release HTTP status")
                     .isEqualTo(200);

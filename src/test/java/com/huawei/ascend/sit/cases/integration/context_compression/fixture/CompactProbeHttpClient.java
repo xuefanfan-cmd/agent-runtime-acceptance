@@ -243,9 +243,19 @@ public final class CompactProbeHttpClient {
         }
         try {
             JsonNode root = MAPPER.readTree(raw);
-            String scenario = root.path("scenario").asText(null);
+            // /__async-result wraps the compaction result under a "result" object:
+            //   { "opId": "...", "done": true, "cancelled": false,
+            //     "result": { "scenario": "sN", "details": { "outcome": "...", ... } } }
+            // Synchronous endpoints (/trigger-compact, /__trigger-active, etc.) return
+            // the payload flat:
+            //   { "scenario": "sN", "details": { "outcome": "...", ... } }
+            // Probe into "result" first so both shapes work with the same TriggerResponse API.
+            JsonNode payloadNode = root.has("result") && root.get("result").isObject()
+                    ? root.get("result")
+                    : root;
+            String scenario = payloadNode.path("scenario").asText(null);
             Map<String, Object> details = null;
-            JsonNode detailsNode = root.get("details");
+            JsonNode detailsNode = payloadNode.get("details");
             if (detailsNode != null && detailsNode.isObject()) {
                 details = MAPPER.convertValue(detailsNode, new TypeReference<>() {});
             }

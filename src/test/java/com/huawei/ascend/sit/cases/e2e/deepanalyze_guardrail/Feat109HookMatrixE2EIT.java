@@ -163,16 +163,38 @@ class Feat109HookMatrixE2EIT {
     }
 
     @Test
-    @DisplayName("F109-15b: PreToolUse allowed=false → deny 工具不执行")
-    void preToolUseDenyBlocksTool(TestInfo info) throws Exception {
-        String hook = preToolUseCmdHook("mtx-b",
-                "#!/bin/sh\nprintf '{\"allowed\":false,\"error\":\"matrix-deny\"}'\nexit 0\n");
-        String marker = "b" + System.nanoTime();
+    @DisplayName("F109-15i(#45-3 裁决): PreToolUse 输出超限（64KiB+1）→ 非法结果 deny")
+    void preToolUseOverLimitDenies(TestInfo info) throws Exception {
+        // #45 裁决：读满上限后探测第 N+1 字节，超限判非法（DV-109-05 partial → MUST，r2 实现）
+        String hook = preToolUseCmdHook("mtx-i2",
+                "#!/bin/sh\nhead -c 65537 /dev/zero | tr '\\0' 'a'\nexit 0\n");
+        String marker = "i2" + System.nanoTime();
         List<SseFrame> frames = runReadFileTask("[" + hook + "]", marker);
         assertModelCalledReadFile(frames);
+        assertThat(toolExecuted(frames, marker)).as("输出超限 → 非法结果 deny，工具不执行").isFalse();
+        Allure.addAttachment("F109-15i 证据", "text/plain",
+                "超限格（65537 字节）→ deny；r2 N+1 探测实现");
+    }
+
+    @Test
+    @DisplayName("F109-15b: PreToolUse allowed=false → deny 工具不执行")
+    void preToolUseDenyBlocksTool(TestInfo info) throws Exception {
+        // run-24 断言强度审计：deny 格同时挂 PostToolUse hook——出口 9 的「后续 hook 与
+        // PostToolUse 不执行」反向检验（目标失效「deny 后后置 hook 仍跑」必须被拦住）
+        String denyHook = preToolUseCmdHook("mtx-b",
+                "#!/bin/sh\nprintf '{\"allowed\":false,\"error\":\"matrix-deny\"}'\nexit 0\n");
+        String postHook = postToolUseCmdHook("mtx-b-post", "#!/bin/sh\nexit 0\n");
+        String marker = "b" + System.nanoTime();
+        List<SseFrame> frames = runReadFileTask("[" + denyHook + "," + postHook + "]", marker);
+        assertModelCalledReadFile(frames);
         assertThat(toolExecuted(frames, marker)).as("allowed=false → 工具不执行").isFalse();
-        assertThat(frames.stream().anyMatch(f -> f.data() != null && f.data().contains("denied")))
-                .as("deny 证据可见").isTrue();
+        // 结构化断言（弱 contains("denied") 会被模型话术假阳性——run-24 审计）
+        assertThat(frames.stream().anyMatch(f -> f.data() != null
+                        && f.data().contains("\"permissionDecision\":\"denied\"")))
+                .as("结构化 denied 证据（JSON 键值形态）").isTrue();
+        assertThat(frames.stream().noneMatch(f -> f.data() != null
+                        && f.data().contains("\"hookId\":\"mtx-b-post\"")))
+                .as("出口9 后半：deny 后 PostToolUse hook 不触发").isTrue();
     }
 
     @Test

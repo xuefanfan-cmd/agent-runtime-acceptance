@@ -122,6 +122,17 @@ class Feat109HooksValidationE2EIT {
     }
 
     @Test
+    @Story("F109-14c(#45-2 裁决): HTTP hook 未配匹配白名单 → 建档/start 前受理 400（执行时拦截保留作纵深）")
+    @DisplayName("F109-14c: 白名单缺失受理前 400")
+    void httpHookWithoutWhitelistRejectedBeforeStart() throws Exception {
+        // #45 裁决：保留 MUST，非匹配目标在任务建档/start 前返回 400（r2 制品 76bcad137 实现）
+        assertRejected(run("sess-f109v-wl-" + System.nanoTime(),
+                "[{\"id\":\"h-1\",\"event\":\"PreToolUse\",\"type\":\"http\","
+                        + "\"config\":{\"url\":\"http://127.0.0.1:9/hook\"},\"enabled\":true}]"),
+                "HTTP hook 白名单缺失（裁决后受理 400）");
+    }
+
+    @Test
     @Story("F109-16e: 非 blocking 事件忽略 matcher（畸形形态不前置拒绝，DV-109-06 正向面）")
     @DisplayName("F109-16e: 生命周期事件忽略 matcher")
     void lifecycleEventIgnoresMatcher() throws Exception {

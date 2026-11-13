@@ -125,8 +125,8 @@ class Feat109DenyE2EIT {
         }
 
         boolean deniedSeen = frames.stream().anyMatch(f -> f.data() != null
-                && f.data().contains("permissionDecision") && f.data().contains("denied"));
-        assertThat(deniedSeen).as("场景 deny 的 bash 调用被拒（SSE 含 permissionDecision=denied）").isTrue();
+                && f.data().contains("\"permissionDecision\":\"denied\""));
+        assertThat(deniedSeen).as("场景 deny 的 bash 调用被拒（结构化 permissionDecision=denied）").isTrue();
         assertThat(frames.stream().noneMatch(f -> f.data() != null
                         && f.data().contains("\"kind\":\"permission_confirm\"")
                         && "bash".equals(f.field("toolName"))))

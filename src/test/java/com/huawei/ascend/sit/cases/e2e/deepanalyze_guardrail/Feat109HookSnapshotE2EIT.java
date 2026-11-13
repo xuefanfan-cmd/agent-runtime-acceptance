@@ -90,6 +90,7 @@ class Feat109HookSnapshotE2EIT {
             case "snap-a", "snap-b" -> "PreToolUse";
             case "lc-start" -> "AgentStart";
             case "lc-stop" -> "Stop";
+            case "lc-stopfail" -> "StopFailure";
             case "lc-complete" -> "AgentComplete";
             default -> "PreToolUse";
         };
@@ -156,6 +157,77 @@ class Feat109HookSnapshotE2EIT {
     }
 
     /* ==================== 用例 ==================== */
+
+    @Test
+    @Story("F109-12b: 失败/取消收尾分类——待答 /cancel 走 StopFailure，不触发正向 Stop")
+    @DisplayName("F109-12b: 取消收尾走 StopFailure")
+    void lifecycleStopFailureOnCancel() throws Exception {
+        String hookStart = counterHook("lc-start", "lc-start-c");
+        String hookStop = counterHook("lc-stop", "lc-stop-c");
+        String hookStopFail = counterHook("lc-stopfail", "lc-stopfail-c");
+        String hookComplete = counterHook("lc-complete", "lc-complete-c");
+        String session = "sess-snap-lcfail-" + System.nanoTime();
+        String hooksJson = "[" + hookStart + "," + hookStop + "," + hookStopFail + ","
+                + hookComplete + "]";
+        // write_file ask 挂起（复用 runWriteFileWithHooks 的挂起形态，但回答步骤替换为 /cancel）
+        String fileName = "lcfail-" + System.nanoTime() + ".md";
+        String input = "使用 write_file 工具创建文件 " + fileName + "，内容：Lcfail-Marker。"
+                + "不要执行其他任何工具。";
+        String body = "{\"sessionId\":\"" + session + "\",\"input\":\"" + input + "\","
+                + "\"runtimeConfig\":{\"version\":1,\"tenantId\":\"default-user\",\"sessionId\":\""
+                + session + "\",\"hooks\":" + hooksJson + "}}";
+        HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(http, base, body,
+                Duration.ofSeconds(150));
+        List<SseFrame> collected = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        Thread reader = new Thread(() -> {
+            try {
+                DaCompatGuardrailSupport.readFramesInto(stream, collected::add, f -> false,
+                        Duration.ofSeconds(140));
+            } catch (Exception e) {
+                collected.add(new SseFrame("err", "err", String.valueOf(e)));
+            }
+        }, "f109-lcfail-reader");
+        reader.setDaemon(true);
+        reader.start();
+        String taskId = null;
+        String toolCallId = null;
+        long deadline = System.currentTimeMillis() + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            for (SseFrame f : collected) {
+                if (f.data() != null && f.data().contains("\"kind\":\"permission_confirm\"")) {
+                    taskId = f.field("taskId");
+                    toolCallId = f.field("toolCallId");
+                }
+            }
+            if (toolCallId != null) {
+                break;
+            }
+            Thread.sleep(400);
+        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(toolCallId != null,
+                "INCONCLUSIVE——120s 未捕获 ask_user，取消路径未触达；帧数=" + collected.size());
+        // 待答时 /cancel（L2 §2.4：取消收尾走 StopFailure；L1 §5.1.7 cancel 形成 cancelled）
+        HttpResponse<String> cancelResp = DaCompatGuardrailSupport.post(http, base,
+                "/api/agents/cancel/" + taskId, "{}", Duration.ofSeconds(30),
+                Map.of("X-Da-Session-Id", session));
+        assertThat(cancelResp.statusCode()).isEqualTo(200);
+        reader.join(150_000);
+
+        // 有界轮询：取消收尾的 StopFailure/AgentComplete 计数到位（异步收尾，run-14 教训）
+        long dl = System.currentTimeMillis() + 15_000;
+        while (System.currentTimeMillis() < dl
+                && (counter("lc-stopfail-c") < 1 || counter("lc-complete-c") < 1)) {
+            Thread.sleep(300);
+        }
+        assertThat(counter("lc-stopfail-c")).as("取消收尾触发 StopFailure 恰 1 次").isEqualTo(1);
+        assertThat(counter("lc-stop-c")).as("取消路径不触发正向 Stop").isZero();
+        assertThat(counter("lc-start-c")).as("AgentStart 恰 1 次").isEqualTo(1);
+        assertThat(counter("lc-complete-c")).as("AgentComplete 恰 1 次（StopFailure 后）").isEqualTo(1);
+        Allure.addAttachment("F109-12b 计数", "text/plain",
+                "start=" + counter("lc-start-c") + " stop=" + counter("lc-stop-c")
+                        + " stopfail=" + counter("lc-stopfail-c") + " complete=" + counter("lc-complete-c")
+                        + " cancel=" + cancelResp.statusCode());
+    }
 
     @Test
     @Story("F109-10: 快照——T0 全程 A（含挂起-恢复不重放）、T1 用 B、T2 空 hooks 零执行")

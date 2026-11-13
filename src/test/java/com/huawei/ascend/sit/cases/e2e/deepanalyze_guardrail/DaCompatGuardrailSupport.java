@@ -105,6 +105,8 @@ public final class DaCompatGuardrailSupport {
         private final Object responderLock = new Object();
         private int respondStatus = 200;
         private String respondBody = "";
+        private final java.util.Map<String, java.util.List<String>> respondHeaders =
+                new java.util.HashMap<>();
 
         public RecordedHookServer() throws IOException {
             this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -126,6 +128,7 @@ public final class DaCompatGuardrailSupport {
                 responseBody = respondBody;
             }
             byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().putAll(respondHeaders);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
             if (bytes.length > 0) {
@@ -153,6 +156,9 @@ public final class DaCompatGuardrailSupport {
 
         public void reset() {
             requests.clear();
+            synchronized (responderLock) {
+                respondHeaders.clear();
+            }
         }
 
         /** 编程下一响应（hook 结果矩阵构造用：200/非 2xx/body）。 */
@@ -160,6 +166,17 @@ public final class DaCompatGuardrailSupport {
             synchronized (responderLock) {
                 this.respondStatus = status;
                 this.respondBody = body;
+                this.respondHeaders.clear();
+            }
+        }
+
+        /** 编程 302 重定向（F109-14 白名单重定向格：Location 指向指定 URL）。 */
+        public void respondRedirect(String location) {
+            synchronized (responderLock) {
+                this.respondStatus = 302;
+                this.respondBody = "";
+                this.respondHeaders.clear();
+                this.respondHeaders.put("Location", List.of(location));
             }
         }
 

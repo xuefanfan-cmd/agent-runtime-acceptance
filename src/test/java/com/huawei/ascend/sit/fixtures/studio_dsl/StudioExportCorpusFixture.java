@@ -10,6 +10,7 @@ import com.openjiuwen.studio.dsl.ir.IrAssembleResult;
 import com.openjiuwen.studio.dsl.ir.IrModelMapping;
 import com.openjiuwen.studio.dsl.ir.StudioIrSdk;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
@@ -205,10 +206,26 @@ public final class StudioExportCorpusFixture {
     private static String sha256(byte[] content) {
         try {
             return HexFormat.of().withUpperCase().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(content));
+                    MessageDigest.getInstance("SHA-256").digest(normalizeLineEndings(content)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
+    }
+
+    /**
+     * Manifest pins hashes over LF-normalized content: git autocrlf checkouts materialize
+     * corpus files with CRLF on disk, so a raw-byte hash would depend on the checking-out
+     * OS instead of the committed content.
+     */
+    private static byte[] normalizeLineEndings(byte[] content) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(content.length);
+        for (int i = 0; i < content.length; i++) {
+            if (content[i] == 13 && i + 1 < content.length && content[i + 1] == 10) {
+                continue;
+            }
+            out.write(content[i]);
+        }
+        return out.toByteArray();
     }
 
     public record Manifest(

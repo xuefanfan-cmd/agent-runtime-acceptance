@@ -187,6 +187,22 @@ sut:
           deepanalyze.auth.enabled: "false"
           deepanalyze.data.pg.enabled: "false"
           deepanalyze.record.enabled: "false"
+    # FEAT-109/110/111：DA 宿主护栏/恢复/反思批次（20261106-feat-109-110-111）——本批次被测 SUT。
+    # 基线 0.1.3-feat109111 = agent-solution common@6fd13012b（!1051 后，≥L2 基准 4e952c234）
+    # 批次源码构建；勿与其他批次版本（0.1.4 / 0.1.3-feat069-r3 / 0.1.3-feat065067）混用。
+    # 新增条目、不改既有 deepanalyze / deepanalyze-dataplane 条目（ENV-3.11 口径）。
+    # hooks 配置（command-root/http-host-whitelist/max-reader-threads）由用例按需 property 注入；
+    # auth 默认 false（认证负向用例自带开启形态）。
+    deepanalyze-guardrail:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat109111
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
     # FEAT-038/039 candidate-bound SIT fixtures. The matrix runner currently selects
     # the openjiuwen profile for all managed black-box test groups.
     tool-scripts-edpa:

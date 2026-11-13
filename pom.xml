@@ -99,6 +99,15 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- ENV-5.13 修复（2026-11-09，FEAT-109/110/111 批次）：main pom 的 protobuf 由声明顺序
+                 决定（agent-core-java 0.1.17 → milvus-sdk 链把 protobuf-java 压到 3.25.5，同深度
+                 nearest-wins），会压过 a2a-java-sdk 链的 4.33.2，致 SutStack.client 抛
+                 ClassNotFoundException: RuntimeVersion。显式钉 4.33.2，不依赖声明顺序。 -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>4.33.2</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -311,6 +320,7 @@
             <version>${deepanalyze-engine.version}</version>
             <scope>test</scope>
         </dependency>
+        -->
         <!-- ================================================================ -->
         <!-- FEAT-032 多模态 SUT 三件套（2026-10-23 整改：PR !404 已合入）     -->
         <!-- agent-core-java 0.1.17 必须从源码重打包（2026-10-23 前的发布制品    -->

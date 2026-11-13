@@ -196,7 +196,7 @@ sut:
     deepanalyze-guardrail:
       group: com.openjiuwen
       artifact: deepanalyze-engine
-      version: 0.1.3-feat109111
+      version: 0.1.3-feat109111-r2
       classifier: exec
       java:
         system-properties:

@@ -6,6 +6,7 @@ package com.huawei.ascend.sit.cases.component.feat056;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
@@ -101,7 +102,7 @@ class AgentInstanceCustomizerToolIdentityTest {
     }
 
     @Test
-    @Story("FEAT-056-C47: 同资源 ID 声明不一致注册失败且原工具仍可用")
+    @Story("FEAT-056-C47: 同资源 ID 相同声明复用原处理器；显式声明冲突拒绝且原工具仍可用")
     void conflictingResourceIdRegistrationFailsAndOriginalRemainsUsable() throws Exception {
         String sharedId = "shared-" + UUID.randomUUID();
         AgentInstanceManager manager = new AgentInstanceManager(agentFactory());
@@ -115,12 +116,18 @@ class AgentInstanceCustomizerToolIdentityTest {
         var token = handler.prepareTask(request("resource-conflict-task"));
         DeepAgent agent = assertInstanceOf(DeepAgent.class, manager.get("resource-conflict-task"));
         try {
-            // 同 id、不一致声明（不同处理器）：注册失败且失败可见。
-            assertThatThrownBy(() -> agent.registerHarnessTool(tool(sharedId, "conflicting_name", "other")))
-                    .as("同资源 ID 冲突声明必须 fail-fast，不能静默覆盖")
+            // (a) 同 ID + 相同声明（id/name/description/inputParams 全同，仅处理器实例不同）：
+            // Core sameAbilityDeclaration 判等后复用原声明，不视为冲突；调用仍走原处理器。
+            assertThatCode(() -> agent.registerHarnessTool(tool(sharedId, "audit_tool", "reused-canary")))
+                    .as("相同声明必须复用原资源，不视为冲突")
+                    .doesNotThrowAnyException();
+            assertThat(call(sharedId)).as("复用后调用仍命中原处理器").isEqualTo("original-canary");
+            // (b) 同 ID + 显式不同的声明（inputParams schema 变化）→ fail-fast，原工具仍可用。
+            assertThatThrownBy(() -> agent.registerHarnessTool(toolWithSchema(sharedId, "audit_tool",
+                    Map.of("type", "object", "properties", Map.of("extra", Map.of("type", "string"))))))
+                    .as("显式声明冲突必须 fail-fast，不能静默覆盖")
                     .isInstanceOf(RuntimeException.class);
-            // 失败后原工具仍按原声明解析执行。
-            assertThat(call(sharedId)).isEqualTo("original-canary");
+            assertThat(call(sharedId)).as("冲突注册后原工具仍按原声明解析执行").isEqualTo("original-canary");
             // 名字表未被冲突注册改写。
             Optional<Object> named = agent.getAgent().getAbilityManager().get("audit_tool");
             assertThat(named).isPresent();
@@ -154,6 +161,11 @@ class AgentInstanceCustomizerToolIdentityTest {
     private static LocalFunction tool(String id, String name, String result) {
         return new LocalFunction(ToolCard.builder().id(id).name(name).description("test tool")
                 .inputParams(Map.of("type", "object", "properties", Map.of())).build(), inputs -> result);
+    }
+
+    private static LocalFunction toolWithSchema(String id, String name, Map<String, Object> inputParams) {
+        return new LocalFunction(ToolCard.builder().id(id).name(name).description("test tool")
+                .inputParams(inputParams).build(), inputs -> "conflict-canary");
     }
 
     private static Object call(String id) throws Exception {

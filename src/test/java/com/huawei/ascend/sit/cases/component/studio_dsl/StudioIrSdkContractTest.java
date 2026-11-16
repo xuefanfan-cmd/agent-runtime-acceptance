@@ -144,35 +144,40 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
     }
 
     @Test
-    @DisplayName("非法 JSON、版本和未知类型返回可区分错误码")
+    @DisplayName("非法 JSON、类型与未知组件返回可区分错误码；schemaVersion 不再校验")
     @Story("RT-031-04-07: schema、类型与版本非法")
     void rejectInvalidSchemaVersionAndType() {
         assertCode("IR_INVALID", () -> StudioIrSdk.loadWorkflowJson("{"));
-        Map<String, Object> missingField = new LinkedHashMap<>(
-                StudioDslTestResources.map("minimal-start-end.json"));
-        missingField.remove("schemaVersion");
-        assertCode("IR_REQUIRED_FIELD", () -> StudioIrSdk.loadWorkflow(missingField));
-
         Map<String, Object> typeMismatch = new LinkedHashMap<>(
                 StudioDslTestResources.map("minimal-start-end.json"));
         typeMismatch.put("components", "not-a-list");
         assertCode("IR_TYPE_MISMATCH", () -> StudioIrSdk.loadWorkflow(typeMismatch));
-        assertCode("IR_SCHEMA_VERSION_UNSUPPORTED", () ->
-                StudioIrSdk.loadWorkflow(StudioDslTestResources.map("unsupported-version.json")));
         assertCode("IR_COMPONENT_UNKNOWN", () ->
                 StudioIrSdk.loadWorkflow(StudioDslTestResources.map("unknown-component.json")));
+        // 有意偏差（openJiuwen/agent-solution #754 裁定，fa672ec99 对齐 Python oracle）：
+        // schemaVersion 不再校验——缺失或不支持均装配成功，版本门改卡 workflowVersion。
+        Map<String, Object> missingField = new LinkedHashMap<>(
+                StudioDslTestResources.map("minimal-start-end.json"));
+        missingField.remove("schemaVersion");
+        // 探针实测（2026-11-16）：fixture 的 workflowVersion(0.6.0) 仍在，schemaVersion 缺失后装配成功——
+        // schemaVersion 已完全退出校验；版本门仅卡 workflowVersion（见 unsupported-version 断言）。
+        assertThat(StudioIrSdk.loadWorkflow(missingField)).isNotNull();
+        // unsupported-version.json fixture 同时缺 workflowVersion：被拒的真实依据是 workflowVersion 门
+        // （schemaVersion 已不参与校验），断言按实际拒绝理由固定。
+        assertThatThrownBy(() -> StudioIrSdk.loadWorkflow(
+                StudioDslTestResources.map("unsupported-version.json")))
+                .isInstanceOf(IrAssembleException.class)
+                .hasMessageContaining("workflowVersion");
     }
 
     @Test
-    @DisplayName("断连与模型映射缺失在外部调用前失败")
+    @DisplayName("断连装配不再拒绝（有意偏差）；缺模型映射仍在外部调用前失败")
     @Story("RT-031-04-08: 断连与模型映射缺失")
     void rejectBrokenConnectionAndMissingModelMapping() {
-        assertThatThrownBy(() -> StudioIrSdk.loadWorkflow(
-                StudioDslTestResources.map("broken-connection.json")))
-                .isInstanceOfSatisfying(IrAssembleException.class, exception -> {
-                    assertThat(exception.code()).isEqualTo("IR_CONNECTION_BROKEN");
-                    assertThat(exception.getMessage()).contains("node_missing");
-                });
+        // 有意偏差（openJiuwen/agent-solution #754 裁定，fa672ec99 对齐 Python oracle）：
+        // 未知/断连端点不再抛 IR_CONNECTION_BROKEN，装配继续（裁定明确不放宽缺映射侧）。
+        assertThat(StudioIrSdk.loadWorkflow(
+                StudioDslTestResources.map("broken-connection.json"))).isNotNull();
         assertThatThrownBy(() -> StudioIrSdk.loadWorkflow(
                 StudioDslTestResources.map("llm-missing-mapping.json")))
                 .isInstanceOfSatisfying(IrAssembleException.class, exception -> {
@@ -339,6 +344,9 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
             component.forEach((key, value) -> copy.put(String.valueOf(key), value));
             if (IDENTITY_ONLY_NODE_TYPES.contains(String.valueOf(copy.get("type")))) {
                 copy.put("configs", Map.of());
+                // identity-only 归一（#754 裁定）：置空 name 使产品 expectedProjection 的 name 注入不再
+                // 与装配侧空投影错位——装配投影经 dump 实测为空 configs（2026-11-16）。
+                copy.put("name", "");
             }
             normalized.add(copy);
         }
@@ -646,12 +654,11 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
     }
 
     @Test
-    @DisplayName("四类装配失败返回精确错误且不产生半装配结果")
+    @DisplayName("装配失败返回精确错误且不产生半装配结果（断连已按 #754 裁定改为宽容）")
     @Story("RT-031-04-14: 装配失败原子性")
     void neverReturnPartialAssemblyOnFailure() throws Exception {
         Map<String, Map<String, Object>> cases = new LinkedHashMap<>();
         cases.put("IR_COMPONENT_UNKNOWN", StudioDslTestResources.map("unknown-component.json"));
-        cases.put("IR_CONNECTION_BROKEN", StudioDslTestResources.map("broken-connection.json"));
         Map<String, Object> requiredFieldMissing = deepCopy(
                 StudioDslTestResources.map("minimal-start-end.json"));
         firstComponent(requiredFieldMissing).remove("type");

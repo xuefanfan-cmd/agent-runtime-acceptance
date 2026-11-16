@@ -311,6 +311,7 @@
             <version>${deepanalyze-engine.version}</version>
             <scope>test</scope>
         </dependency>
+        -->
         <!-- ================================================================ -->
         <!-- FEAT-032 多模态 SUT 三件套（2026-10-23 整改：PR !404 已合入）     -->
         <!-- agent-core-java 0.1.17 必须从源码重打包（2026-10-23 前的发布制品    -->

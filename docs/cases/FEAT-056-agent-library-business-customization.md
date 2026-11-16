@@ -122,12 +122,17 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 | FEAT-056-C42 | 反证：撤掉 Tool 注册后解析判据必须失败 | execution |
 | FEAT-056-C43 | 反证：托管注册 ID 串用时各自注册名判据必须失败 | execution |
 | FEAT-056-C44 | 反证：撤掉销毁调用后清理判据必须失败 | execution |
+| FEAT-056-C45 | 请求期护栏安装失败不降级 | execution |
+| FEAT-056-C46 | 同一 Agent 新增同名 Tool 不替换原 Tool | execution |
+| FEAT-056-C47 | 同资源 ID 声明不一致注册失败且原工具仍可用 | execution |
 
 <!-- coverage:scenarios:end -->
 
 ### 4.1 执行状态摘要
 
 当前无范围内 `unassigned/degraded` 场景。C01～C44（C24 退休，由 C32 替代）均已实际执行或按范围排除；C18/C22/C24 的原未决口径已分别由 Hosted 回滚、PR312 日志契约和并发初始化决策关闭。
+
+2026-11-13 评审修订新增 C45～C47，同日以 component 层实现并执行：3/3 PASS（AgentInstanceCustomizerGuardrailFailureTest 1 条 + AgentInstanceCustomizerToolIdentityTest 2 条，WSL 离线 Maven + 共享仓库，本轮 surefire XML 留证）。既有 C01～C44 记录不变。
 
 ### 4.2 历史经验承接
 
@@ -928,6 +933,63 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - INCONCLUSIVE：失败点未实际进入清理分支。
 - 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerMutationControlTest#destroyOracleFailsWhenCleanupIsNotInvoked`。
 
+### FEAT-056-C45：请求期护栏安装失败不降级
+
+- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，待执行）
+- 验证形态：`execution`
+- 适用 SUT：启用 Tool Guardrail 的 DeepAgent 宿主
+- 测试层次：component（请求期安装点传播链路；真实链路集成层扩展待环境具备）
+- Oracle 来源：FEAT §4「请求期护栏失败」；L2 C11「护栏安装实际抛错时该请求失败、不降级」；设计评审意见 2026-11-13
+- Given：对象已完成全部自定义器扩展并初始化成功；宿主启用工具护栏；注入使既有护栏安装抛错的条件。
+- When：提交一次工具调用请求。
+- Then：本次请求失败；业务工具一次都未执行；不存在绕过护栏的重试或无护栏降级执行；对象自身扩展状态不因该次失败被重置。
+- PASS：请求以明确错误终态结束、工具调用计数增量为 0、无无护栏放行记录。
+- FAIL：请求成功返回、工具被执行，或出现无护栏重试。
+- INCONCLUSIVE：无法区分「安装未抛错」与「安装抛错被吞掉」时。
+- 配置生效/下游触达证据：护栏安装错误日志、错误终态响应、工具执行计数。
+- 调用增量与唯一数据：每请求唯一 conversation/task；工具 canary 计数。
+- 不应断言：不要求覆盖所有护栏类型；不把对象重新初始化当成必要行为。
+- 归因记录：候选解释 → 排除依据 → 未排除项。
+- 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerGuardrailFailureTest#requestPhaseGuardrailInstallFailureFailsWithoutDowngrade`（2026-11-13 实现并执行 PASS）。
+
+### FEAT-056-C46：同一 Agent 新增同名 Tool 不替换原 Tool
+
+- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，待执行）
+- 验证形态：`execution`
+- 适用 SUT：带原 Tool 的 DeepAgent 宿主
+- 测试层次：component
+- Oracle 来源：FEAT §2「Tool 定制」MUST（不替换已有同名 Tool）；AC-12a「不隐式覆盖同名 Tool」；设计评审意见 2026-11-13
+- Given：原 Agent 已有名为 `search` 的原 Tool（唯一 canary 与处理器）；自定义器注册同名 `search` 的新 Tool（不同处理器、不同 canary）。
+- When：显式调用 `search`。
+- Then：执行原处理器（原 canary），新处理器零调用；原 Tool 的资源身份与注册信息不变。
+- PASS：调用命中原处理器且计数正确，新处理器零调用。
+- FAIL：新处理器被执行，或原 Tool 失效。
+- INCONCLUSIVE：仅检查注册表条目、未实际调用时。
+- 配置生效/下游触达证据：两处理器各自 canary、调用计数、资源归属记录。
+- 调用增量与唯一数据：每次调用唯一 toolCallId；两 canary 唯一。
+- 不应断言：不依赖模型选择概率；显式调用必须确定触发。
+- 归因记录：候选解释 → 排除依据 → 未排除项。
+- 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerToolIdentityTest#sameNameToolDoesNotReplaceOriginalTool`（2026-11-13 实现并执行 PASS）。
+
+### FEAT-056-C47：同资源 ID 声明不一致注册失败且原工具仍可用
+
+- 可执行性/优先级：`runnable / P1`（2026-11-13 评审新增，待执行）
+- 验证形态：`execution`
+- 适用 SUT：带原 Tool 的 DeepAgent 宿主
+- 测试层次：component
+- Oracle 来源：Core 资源身份/归属契约（DFX-005 复用路径）；设计评审意见 2026-11-13
+- 已有部分覆盖：`AgentInstanceCustomizerCoreOwnershipTest#privateAndSharedToolsFollowOwnershipAcrossInstanceRelease`（C14 用例内嵌断言，2026-10-15 轮已执行 PASS）已验证同 ID 冲突注册抛错、且原共享工具仍可解析执行；本用例将其升级为独立命名场景并补注册失败可见性断言，实现阶段做精确回归。
+- Given：原 Tool 已以 `ToolCard.id=R`、声明 A 注册；自定义器尝试以同 ID `R`、不一致声明 B（不同处理器或签名）注册新 Tool。
+- When：执行该注册，并显式调用原工具。
+- Then：新注册失败且失败可观察；原工具仍按声明 A 解析和执行。
+- PASS：注册失败可见，原工具调用成功且计数正确。
+- FAIL：新注册静默覆盖声明 A，或原工具失效。
+- INCONCLUSIVE：无法区分「声明比较未发生」与「比较通过」时。
+- 配置生效/下游触达证据：注册失败日志/异常、ResourceMgr 归属记录、原工具 canary。
+- 调用增量与唯一数据：原工具唯一 canary；资源 ID 固定。
+- 不应断言：不承诺声明比较的具体错误码；只验证失败可见与原工具可用。
+- 归因记录：候选解释 → 排除依据 → 未排除项。
+- 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerToolIdentityTest#conflictingResourceIdRegistrationFailsAndOriginalRemainsUsable`（2026-11-13 实现并执行 PASS）。
 ## 7. Fixture、环境与执行状态
 
 | Fixture / 环境 | 用途 | 实现与执行状态 |
@@ -954,6 +1016,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 逐行结论：27 covered + 5 out-of-scope，无 degraded/unassigned。
 - 验收门禁：`coverage_blocking=0`，`closure_eligible=True`，特性测试状态 `closed`。
 - 退出标准已满足：范围内条目均有本轮真实 XML 与行为证据，原 C18/C22/C24 缺口均已关闭。
+- 2026-11-13 修订：评审新增 C45～C47（请求期护栏安装失败、同名 Tool 不替换、资源 ID 冲突注册）同日实现并执行 3/3 PASS（component 层，surefire XML 留证）；C47 先前由 C14 内嵌断言部分覆盖，随本修订升级为独立命名用例并精确回归。收口状态由覆盖台账与测试报告统一更新，本节不改写 C01～C44 的既有结论。
 
 ## 10. 负结论归因记录
 

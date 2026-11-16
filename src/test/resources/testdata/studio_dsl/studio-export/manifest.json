@@ -474,7 +474,7 @@
       "id": "feat031-marked-mixed-lane",
       "file": "corpus/feat031_marked_mixed_lane_ir.json",
       "sourcePath": "产品仓 agent-core-ext-studio-dsl/src/test/resources/ir_fixtures/test_mixed_lane_stream_ir.json（2026-09-20 复制为 SIT 语料，结构未改动；带 parallelBranchId 的混泳道契约形状）",
-      "sha256": "A83D8B9C2173982D3101AC89EE778CE73435F042190DF8AE2998C9224320236B",
+      "sha256": "379D733DD9BEB4754454808767E173C567013FDDF091CD5B3ED71EBF7A9519D5",
       "workflowId": "feat031-marked-mixed-lane-0001",
       "dimensions": [
         "parallel",
@@ -506,7 +506,7 @@
       "id": "agent-parallel",
       "file": "corpus/test_agent_parallel_flow_ir.json",
       "sourcePath": "backend/studio-manager/src/test/resources/flow_dsl/test_agent_parallel_flow_ir.json",
-      "sha256": "D6A6447797DBE1A515548AA906C5E1BFF3E0E39918C01DA4F6ACF17FEC6399B3",
+      "sha256": "A34C0B6BBE2139082DC5268931783FECC19AF791510DE2838BBD96911B21203B",
       "workflowId": "e558d03f-a01e-42d5-a65e-a7370371ef84",
       "dimensions": [
         "parallel",
@@ -837,7 +837,7 @@
       "id": "feat031-e8-entry-field-branch",
       "file": "corpus/feat031_e8_entry_field_branch_ir.json",
       "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2 real export; branch condition reads entry custom field). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e8-ir.py",
-      "sha256": "4E36B1E1A81FE152656158DC87F4036E1BFC9CF04B249CCC3A360CDEF472699D",
+      "sha256": "ABF19822EC6C78C8275BB3B987F3F5D6596D18ED48F482474ABECE0E1DF2F903",
       "workflowId": "feat031-entry-field-branch-0001",
       "dimensions": [
         "sequential",
@@ -849,7 +849,7 @@
       "id": "feat031-e9-query-condition-branch",
       "file": "corpus/feat031_e9_query_cond_branch_ir.json",
       "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2/E8; branch condition reads systemFields.query). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e9-ir.py",
-      "sha256": "BF072154B925CD6BCAA71D66249A86DF5F4A307F4613348F45B3154245989D0A",
+      "sha256": "359997C5747B59128E4B87EBC0B90BBBBA1B36B884BEDCC9134CEFA585BE79A9",
       "workflowId": "feat031-query-condition-branch-0001",
       "dimensions": [
         "sequential",
@@ -861,7 +861,7 @@
       "id": "feat031-e10-upstream-field-branch",
       "file": "corpus/feat031_e10_upstream_field_branch_ir.json",
       "sourcePath": "test-side synthesized 2026-09-20 (structure modeled on E2/E8; branch condition reads an upstream node's output field). Generator: 01-Design_File/20260920/feat031-p0-impl/make-e10-ir.py",
-      "sha256": "F0CCD56527938514B06AB53A7929A8E35ED4BE789FB00A371307935DCF1ED048",
+      "sha256": "98FA3D73EDC2F441BEA47A207CD74E2E0F6439559B7AD7ACFBD8D603F2E0E20A",
       "workflowId": "feat031-upstream-field-branch-0001",
       "dimensions": [
         "sequential",

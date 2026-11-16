@@ -1,0 +1,16 @@
+{
+  "source": {
+    "studioBase": "http://7.209.189.212:31111",
+    "workspaceId": "821ffba2e1a340eda903f3d36302277b",
+    "capturedAt": "2026-10-12T15:52:38.2517971+08:00",
+    "summaryFile": "01-Design_File/20261012/FEAT-031-studio-controller-exports/summary-e15-default.json",
+    "exportFile": "agents-e15-default-20261012180000.jsonl",
+    "exportSha256": "C3638DB20D82210BFB808A7B6C48999E4A099D94218E306BDC52DA4DD932372D",
+    "controllerRootIrPath": "agent/ir/d0e274a8-1ff9-4f15-a47b-b47f01b4f328/d0e274a8-1ff9-4f15-a47b-b47f01b4f328.json",
+    "rootAgentId": "d0e274a8-1ff9-4f15-a47b-b47f01b4f328"
+  },
+  "files": {
+    "ir/d0e274a8-1ff9-4f15-a47b-b47f01b4f328.json": "D04960CA2D830FF7C89ACA0A8F3AD251FD0BE2503896B7680F01E31CB2D06D3E",
+    "ir/bd2031b4-dfcc-4691-9056-8fac2f50650f_1789119636747.json": "A1CF70D976DD42B25AAC46BB863A6910B1C01FFBDE905D6BB27E6B00508B0FE2"
+  }
+}

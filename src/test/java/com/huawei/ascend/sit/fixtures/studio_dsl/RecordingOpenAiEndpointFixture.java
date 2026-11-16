@@ -28,6 +28,7 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
     private final List<RequestRecord> requests = new CopyOnWriteArrayList<>();
     private volatile String responseCanary = "studio-model-canary";
     private volatile String responseContentOverride = null;
+    private final List<ConditionalResponse> conditionalResponses = new CopyOnWriteArrayList<>();
     private volatile boolean stallResponses = false;
 
     public RecordingOpenAiEndpointFixture() throws IOException {
@@ -51,6 +52,17 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
      */
     public void responseContent(String jsonOrText) {
         this.responseContentOverride = jsonOrText;
+    }
+
+    /**
+     * 条件化指定模型响应：当请求体包含 {@code bodyContains} 文本时，返回 {@code jsonOrText}
+     * 作为 {@code message.content}；否则沿用 {@link #responseContent}/canary。
+     *
+     * <p>用于多轮流里"只有特定节点的请求才给特定应答"的场景（如参数提取节点拿到 JSON 城市回填）。
+     * 多条规则按最近添加优先匹配。</p>
+     */
+    public void responseContentWhenBodyContains(String bodyContains, String jsonOrText) {
+        conditionalResponses.add(new ConditionalResponse(bodyContains, jsonOrText));
     }
 
     /**
@@ -117,9 +129,9 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
                     response = new MockResponse()
                             .setResponseCode(200)
                             .setHeader("Content-Type", "text/event-stream")
-                            .setBody(streamBody(contentToReturn()));
+                            .setBody(streamBody(contentToReturn(bodyText)));
                 } else {
-                    response = json(200, completionBody(contentToReturn()));
+                    response = json(200, completionBody(contentToReturn(bodyText)));
                 }
                 return response;
             } catch (Exception exception) {
@@ -128,10 +140,17 @@ public final class RecordingOpenAiEndpointFixture implements AutoCloseable {
         }
     }
 
-    private String contentToReturn() {
+    private String contentToReturn(String bodyText) {
+        for (int i = conditionalResponses.size() - 1; i >= 0; i--) {
+            ConditionalResponse rule = conditionalResponses.get(i);
+            if (bodyText.contains(rule.bodyContains())) {
+                return rule.content();
+            }
+        }
         String override = responseContentOverride;
         return override == null ? responseCanary : override;
     }
+    private record ConditionalResponse(String bodyContains, String content) { }
 
     private static MockResponse json(int status, String body) {
         return new MockResponse()

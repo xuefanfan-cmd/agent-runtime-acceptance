@@ -1,0 +1,10 @@
+{
+  "schemaVersion" : "1",
+  "description" : "FEAT-031 §4 modelId → endpoint/apiKey convention. Fill endpoint/apiKey per environment; do not commit real secrets. Runtime resolves configs.model.modelName against this map (or host overlay).",
+  "models" : {
+    "1788a9e4-c729-40db-8dd8-7cc20b3e6b7d" : {
+      "endpoint" : "",
+      "apiKey" : ""
+    }
+  }
+}

@@ -932,6 +932,13 @@ sut:
       group: com.customer
       artifact: customer-multipart-app
       version: "1.0.0"
+    # FRS-058 Demo 装配面 SUT（W2 问题定位 Agent，2026-11-10 交付 agent-solution@65efeecd）：
+    # DeepAgent 基线 + custom-rest multipart 入口 + A2A 出站 FAQ（无 Redis 依赖）。
+    # FAQ_BASE_URL（C-03）/APP_BASE_URL（C-04）/VISION_*（C-01）由用例编程式 env 注入。
+    faq-poc-agent:
+      group: com.openjiuwen.example
+      artifact: multi-modal-FAQ-agent
+      version: "0.1.2"
     # FEAT-068（2026-10-19）：团队模板库批次的 e2e SUT。r5 补跑起制品 0.1.3-feat068-r5
     # （源=官方 common@aa037142d=!896——含 !880=#465 修复合入、3921165f4=#476 完成超时接线；
     # core 再前移 0.1.17-feat068-r5=agent-core-java develop@65df4e9b=!436（!870 otel 常量所需）；

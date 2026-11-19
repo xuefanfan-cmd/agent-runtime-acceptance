@@ -13,7 +13,7 @@ input_maturity: merged
 
 # FEAT-105（Skill + Knowledge）测试设计初稿
 
-> 逐用例判定规则、证据要求和自动化落点。**本文件承载于 acceptance 仓 docs/cases/（分支 sit-feat105）**，对应正式 TestPlan 见 docs 仓 develop/04-testplan/FEAT-105-agentops-skill-knowledge-testplan.md（PR !554）；工作区批次版为活动版，三处经 manifest SHA-256 绑定同一输入快照。覆盖台账 manifest：127 行（按裁定后口径重核：planned 115 / out 12）。
+> 逐用例判定规则、证据要求和自动化落点。**本文件承载于 acceptance 仓 docs/cases/（分支 sit-feat105@34cd87b，github.com/xuefanfan-cmd/agent-runtime-acceptance）**，对应正式 TestPlan 见 docs 仓 develop/04-testplan/（PR !554）；工作区批次版为活动版，三处经 manifest SHA-256 绑定同一输入快照。覆盖台账 manifest：127 行（planned 115 / out 12）。
 
 ## 0. 用户必读：需求与测试方案
 
@@ -22,7 +22,7 @@ input_maturity: merged
 - 本期测试：公共底座 17 场景 + Skill 8 场景 + Knowledge 14 场景 + 负向裁决落地 1 场景（N02）+ 前端原型联调 1 场景（U01）= **41 条**（2026-11-18 裁决后删除原 N01/N03/N04），证明受理契约、工作流语义、状态机、恢复语义、安全边界与业务结论分离。
 - 本期不测：提示词优化（用户裁决）、评估器/自动发布/IAM（设计 OUT）、通知投递/action hide/集合互斥/环境标签拒绝/独立冲突诊断产物（实现不存在，口径待裁决，见偏差清单）。
 - 未决影响：8 条设计问题（DQ-1~8）+ 4 条 L2 澄清（LQ-2/5/7/8）；对应场景标 partial/blocked，其余照常推进。
-- 详细预览：[FEAT-105-需求与测试预览.md](FEAT-105-需求与测试预览.md)；本期范围：[20261117-feat-105-skill-knowledge-变更包范围卡.md](20261117-feat-105-skill-knowledge-变更包范围卡.md)
+- 详细预览与范围卡（FEAT-105-需求与测试预览.md、20261117-feat-105-skill-knowledge-变更包范围卡.md）存于测试工作区批次目录；对应正式 TestPlan 见 docs 仓 develop/04-testplan/（PR !554）。
 - 输入成熟度：merged（可设计/实现/执行，正式收口绑定实际制品指纹）。
 - 用户理解确认：`confirmed`（2026-11-17 范围/方向确认 + 2026-11-18 12 项裁决落地；细档随 PR !554 发布为审视快照）。
 
@@ -86,7 +86,7 @@ input_maturity: merged
 | 105-K07 | skill 同名隔离 | execution |
 | 105-K08 | review append-only（partial） | execution |
 | 105-B01 | target-probe 无副作用 | execution |
-| 105-B02 | knowledge 正常闭环 target_met | execution |
+| 105-B02 | knowledge 正常闭环（业务结论由数据决定） | execution |
 | 105-B03 | 召回口径 | execution |
 | 105-B04 | target_recall 边界 | execution |
 | 105-B05 | 质检阻断 quality_blocked | execution |
@@ -186,7 +186,7 @@ input_maturity: merged
 
 **105-B01 target-probe** — Oracle KNW §2.6；Then 无 job/凭证记录/候选产生（服务端计数+目标库无写入）；返回 reachable/usable/target_fingerprint/capabilities/probed_at，auth 不回显；probe 结果不是通行证（提交时重新校验）。落点 contract。
 
-**105-B02 正常闭环 target_met** — Oracle FR-14、KNW §3.2–3.4/§7.2；Given 小规模 QA+测试集合；Then 六阶段完整、succeeded+business_outcome=target_met；候选含来源 case IDs；逐 ID manifest planned→confirmed；临时清理后目标库独立查询=0 残留。主断言：business_outcome 与分母/命中数自洽 + 目标库零残留。落点 e。
+**105-B02 正常闭环（业务结论由数据决定）** — Oracle FR-14、KNW §3.2–3.4/§7.2；Given 小规模 QA+测试集合+target_recall=0（L2 §3.3：视为立即满足目标，报告须含无效果阈值说明）；Then 六阶段完整、succeeded+business_outcome=target_met（确定性分支）；候选含来源 case IDs（LQ-2 收敛形态）；逐 ID manifest planned→confirmed；临时清理后目标库独立查询=0 残留。主断言：business_outcome 与分母/命中数自洽 + 目标库零残留。非零 target_recall 的真实召回分支归 B04（below_target 边界已覆盖）。落点 e。
 
 **105-B03 召回口径** — Oracle KNW §3.3；构造：①分类标签带全角空格/NFKC 差异 → 归一后完全相等才算命中；②一条 QA top_k 多条命中只计一次；③检索异常记 error 不算 miss、该轮 incomplete 不缩分母；④分母=归入该分类的有效 QA 数、跨轮固定。主断言：recall=命中/固定分母 可由报告逐行复算。落点 e。
 

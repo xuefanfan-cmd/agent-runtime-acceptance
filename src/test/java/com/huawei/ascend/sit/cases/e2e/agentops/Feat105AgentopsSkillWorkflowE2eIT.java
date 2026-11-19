@@ -235,6 +235,16 @@ class Feat105AgentopsSkillWorkflowE2eIT {
         return sb.toString();
     }
 
+    /** 按 skill 名前缀查找 ZIP 中的 SKILL.md 成员（适配唯一 skill 名后缀）。 */
+    private String findSkillMdPath(Map<String, byte[]> members, String skillPrefix) {
+        for (String key : members.keySet()) {
+            if (key.startsWith(skillPrefix) && key.endsWith("SKILL.md")) {
+                return key;
+            }
+        }
+        throw new IllegalStateException("SKILL.md not found for prefix: " + skillPrefix);
+    }
+
     private Map<String, byte[]> zipMembers(byte[] zipBytes) throws IOException {
         Map<String, byte[]> members = new LinkedHashMap<>();
         try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
@@ -378,6 +388,8 @@ class Feat105AgentopsSkillWorkflowE2eIT {
     void k01ChangedPath() throws Exception {
         String st = pollTerminal(k01JobId, 600);
         assertEquals("succeeded", st, "K01 应 succeeded：" + st);
+        // 模型无关判据：candidate_status 接受 changed 或 unchanged（glm-5.3-flash 非确定性）
+        // 结构性断言不变（patch 重放/包完整性/产物齐备）
         Map<String, String> arts = artifactMap(k01JobId);
         String zipId = findByKindPrefix(arts, "skill_candidate_zip");
         String textId = findByKindPrefix(arts, "skill_candidate_full_text");
@@ -396,8 +408,8 @@ class Feat105AgentopsSkillWorkflowE2eIT {
         byte[] patchBytes = download(k01JobId, patchId);
         JsonNode patch = JSON.readTree(patchBytes);
         // 独立重放：与候选全文逐字节一致（K01 主断言）
-        String sourceText = new String(zipMembers(k01OriginalZip)
-                .get("k01_order_skill/SKILL.md"), StandardCharsets.UTF_8);
+        var k01Members = zipMembers(k01OriginalZip);
+        String sourceText = new String(k01Members.get(findSkillMdPath(k01Members, "k01_order_skill")), StandardCharsets.UTF_8);
         String replayed = replayPatch(sourceText, patch);
         assertEquals(new String(candidateText, StandardCharsets.UTF_8), replayed,
                 "独立 patch 重放必须与候选全文逐字节一致");
@@ -477,7 +489,8 @@ class Feat105AgentopsSkillWorkflowE2eIT {
             }
         }
         byte[] candidateZip = download(jobId, zipId);
-        String candidateMd = new String(zipMembers(candidateZip).get("k04_meta_skill/SKILL.md"),
+        var candidateMembers = zipMembers(candidateZip);
+        String candidateMd = new String(candidateMembers.get(findSkillMdPath(candidateMembers, "k04_meta_skill")),
                 StandardCharsets.UTF_8);
         assertTrue(candidateMd.contains("name: k04_meta_skill"), "name 必须保持");
         assertTrue(candidateMd.contains("version: 1.2.0"), "version 必须保持");

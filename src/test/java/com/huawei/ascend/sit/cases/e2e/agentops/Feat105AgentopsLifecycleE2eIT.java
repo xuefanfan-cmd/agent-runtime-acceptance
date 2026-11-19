@@ -235,7 +235,7 @@ class Feat105AgentopsLifecycleE2eIT {
         JsonNode created = submitLongJob(tag);
         String jobId = created.get("job_id").asText();
         assertEquals("running", pollStatus(jobId, 120, List.of("running")), tag + " 应进入 running");
-        new ProcessBuilder("bash", "-c", "pkill -f optimization_worker || true").start()
+        new ProcessBuilder("bash", "-c", "pkill -9 -f '[o]ptimization_worker'  # SIGKILL：SIGTERM 被 Worker 优雅处理器拦截不退出（缺陷候选） || true").start()
                 .waitFor(30, TimeUnit.SECONDS);
         // Worker 死亡期：任务保持 running，不自动重跑/恢复（观察 45s）
         Thread.sleep(45000);

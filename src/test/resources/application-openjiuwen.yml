@@ -187,6 +187,36 @@ sut:
           deepanalyze.auth.enabled: "false"
           deepanalyze.data.pg.enabled: "false"
           deepanalyze.record.enabled: "false"
+    # FEAT-109/110/111：DA 宿主护栏/恢复/反思批次（20261106-feat-109-110-111）——本批次被测 SUT。
+    # 基线 0.1.3-feat109111-r3 = agent-solution common@babb882b9（!1204，2026-11-16 20:12 主干最新；
+    # 快照 04-Environment/baselines/agent-solution-r3-babb882b9，构建日志 evidence/20261116-build-r3.log）。
+    # 批次源码构建；勿与其他批次版本（0.1.4 / 0.1.3-feat069-r3 / 0.1.3-feat065067）混用。
+    # 新增条目、不改既有 deepanalyze / deepanalyze-dataplane 条目（ENV-3.11 口径）。
+    # hooks 配置（command-root/http-host-whitelist/max-reader-threads）由用例按需 property 注入；
+    # auth 默认 false（认证负向用例自带开启形态）。
+    deepanalyze-guardrail:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      # r5/r6（20261119 F111-13 转正轮）为临时钉已回——见 evidence/20261119-run-1{4,5,6}*＋批次记录 §26.20。
+      version: 0.1.3-feat109111-r3
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+    # FEAT-109 出口 3 新口径验证专用（docs#48 关单前置，2026-11-17）：制品从 common@2b3a9b4e5 构建，
+    # 用例=Feat109Exit3DenyE2EIT（场景 actrule write_file: deny + 内置 deny 关机类命令）。
+    deepanalyze-exit3:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat109e3
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          deepanalyze.auth.enabled: "false"
     # FEAT-038/039 candidate-bound SIT fixtures. The matrix runner currently selects
     # the openjiuwen profile for all managed black-box test groups.
     tool-scripts-edpa:

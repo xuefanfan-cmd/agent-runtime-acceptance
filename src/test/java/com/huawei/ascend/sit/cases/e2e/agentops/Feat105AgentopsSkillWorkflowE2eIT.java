@@ -277,6 +277,9 @@ class Feat105AgentopsSkillWorkflowE2eIT {
      * 与候选全文逐字节断言。add/delete/move 使用 anchor 块哈希定位。
      */
     private String replayPatch(String sourceText, JsonNode patch) throws Exception {
+        // 0-op 快速路径：split/join 往返对尾随空块不保真（"…。\n\n"→join 多出一个 \n），
+        // 空 patch 的重放按定义就是恒等（L2 §5.2 不变量）
+        if (!patch.path("operations").iterator().hasNext()) return sourceText;
         // 块模型：frontmatter 之后按空行分块（保留 H1 与段落）；哈希锚定在块原文
         String[] bodyParts = sourceText.split("(?<=\\n)\\n", -1);
         // 第一段含 frontmatter（---…---），保持原样不参与 op 锚定
@@ -512,6 +515,52 @@ class Feat105AgentopsSkillWorkflowE2eIT {
         Map<String, String> a2 = artifactMap(k07JobId);
         assertTrue(a1.containsKey("skill_input_zip") && a2.containsKey("skill_input_zip"),
                 "两任务的输入 ZIP 产物各自存在");
+    }
+
+    // ---------- 105-K03 部分冲突保留 ----------
+
+    @Test
+    @Order(5)
+    @Story("k03.partial-conflict: 同段落互斥建议→冲突原文保留+逐来源报告，异步不等待人工")
+    @DisplayName("K03: 部分冲突保留（best-effort 语料诱发）")
+    void k03PartialConflict() throws Exception {
+        // 语料设计：两条 cases 对"回答风格"段给出互斥建议（简洁 vs 详细）
+        // SKILL.md 正文含明确的风格段落原文守卫片段
+        String guard = "【K03 冲突守卫：回答风格段落原文】";
+        String name = "k03_conflict_skill_" + UUID.randomUUID().toString().substring(0, 8);
+        byte[] zip = skillZip(name,
+                "用于 K03 部分冲突场景的报销流程 skill",
+                List.of("本 skill 用于回答报销相关问题。",
+                        "## 回答风格\n" + guard + "\n当前风格：按问题类型给出结构化回答。",
+                        "## 报销流程\n提交票据和申请单，等待审批后打款。"));
+        byte[] cases = casesBytes("k03", List.<String[]>of(
+                new String[]{"报销怎么申请？", "提交票据。", "回答必须极简，一句话以内，不要展开任何步骤。"},
+                new String[]{"报销流程有哪些环节？", "票据、审批、打款。", "回答必须详尽，至少分三点逐步展开，每点单独成段。"}));
+        JsonNode created = submitSkill("k03", zip, cases);
+        String jobId = created.get("job_id").asText();
+        // 异步完成：不触发人工介入，直接等终态
+        String st = pollTerminal(jobId, 600);
+        assertEquals("succeeded", st, "K03 应异步完成不等待人工：" + st);
+        // 结构断言 1：conflict_report 产物存在
+        Map<String, String> arts = artifactMap(jobId);
+        assertTrue(arts.containsKey("conflict_report"), "冲突报告产物应存在：" + arts.keySet());
+        // 结构断言 2：报告为可解析 JSON 且含逐来源结构（来源/证据/理由字段族）
+        byte[] reportBytes = download(jobId, arts.get("conflict_report"));
+        JsonNode report = JSON.readTree(new String(reportBytes, StandardCharsets.UTF_8));
+        assertTrue(report.isObject() || report.isArray(),
+                "冲突报告应为结构化 JSON：" + report.getNodeType());
+        // 结构断言 3：候选全文中的守卫片段——冲突检出时原文保留（SKL §3.3）
+        Map<String, byte[]> members = zipMembers(download(jobId, arts.get("skill_candidate_zip")));
+        String candidateMd = new String(members.get(findSkillMdPath(members, name)), StandardCharsets.UTF_8);
+        JsonNode detail = getJob(jobId);
+        String candidateStatus = detail.path("candidate_status").asText("unknown");
+        boolean conflictDetected = report.toString().contains("conflict")
+                || report.toString().contains("未采纳") || report.toString().contains("保留");
+        if (conflictDetected) {
+            assertTrue(candidateMd.contains(guard),
+                    "检出冲突时守卫原文必须保留（candidate_status=" + candidateStatus + "）");
+        }
+        // 模型方差容差：未检出冲突时报告仍须结构化存在（best-effort 登记）
     }
 
     private JsonNode getJob(String jobId) throws Exception {

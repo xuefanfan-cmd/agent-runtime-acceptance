@@ -23,7 +23,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,7 +65,7 @@ class Feat105AgentopsKnowledgeDeepE2eIT {
     @BeforeAll
     void ensureQdrantCollections() throws Exception {
         for (String col : List.of("feat105_deep_b03", "feat105_deep_b05", "feat105_deep_b06",
-                "feat105_deep_b08", "feat105_deep_b09", "feat105_deep_b10a", "feat105_deep_b10b")) {
+                "feat105_deep_b08", "feat105_deep_b09", "feat105_deep_b10")) {
             HttpRequest put = HttpRequest.newBuilder(URI.create(QDRANT + "/collections/" + col))
                     .header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(
@@ -186,6 +188,18 @@ class Feat105AgentopsKnowledgeDeepE2eIT {
         return JSON.readTree(r.body());
     }
 
+
+    private Map<String, String> artifactMap(String jobId) throws Exception {
+        HttpResponse<String> r = send("GET", "/api/v1/optimization-jobs/" + jobId + "/artifacts",
+                null, null, null);
+        assertEquals(200, r.statusCode(), "产物列表应可查：" + r.body());
+        Map<String, String> byKind = new LinkedHashMap<>();
+        for (JsonNode a : JSON.readTree(r.body()).path("items")) {
+            byKind.putIfAbsent(a.path("kind").asText(), a.path("artifact_id").asText());
+        }
+        return byKind;
+    }
+
     // ---------- 105-B03 召回口径 ----------
 
     @Test
@@ -206,7 +220,10 @@ new String[]{"报销流程？", "提交票据。", "finance"},
         JsonNode detail = getJob(jobId);
         assertEquals("target_met", detail.path("business_outcome").asText(),
                 "target_recall=0 应立即达标：" + detail.path("business_outcome").asText());
-        assertEquals("complete", detail.path("cleanup_status").asText(), "清理应完整");
+        // cleanup_status 不在顶层——经 knowledge_cleanup_report 产物断言
+        Map<String, String> arts = artifactMap(jobId);
+        assertNotNull(arts.get("knowledge_cleanup_report"), "清理报告产物应存在");
+        assertEquals(0, qdrantPointCount("feat105_deep_b03"), "清理后零残留");
     }
 
     // ---------- 105-B05 质检阻断 ----------

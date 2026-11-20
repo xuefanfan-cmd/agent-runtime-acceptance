@@ -48,8 +48,8 @@ class Feat110CfgStartupGateE2EIT {
             "target", "sit-logs", "deepanalyze-guardrail", "stdout.log");
 
     @Test
-    @Story("F110-23 (GAP-110-cfg): 六容量键配 0/负数 → SUT 启动失败且错误消息含键名")
-    @DisplayName("F110-23: 启动期非法配置负向矩阵")
+    @Story("F110-29 (GAP-110-cfg): 六容量键配 0/负数 → SUT 启动失败且错误消息含键名")
+    @DisplayName("F110-29: 启动期非法配置负向矩阵")
     void invalidCapacityConfigFailsStartupWithKeyName() throws Exception {
         Map<String, String> invalidCases = new LinkedHashMap<>();
         invalidCases.put("max-request-body-bytes", "0");
@@ -76,7 +76,7 @@ class Feat110CfgStartupGateE2EIT {
             assertThat(log).as("启动失败错误消息含键名与非法值（%s=%s）", bad.getKey(), bad.getValue())
                     .contains("deepanalyze.compat." + bad.getKey() + "=" + bad.getValue());
         }
-        Allure.addAttachment("F110-23 证据", "text/plain",
+        Allure.addAttachment("F110-29 证据", "text/plain",
                 "六键逐一非法值 → 启动失败（process exited before becoming ready）×6；"
                         + "SUT 日志逐键含 \"deepanalyze.compat.<键名>=<值> must be positive\"；"
                         + "日志=" + SUT_LOG);

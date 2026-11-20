@@ -155,4 +155,15 @@ class Feat109HooksValidationE2EIT {
         assertThat(resp.statusCode()).as("disabled callback 不校验，按 SSE 受理 200").isEqualTo(200);
         Allure.addAttachment("F109-16f", "text/plain", "HTTP " + resp.statusCode());
     }
+
+    @Test
+    @Story("F109-22: http hook 畸形 URI（非 http/https scheme）受理前 400——URI 异常隔离（无任务记录残留）")
+    @DisplayName("F109-22: 畸形 URI 400")
+    void malformedUriHookRejectedBeforeStart() throws Exception {
+        assertRejected(run("sess-f109v-uri-" + System.nanoTime(),
+                "[{\"id\":\"bad-uri\",\"event\":\"PreToolUse\",\"type\":\"http\","
+                        + "\"matcher\":\"read_file\",\"enabled\":true,"
+                        + "\"config\":{\"url\":\"ftp://malformed-host/hook\"}}]"),
+                "畸形 URI（ftp scheme）");
+    }
 }

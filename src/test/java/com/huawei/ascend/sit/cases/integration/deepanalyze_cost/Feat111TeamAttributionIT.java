@@ -35,9 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>触发面＝compat run 体 teamId 字段（{@code DaRunRequest.teamId}，FEAT-069 R1）→
  *       DaHandlerTaskExecutor 团队执行；成员用量经 DaMemberUsageSampler 按任务锚归原
  *       mainTaskId/sessionId（DaHandlerTaskExecutor :640-646 注释口径）。</li>
- *   <li>成员 purpose=subagent；responseModel 取 usage.metadata.modelName（成员支持——
- *       DV-111-07 分栏）→ 成员序列<b>不带</b> model_identity_source 标签（对照主链
- *       request_fallback）。</li>
+ *   <li>成员 purpose=subagent；r3 判据（11-16 设计修订，DV-111-07 撤销）：三路径统一
+ *       request_fallback（成员序列同样带 model_identity_source=request_fallback；真实
+ *       响应模型归因待 core #277，全线 blocked 不冒充）。</li>
  *   <li>团队种子＝agent_teams（mode=parallel，model_config 不编译→成员继承 DA_MODEL_*
  *       即 stub）＋agent_team_members 两行；基线 DDL 已含两表（da-dataplane-baseline.sql）。</li>
  * </ul>
@@ -159,8 +159,8 @@ class Feat111TeamAttributionIT {
     }
 
     @Test
-    @Story("F111-09/11: 成员用量归原任务＋purpose=subagent；成员响应模型在场（无 fallback 标签）")
-    @DisplayName("F111-09/11: 成员执行体归属与响应模型分栏")
+    @Story("F111-09/11: 成员用量归原任务＋purpose=subagent；成员序列统一 request_fallback（DV-111-07 撤销，11-16 设计修订）")
+    @DisplayName("F111-09/11: 成员执行体归属与模型身份源")
     void memberUsageAttributesToMainTask() throws Exception {
         try (Env env = startEnv()) {
             String teamId = "f111-team-" + System.nanoTime();
@@ -177,11 +177,15 @@ class Feat111TeamAttributionIT {
                     () -> env.otlp().hasSeries(DaReflectionCostSupport.M_TOKEN_USAGE, memberSeries));
             assertThat(memberSeen).as("OTLP 出现 purpose=subagent 序列（归原任务＋会话）").isTrue();
 
+            // r3 判据（11-16 设计修订 + run-01f 实证）：DV-111-07 撤销——成员不再有独立
+            // 「响应模型分栏」，三路径统一标 request_fallback（真实响应模型归因待 core #277，
+            // 全线 blocked 不冒充）。r2 断言「成员不带 fallback 标签」随 DV-111-07 撤销过时
+            // （run-01f 抓到：成员序列已带 request_fallback，与设计一致）。
             java.util.function.Predicate<Map<String, String>> fallbackMember =
                     subagentOf(session, taskId).and(tags -> "request_fallback"
                             .equals(tags.get(DaReflectionCostSupport.TAG_MODEL_SOURCE)));
             assertThat(env.otlp().hasSeries(DaReflectionCostSupport.M_TOKEN_USAGE, fallbackMember))
-                    .as("成员序列不带 request_fallback（响应模型面，DV-111-07 成员分栏）").isFalse();
+                    .as("成员序列统一 request_fallback（DV-111-07 撤销后语义）").isTrue();
 
             // 偏差双栏（Oracle：L1 出口 11 成员按响应模型计价 vs 实现口径）：团队成员模型链
             // 未携带 backend（team model_config 不编译→成员跑 core 默认模型，快照无
@@ -200,22 +204,24 @@ class Feat111TeamAttributionIT {
     }
 
     /**
-     * <b>GUARDRAIL_DENIED 构造核实结论（run-55～57 四轮探针，构造面缺失登记）：</b>
-     * 本构造链不可达——① 成员 fail-closed deny 证据不链到主任务记录（run-57 地面真相：
-     * 团队失败终态的反思请求体 errorFacts.guardrailDeniedEvidence=false，尽管成员轮被脚本
-     * 指向 ask 工具）；② 只读成员模板的工具面不含 ask 工具（write_file 零执行日志、零未知
-     * 工具痕迹——脚本工具调用对成员无效）；③ 分类链路本身工作正常（团队失败 → 反思触发 →
-     * terminalClass=INFRASTRUCTURE_FAILURE 可观测）。GUARDRAIL_DENIED 黑盒构造需产品侧提供
-     * 带 ask 工具的成员模板或确认跨链证据设计意图。恢复条件＝上述任一成立。
+     * <b>GUARDRAIL_DENIED 构造核实（r2 run-55～57 四轮探针 + r3 复核 2026-11-16）：</b>
+     * r2 结论「成员 fail-closed deny 证据不链到主任务记录」已被 !1176（docs#49 严格因果口径）
+     * 部分修复——runMember 检测点登记 + settle 收割进任务记录（causal 证据传播链已建）；
+     * 但构造面缺口在成员侧不变：成员模板工具族 MEMBER_TOOLS（DaWorkflowRunner:84）全部
+     * actrule=allow，成员的 deny 尝试无黑盒构造面（未知工具调用被 core 静默丢弃、不达权限轨
+     * ——r2「零未知工具痕迹」实证），「本 invocation 工具尝试全部被拒」不可达。
+     * r3 复核结论：黑盒构造仍不可达，恢复条件＝产品提供可被拒绝的成员工具面
+     * （如成员模板含 ask/deny 工具）或确认跨链证据设计意图。
      */
     @Test
     @Story("F111-20: GUARDRAIL_DENIED 构造核实（构造面缺失，INCONCLUSIVE 留恢复条件）")
     @DisplayName("F111-20: GUARDRAIL_DENIED 格（blocked·构造面缺失）")
     void guardrailDeniedConstructionProbe() {
-        org.junit.jupiter.api.Assumptions.abort("GUARDRAIL_DENIED 黑盒构造不可达（run-55～57 四轮探针）："
-                + "成员 fail-closed deny 证据不链主任务记录（guardrailDeniedEvidence=false 实证）＋"
-                + "只读成员模板工具面不含 ask 工具（write_file 零执行）。恢复条件＝产品提供含 ask 工具的"
-                + "成员模板或确认跨链证据设计意图。");
+        org.junit.jupiter.api.Assumptions.abort("GUARDRAIL_DENIED 黑盒构造不可达（r2 run-55～57 四轮探针"
+                + " + r3 复核）：!1176 已修因果收割链（runMember 登记+settle 收割），但成员模板工具族"
+                + " MEMBER_TOOLS 全部 actrule=allow、未知工具调用被 core 静默丢弃不达权限轨——"
+                + "「工具尝试全部被拒」无黑盒构造面。恢复条件＝产品提供可被拒绝的成员工具面"
+                + "（如成员模板含 ask/deny 工具）或确认跨链证据设计意图。");
     }
 
 }

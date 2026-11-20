@@ -177,6 +177,26 @@ class Feat109HookMatrixE2EIT {
     }
 
     @Test
+    @DisplayName("F109-15j: 恰好 64KiB（65536 字节）→ 读取路径正常，协议层正常解释")
+    void preToolUseExact64KiBNormal(TestInfo info) throws Exception {
+        // DV-109-05 撤销后的正反成对：15i 证超 1 字节有界失败，本格证恰好上限不误伤——
+        // 读取路径必须完整接受 65536 字节（r3 判据，评审二核实两条读取路径均有超限探测）。
+        // 输出 = 合法 JSON {"allowed":true} + 空白填充到恰好 65536 字节（JSON 尾随空白合法，
+        // 协议层正常解释为 allow → 工具执行；若读取路径把 64KiB 误判超限，此格即红）。
+        String hook = preToolUseCmdHook("mtx-j",
+                "#!/bin/sh\nprintf '{\"allowed\":true}'; head -c 65520 /dev/zero | tr '\\0' ' '\nexit 0\n");
+        String marker = "j" + System.nanoTime();
+        List<SseFrame> frames = runReadFileTask("[" + hook + "]", marker);
+        assertModelCalledReadFile(frames);
+        assertThat(toolExecuted(frames, marker))
+                .as("恰好 64KiB 的合法 JSON 输出 → 读取不误判超限，协议层 allow，工具执行").isTrue();
+        Allure.addAttachment("F109-15j 证据", "text/plain",
+                "65536 字节（16 字节 JSON + 65520 空白）→ 正常读取与解释，工具执行；"
+                        + "与 15i（65537 → deny）构成正反成对");
+    }
+
+    @Test
+    @Story("F109-11: PreToolUse deny 工具计数 0、后续 hook 与 PostToolUse 不执行、hook_result denied 字段")
     @DisplayName("F109-15b: PreToolUse allowed=false → deny 工具不执行")
     void preToolUseDenyBlocksTool(TestInfo info) throws Exception {
         // run-24 断言强度审计：deny 格同时挂 PostToolUse hook——出口 9 的「后续 hook 与
@@ -293,6 +313,102 @@ class Feat109HookMatrixE2EIT {
                 .contains("hookId").contains("\"event\"").contains("taskId")
                 .contains("sessionId").contains("tenantId").contains("occurredAt");
         Allure.addAttachment("F109-13 HTTP 输入", "text/plain", body);
+        hookServer.reset();
+        hookServer.respondWith(200, "");
+    }
+
+    /* ==================== F109-11：ask 后允许恢复 PreToolUse 不重放（2026-11-18 补格轮） ====================
+     * 判据（实现前已读）：L1 出口 9「ask 后允许恢复时同一 PreToolUse 总调用次数仍为 1，
+     * 不因续跑重放」＋ L2 §3.2 恢复链「当前权限调用继续；PreToolUse 编号簿命中，不重放」。
+     * 构造：write_file（actrule 默认 ask）+ PreToolUse HTTP hook（受控接收端计数）→ ask 挂起
+     * → /answer 允许 → 续跑 → 接收端对 PreToolUse 的调用总数恰 1。
+     * deny 面（计数 0/PostToolUse 不执行/hook_result 字段）由 F109-15b（上方，已显式绑定 F109-11）承接。
+     */
+
+    private static List<SseFrame> runWriteFileAskResume(String hooksJson, String fileName,
+            String marker) throws Exception {
+        String session = "sess-f109ar-" + System.nanoTime();
+        String input = "请使用 write_file 工具创建文件 " + fileName + "，内容为：" + marker
+                + "。只创建这一个文件，完成后直接结束任务。";
+        String body = "{\"sessionId\":\"" + session + "\",\"input\":\"" + input + "\","
+                + "\"runtimeConfig\":{\"version\":1,\"tenantId\":\"default-user\",\"sessionId\":\""
+                + session + "\",\"hooks\":" + hooksJson + "}}";
+        HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(http, base, body,
+                Duration.ofSeconds(150));
+        List<SseFrame> frames = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        Thread reader = new Thread(() -> {
+            try {
+                DaCompatGuardrailSupport.readFramesInto(stream, frames::add, f -> false,
+                        Duration.ofSeconds(150));
+            } catch (Exception e) {
+                frames.add(new SseFrame("reader-error", "reader-error", String.valueOf(e)));
+            }
+        }, "f109-ar-reader");
+        reader.setDaemon(true);
+        reader.start();
+
+        String taskId = null;
+        String toolCallId = null;
+        long deadline = System.currentTimeMillis() + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            synchronized (frames) {
+                for (SseFrame f : frames) {
+                    if (f.data() != null && f.data().contains("\"kind\":\"permission_confirm\"")) {
+                        taskId = firstNonBlankOf(f.field("taskId"), taskId);
+                        toolCallId = firstNonBlankOf(f.field("toolCallId"), toolCallId);
+                    }
+                }
+            }
+            if (toolCallId != null) {
+                break;
+            }
+            Thread.sleep(400);
+        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(toolCallId != null,
+                "INCONCLUSIVE——模型未触发 write_file 确认（模型旁路，非产品缺陷）");
+
+        HttpResponse<String> answerResp = DaCompatGuardrailSupport.post(http, base,
+                "/api/agents/answer/" + taskId,
+                "{\"answer\":\"允许\",\"toolCallId\":\"" + toolCallId + "\"}",
+                Duration.ofSeconds(30), Map.of("X-Da-Session-Id", session));
+        assertThat(answerResp.statusCode()).as("ask 恢复认领 200").isEqualTo(200);
+        reader.join(150_000);
+
+        Path dir = Path.of("target", "f109-dump");
+        Files.createDirectories(dir);
+        StringBuilder sb = new StringBuilder("session=").append(session)
+                .append("\nanswerStatus=").append(answerResp.statusCode()).append("\n---frames---\n");
+        for (SseFrame f : frames) {
+            sb.append("data=").append(f.data()).append('\n');
+        }
+        Files.writeString(dir.resolve(session + ".txt"), sb.toString());
+        return frames;
+    }
+
+    private static String firstNonBlankOf(String a, String b) {
+        return (a != null && !a.isBlank()) ? a : b;
+    }
+
+    @Test
+    @Story("F109-11: ask 后允许恢复时同一 PreToolUse 总调用次数仍为 1，不因续跑重放")
+    @DisplayName("F109-11: ask 恢复 PreToolUse 不重放（接收端计数恰 1）")
+    void askResumePreToolUseNotReplayed() throws Exception {
+        hookServer.respondWith(200, "");
+        String fileName = "f109-ar-" + System.nanoTime() + ".md";
+        String marker = "AR-MARKER-" + System.nanoTime();
+        String hook = "{\"id\":\"mtx-ar\",\"event\":\"PreToolUse\",\"type\":\"http\","
+                + "\"config\":{\"url\":\"" + hookServer.baseUrl() + "/hook\"},\"enabled\":true}";
+        List<SseFrame> frames = runWriteFileAskResume("[" + hook + "]", fileName, marker);
+
+        // 主断言：ask 挂起前 1 次 PreToolUse，恢复后不重放（总数恰 1）
+        assertThat(hookServer.requestCount()).as("ask 恢复后 PreToolUse 总调用次数=1（不重放）")
+                .isEqualTo(1);
+        // 工具恰执行一次（续跑成功）
+        assertThat(frames.stream().anyMatch(f -> f.data() != null && f.data().contains(marker)))
+                .as("允许后 write_file 执行（marker 落事件流）").isTrue();
+        Path dir = Path.of("target", "f109-ar-workspace");
+        Allure.addAttachment("F109-11 证据", "text/plain",
+                "hookCount=" + hookServer.requestCount() + " frames=" + frames.size());
         hookServer.reset();
         hookServer.respondWith(200, "");
     }

@@ -60,7 +60,7 @@ public final class DaReflectionCostSupport {
     public static final String SUT_GROUP = "com.openjiuwen";
     public static final String SUT_ARTIFACT = "deepanalyze-engine";
     /** r2（@76bcad137）：#44/45/46 裁决修复版——settings 读面/自进化门已移除，恢复 L1 双门。 */
-    public static final String SUT_VERSION = "0.1.3-feat109111-r2";
+    public static final String SUT_VERSION = "0.1.3-feat109111-r3";
 
     /** 复用批次共享 agent 条目（application-openjiuwen.yml；ENV-3.11 不新增不改旧）。 */
     public static final String AGENT = "deepanalyze-guardrail";
@@ -382,6 +382,8 @@ public final class DaReflectionCostSupport {
     public enum UsageMode {
         /** 精确 1000/200/500（缓存价公式主构造）。 */
         EXACT,
+        /** 1000/500 无 prompt_tokens_details（provider 不报缓存——缓存无关算术构造，!508 修复后用）。 */
+        NO_CACHE_REPORT,
         /** usage 对象在场但缺必需 token 字段（missing 判定构造）。 */
         MISSING_FIELDS,
         /** 负 input（invalid 判定构造）。 */
@@ -441,10 +443,63 @@ public final class DaReflectionCostSupport {
             }
         }
 
+        /**
+         * 2026-11-19 扩展（F110-16/F109-06 queued 面确定性构造）：条目
+         * {@code dualtool:<名1>,<名2>} —— 一条响应携带**两个并行 tool_calls**
+         * （引擎并行执行两工具→各自权限确认→双确认在途），供 queued/earlyAnswers
+         * 语义面确定性构造（L1 出口 5「两个工具并行 ask…提前回答均 queued」）。
+         * args 沿用固定业务形态（两调用同 args，business_failure 语义；write_file/edit_file
+         * 的 actrule 默认 ask 依赖各自行内权限）。
+         */
+        public void scriptDualTool(String toolA, String toolB) {
+            this.script = new java.util.ArrayDeque<>();
+            this.script.add(new String[]{"dualtool", toolA + "," + toolB});
+        }
+
+        /** 带定制 args 的双 tool_calls（args 为参数 Map——序列化与嵌套转义在本类内完成，调用方零转义负担）。 */
+        public void scriptDualTool(String toolA, java.util.Map<String, Object> argsA,
+                String toolB, java.util.Map<String, Object> argsB) throws Exception {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            this.script = new java.util.ArrayDeque<>();
+            this.script.add(new String[]{"dualtoolargs",
+                    toolA + "\u0001" + om.writeValueAsString(argsA) + "\u0001"
+                            + toolB + "\u0001" + om.writeValueAsString(argsB)});
+        }
+
+        /**
+         * 2026-11-19 扩展（F109-23/24 插件型构造）：条目 {@code toolargs:<名>\u0001<argsJson>}——
+         * 单 tool_calls 携带定制实参（task_tool 派遣插件子 Agent、插件 JS 工具定参调用）。
+         * 多步序列按入队顺序消费（主/子 Agent 的模型请求共用同一队列），耗尽后落回缺省应答。
+         * args 为参数 Map——序列化与嵌套转义在本类内完成（同 dualtoolargs 口径）。
+         */
+        public void scriptToolArgs(java.util.List<Map.Entry<String, java.util.Map<String, Object>>> steps)
+                throws Exception {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            this.script = new java.util.ArrayDeque<>();
+            for (Map.Entry<String, java.util.Map<String, Object>> step : steps) {
+                this.script.add(new String[]{"toolargs",
+                        step.getKey() + "\u0001" + om.writeValueAsString(step.getValue())});
+            }
+        }
+
         private final AtomicInteger seq = new AtomicInteger();
 
         public ModelStubServer() throws IOException {
             this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            // 2026-11-19 修复（F109-23/24 插件型构造）：缺省无 executor＝start() 线程单路串行分发——
+            // 并发请求（子 Agent 派遣后主/子模型调用并行）时单线程若卡在某个 exchange 的
+            // readAllBytes（SUT 侧半开请求体），后续连接全堆 TCP backlog 永不应答
+            // （run-18c~18g 五轮「stub count=1＋305s 取消」共同证据）。显式多线程池消除该串行墙。
+            java.util.concurrent.ThreadPoolExecutor pool =
+                    new java.util.concurrent.ThreadPoolExecutor(
+                            4, 16, 60L, java.util.concurrent.TimeUnit.SECONDS,
+                            new java.util.concurrent.LinkedBlockingQueue<>(256),
+                            r -> {
+                                Thread t = new Thread(r, "model-stub-dispatch-" + seq.incrementAndGet());
+                                t.setDaemon(true);
+                                return t;
+                            });
+            this.server.setExecutor(pool);
             this.server.createContext("/", exchange -> handle(exchange));
             this.server.start();
         }
@@ -476,6 +531,21 @@ public final class DaReflectionCostSupport {
                         respondCompletion(exchange, null, true, usageJson(), step[1]);
                         return;
                     }
+                    if (step[0].equals("dualtool")) {
+                        respondDualToolCalls(exchange, usageJson(), step[1].split(","));
+                        return;
+                    }
+                    if (step[0].equals("dualtoolargs")) {
+                        String[] p4 = step[1].split("\u0001");
+                        respondDualToolCallsArgs(exchange, usageJson(),
+                                new String[]{p4[0], p4[2]}, new String[]{p4[1], p4[3]});
+                        return;
+                    }
+                    if (step[0].equals("toolargs")) {
+                        String[] p2 = step[1].split("\u0001", 2);
+                        respondToolCallArgs(exchange, usageJson(), p2[0], p2[1]);
+                        return;
+                    }
                     // "answer" 落回普通回答
                 }
                 String usage = usageJson();
@@ -505,6 +575,134 @@ public final class DaReflectionCostSupport {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 respond(exchange, 500, "{\"error\":{\"message\":\"stub interrupted\"}}");
+            }
+        }
+
+        /** 定制 args 版单 tool_calls（F109-23/24 插件型构造：task_tool 派遣/插件 JS 工具定参——2026-11-19）。 */
+        private void respondToolCallArgs(HttpExchange exchange, String usage,
+                String toolName, String argsJson) throws IOException {
+            // argsJson=未转义的 JSON 对象文本——OpenAI 契约 arguments 必须是 JSON 字符串，
+            // 经 writeValueAsString 二次序列化为合法字符串字面量（嵌套转义同源产出，零手工转义）
+            String argumentsLiteral = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(argsJson);
+            String firstDelta = "{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,"
+                    + "\"id\":\"call_stub_args_" + seq.incrementAndGet()
+                    + "\",\"type\":\"function\",\"function\":{\"name\":\""
+                    + toolName + "\",\"arguments\":" + argumentsLiteral + "}}]}";
+            boolean stream = bodyWantsStream(lastRequest());
+            if (stream) {
+                String head = "{\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[";
+                StringBuilder sse = new StringBuilder();
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":").append(firstDelta).append(",\"finish_reason\":null}")
+                        .append("]}\n\n");
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}")
+                        .append("]}\n\n");
+                sse.append("data: {\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[],")
+                        .append("\"usage\":").append(usage).append("}\n\n");
+                sse.append("data: [DONE]\n\n");
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } else {
+                String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
+                        + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
+                        + "\"usage\":" + usage + "}";
+                byte[] bytes = full.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
+        }
+
+        /** 定制 args 版双 tool_calls（每调用独立 args——write_file×2 各带 path/content）。 */
+        private void respondDualToolCallsArgs(HttpExchange exchange, String usage,
+                String[] toolNames, String[] argsList) throws IOException {
+            com.fasterxml.jackson.databind.ObjectMapper om =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            StringBuilder calls = new StringBuilder();
+            for (int i = 0; i < toolNames.length; i++) {
+                if (i > 0) {
+                    calls.append(',');
+                }
+                // argsList[i]=未转义的 JSON 对象文本——writeValueAsString 产出合法的嵌套字符串值（含转义引号）
+                String argValue = om.writeValueAsString(argsList[i]);
+                calls.append("{\"index\":").append(i)
+                        .append(",\"id\":\"call_stub_dual_").append(seq.incrementAndGet())
+                        .append("\",\"type\":\"function\",\"function\":{\"name\":\"")
+                        .append(toolNames[i]).append("\",\"arguments\":").append(argValue).append("}}");
+            }
+            String firstDelta = "{\"role\":\"assistant\",\"tool_calls\":[" + calls + "]}";
+            boolean stream = bodyWantsStream(lastRequest());
+            if (stream) {
+                String head = "{\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[";
+                StringBuilder sse = new StringBuilder();
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":").append(firstDelta).append(",\"finish_reason\":null}")
+                        .append("]}\n\n");
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}")
+                        .append("]}\n\n");
+                sse.append("data: {\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[],")
+                        .append("\"usage\":").append(usage).append("}\n\n");
+                sse.append("data: [DONE]\n\n");
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } else {
+                String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
+                        + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
+                        + "\"usage\":" + usage + "}";
+                byte[] bytes = full.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
+        }
+
+        /** 一条响应携带两个并行 tool_calls（F110-16/F109-06 queued 面确定性构造——2026-11-19）。 */
+        private void respondDualToolCalls(HttpExchange exchange, String usage, String... toolNames)
+                throws IOException {
+            StringBuilder calls = new StringBuilder();
+            for (int i = 0; i < toolNames.length; i++) {
+                String args = "{\\\"output\\\":\\\"" + toolOutputText.replace("\\", "\\\\")
+                        .replace("\"", "\\\"") + "\\\"}";
+                if (i > 0) {
+                    calls.append(',');
+                }
+                calls.append("{\"index\":").append(i)
+                        .append(",\"id\":\"call_stub_dual_").append(seq.incrementAndGet())
+                        .append("\",\"type\":\"function\",\"function\":{\"name\":\"")
+                        .append(toolNames[i]).append("\",\"arguments\":\"").append(args).append("\"}}");
+            }
+            String firstDelta = "{\"role\":\"assistant\",\"tool_calls\":[" + calls + "]}";
+            boolean stream = bodyWantsStream(lastRequest());
+            if (stream) {
+                String head = "{\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[";
+                StringBuilder sse = new StringBuilder();
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":").append(firstDelta).append(",\"finish_reason\":null}")
+                        .append("]}\n\n");
+                sse.append("data: ").append(head)
+                        .append("{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}")
+                        .append("]}\n\n");
+                sse.append("data: {\"id\":\"stub\",\"object\":\"chat.completion.chunk\",\"choices\":[],")
+                        .append("\"usage\":").append(usage).append("}\n\n");
+                sse.append("data: [DONE]\n\n");
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } else {
+                String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
+                        + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
+                        + "\"usage\":" + usage + "}";
+                byte[] bytes = full.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
             }
         }
 
@@ -600,6 +798,8 @@ public final class DaReflectionCostSupport {
             return switch (usageMode) {
                 case EXACT -> "{\"prompt_tokens\":1000,\"completion_tokens\":500,\"total_tokens\":1500,"
                         + "\"prompt_tokens_details\":{\"cached_tokens\":200}}";
+                case NO_CACHE_REPORT -> "{\"prompt_tokens\":1000,\"completion_tokens\":500,"
+                        + "\"total_tokens\":1500}";
                 case MISSING_FIELDS -> "{\"total_tokens\":1500}";
                 case NEGATIVE_INPUT -> "{\"prompt_tokens\":-5,\"completion_tokens\":100,\"total_tokens\":95}";
                 case CACHED_OVER_INPUT -> "{\"prompt_tokens\":100,\"completion_tokens\":50,\"total_tokens\":150,"

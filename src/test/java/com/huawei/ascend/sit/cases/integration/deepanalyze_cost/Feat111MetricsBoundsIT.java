@@ -262,4 +262,22 @@ class Feat111MetricsBoundsIT {
                 "reconcile_diff is not reconciled here"))
                 .as("DaCostTracker 启动日志留档行存在").isTrue();
     }
+
+    /**
+     * <b>F111-16 meter 最终增量硬断言子面（2026-11-17 PR !514 裁决，blocked 登记）：</b>
+     * L1 不降级——正常 Collector 可用时，序列回收前最后一笔有效增量不得静默丢失；
+     * 本地 flush 到 registry 不等于 OTLP 已发布。实现须提供可验证的最终发布/drain 确认，
+     * 确认失败须形成明确的不完整/失败信号。该子面需产品提供可验证的发布确认机制 +
+     * 受控 OTLP 接收端构造「回收前最后一次增量」，实现与设计未具备前标 blocked
+     * （不写成 runnable 且「不在本期断言」；不采用延迟 flush 启发式修复）。
+     * 恢复条件＝产品交付最终发布/drain 确认机制（或设计侧明确降级 L1 并经用户裁决）。
+     */
+    @Test
+    @Story("F111-16: meter 最终增量送达确认（!514 裁决硬断言子面——blocked·开发缺口）")
+    @DisplayName("F111-16b: meter 送达硬断言（blocked·待开发）")
+    void meterFinalIncrementDeliveryAssertion() {
+        org.junit.jupiter.api.Assumptions.abort("F111-16 meter 最终增量硬断言子面 blocked（PR !514 裁决）："
+                + "L1 不降级——回收前最后一笔有效增量不得静默丢失；实现未提供可验证的最终发布/drain 确认机制，"
+                + "受控 OTLP 接收端构造面未具备。恢复条件＝产品交付最终发布确认机制或设计侧经用户裁决降级 L1。");
+    }
 }

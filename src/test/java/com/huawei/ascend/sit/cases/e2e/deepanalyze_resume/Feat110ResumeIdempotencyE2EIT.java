@@ -40,7 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>错误面校验顺序（同一 handler 内）：record 查找+属主（404）→ TTL 过期（404）→
  *       缺幂等键（400）→ answer 空白（400）→ toolCallId 非原值形态（400）→ 资格检查（409）。
  *       未知/跨任务 toolCallId 在资格检查后按 404 "Task not found" 同形拒绝且不消耗资格。</li>
- *   <li>DV-110-01/02 双栏注记：本类不触 503 等待面与长度上限面（未实现，partial）。</li>
+ *   <li>r3 注记：DV-110-01/02 已随 !1181 撤销（等待可配置、长度上限面均按现行契约执行），
+ *       503 等待面由 concurrentSameKeyWaitsForFirstSettle 承接、长度上限面由
+ *       Feat110PayloadLimitsE2EIT 承接；取消态四格（duplicateAfterCancel）兼承 F110-26。</li>
  * </ul>
  */
 @Tag("e2e")
@@ -436,6 +438,101 @@ class Feat110ResumeIdempotencyE2EIT {
     }
 
     /* ==================== 私有工具 ==================== */
+
+    /**
+     * F110-06 取消态四格（r3 补格）：受理后取消 → 同键重放 200 duplicate、不复活。
+     * 构造：两文件任务（两轮 ask）——ask1 挂起 → resume K（202）→ 工具 1 执行 → ask2 挂起
+     * （确定性取消锚点，非"202 后立即 cancel"的竞态形态）→ /cancel → cancelled → 同键 K 重放。
+     */
+    @Test
+    @Story("F110-06/26: 取消后同键重放——200 duplicate:true、任务保持 cancelled 不复活（兼承 F110-26 待答取消收口面：取消收口完整＋幂等键失效＋重放不复活）")
+    @DisplayName("F110-06b/26: 取消态同键重放与待答取消收口")
+    void duplicateAfterCancel() throws Exception {
+        // ---- 两文件挂起（ask1）----
+        String session = "sess-f110-idem-cancel-" + System.nanoTime();
+        String marker1 = "IDEM-CXL-A-" + System.nanoTime();
+        String marker2 = "IDEM-CXL-B-" + System.nanoTime();
+        String file1 = "f110-idem-cxl1-" + System.nanoTime() + ".md";
+        String file2 = "f110-idem-cxl2-" + System.nanoTime() + ".md";
+        String input = "请依次使用 write_file 工具创建两个文件：" + file1 + "（内容 " + marker1
+                + "）和 " + file2 + "（内容 " + marker2 + "）。必须两个都创建，按顺序来，完成后结束。";
+        String body = "{\"sessionId\":\"" + session + "\",\"input\":\"" + DaResumeSupport.escape(input) + "\"}";
+        HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(http, base, body,
+                Duration.ofSeconds(180));
+        List<SseFrame> frames = new ArrayList<>();
+        Thread reader = backgroundReader(stream, frames);
+        // run-03 教训：本类 backgroundReader 已自带 start()——重复 start 抛 IllegalThreadStateException；
+        // 等 ask1 挂起（permission_confirm 帧）后才可 resume——taskId 在 start 帧即出现，
+        // 只等 taskId 就 resume 会撞 409 TASK_NOT_RESUMABLE（run-03b 实证）
+        boolean ask1 = false;
+        long ask1Deadline = System.currentTimeMillis() + SUSPEND_TIMEOUT_MILLIS;
+        while (System.currentTimeMillis() < ask1Deadline) {
+            synchronized (frames) {
+                ask1 = frames.stream().anyMatch(f -> f.data() != null
+                        && f.data().contains("\"kind\":\"permission_confirm\""));
+            }
+            if (ask1) {
+                break;
+            }
+            Thread.sleep(400);
+        }
+        assertThat(ask1).as("两文件任务 ask1 挂起（permission_confirm 到达）").isTrue();
+        String taskId = awaitTaskId(frames, 5_000);
+        assertThat(taskId).as("taskId 可见").isNotBlank();
+
+        // ---- resume K（202）→ 等 ask2 挂起（确定性取消锚点）----
+        String key = "idem-cxl-" + System.nanoTime();
+        HttpResponse<String> first = DaResumeSupport.resume(http, base, taskId, session, key,
+                "允许", null, Duration.ofSeconds(30));
+        assertThat(first.statusCode()).as("首发 resume 202").isEqualTo(202);
+        long ask2Deadline = System.currentTimeMillis() + SUSPEND_TIMEOUT_MILLIS;
+        boolean ask2 = false;
+        while (System.currentTimeMillis() < ask2Deadline) {
+            synchronized (frames) {
+                ask2 = frames.stream().filter(f -> f.data() != null
+                        && f.data().contains("\"kind\":\"permission_confirm\"")).count() >= 2;
+            }
+            if (ask2) {
+                break;
+            }
+            Thread.sleep(400);
+        }
+        assertThat(ask2).as("工具 1 执行后第二轮 ask 挂起（取消锚点就位）").isTrue();
+
+        // ---- /cancel（待答态取消——完整收口）----
+        HttpResponse<String> cancel = DaCompatGuardrailSupport.post(http, base,
+                "/api/agents/cancel/" + taskId, "{}", Duration.ofSeconds(30),
+                java.util.Map.of("X-Da-Session-Id", session));
+        assertThat(cancel.statusCode()).as("cancel 200").isEqualTo(200);
+        long doneDeadline = System.currentTimeMillis() + 60_000;
+        HttpResponse<String> st = null;
+        while (System.currentTimeMillis() < doneDeadline) {
+            st = DaResumeSupport.status(http, base, taskId, session, Duration.ofSeconds(15));
+            if ("cancelled".equals(DaResumeSupport.jsonString(st.body(), "status"))) {
+                break;
+            }
+            Thread.sleep(500);
+        }
+        assertThat(DaResumeSupport.jsonString(st.body(), "status"))
+                .as("取消后落 cancelled（完整收口）").isEqualTo("cancelled");
+
+        // ---- 同键重放：200 duplicate:true、cancelled 不复活 ----
+        HttpResponse<String> replay = DaResumeSupport.resume(http, base, taskId, session, key,
+                "允许", null, Duration.ofSeconds(30));
+        assertThat(replay.statusCode()).as("取消后同键重放 200（重放语义）").isEqualTo(200);
+        assertThat(DaResumeSupport.jsonBool(replay.body(), "duplicate")).as("duplicate:true").isTrue();
+        HttpResponse<String> stAfter = DaResumeSupport.status(http, base, taskId, session,
+                Duration.ofSeconds(15));
+        assertThat(DaResumeSupport.jsonString(stAfter.body(), "status"))
+                .as("重放不复活：任务保持 cancelled").isEqualTo("cancelled");
+        HttpResponse<String> newKey = DaResumeSupport.resume(http, base, taskId, session,
+                "idem-cxl-new-" + System.nanoTime(), "允许", null, Duration.ofSeconds(30));
+        assertThat(newKey.statusCode()).as("取消后新键 409（终态资格）").isEqualTo(409);
+        reader.join(150_000);
+        Allure.addAttachment("F110-06 取消态证据", "text/plain",
+                "ask1→resume K 202→ask2→cancel→cancelled→同键重放 200 duplicate:true"
+                        + "→保持 cancelled→新键 409");
+    }
 
     private static DaResumeSupport.SuspendedTask suspendTask(String suffix) throws Exception {
         return DaResumeSupport.startSuspendedTask(http, base, workspaceRoot, suffix,

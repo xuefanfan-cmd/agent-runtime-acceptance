@@ -28,7 +28,14 @@ import java.util.function.Function;
  * 受控 HTTP hook 接收端与 HTTP/SSE 读取工具。
  *
  * <p>被测制品：deepanalyze-engine {@value #SUT_VERSION}
- * （agent-solution common@6fd13012b 批次源码构建；勿与其他批次版本混用）。
+ * （agent-solution common@babb882b9 批次源码构建，r3 基线；勿与其他批次版本混用）。</p>
+ *
+ * <p><b>DV-109-02 配置键重分类（2026-11-17 PR !512 裁决，2026-11-17 落注）</b>：本类及全部
+ * hooks 用例注入的 `deepanalyze.compat.hooks.command-root` / `http-host-whitelist` 属**旧部署
+ * 弃用兼容别名**（正式契约键=L1 原键名 `deepanalyze.hooks.timeout` / `max-response-bytes` /
+ * `http-allowed-hosts`——实现未绑定，开发补齐项）。⇒ 本批 hooks 配置面用例（F109-13/14/15/16
+ * 等）全部按**兼容别名用例**口径执行与记账；L1 新键场景（默认值/合法非默认/非法 fail-fast/
+ * 双键冲突启动失败）登记 blocked·开发缺口，待开发补齐后开跑，不得按旧键通过验收。</p>
  * agent 注册名 {@code deepanalyze-guardrail} 为本批新增条目（application-openjiuwen.yml，
  * ENV-3.11：新增不改既有 deepanalyze / deepanalyze-dataplane 条目）。
  */
@@ -36,7 +43,7 @@ public final class DaCompatGuardrailSupport {
 
     public static final String SUT_GROUP = "com.openjiuwen";
     public static final String SUT_ARTIFACT = "deepanalyze-engine";
-    public static final String SUT_VERSION = "0.1.3-feat109111";
+    public static final String SUT_VERSION = "0.1.3-feat109111-r3";
     public static final String AGENT = "deepanalyze-guardrail";
 
     private DaCompatGuardrailSupport() {

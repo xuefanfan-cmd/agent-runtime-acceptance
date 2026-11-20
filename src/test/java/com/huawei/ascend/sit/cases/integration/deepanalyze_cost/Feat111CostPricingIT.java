@@ -30,8 +30,8 @@ import static org.assertj.core.api.Assertions.within;
 /**
  * FEAT-111 缓存计价公式精确值（F111-10/14，integration，确定性执行体轨道）。
  *
- * <p><b>判据（L1 出口 10/14＋§3.3 公式；Q2 双轨已批，Q4 cached_input 流式来源待 #277
- * ——本类走非流式确定性来源，公式断言有效，不声明"真实流式缓存"通过）：</b></p>
+ * <p><b>判据（L1 出口 10/14＋§3.3 公式；Q2 双轨已批；Q4 cached_input 流式来源——2026-11-19
+ * core !508（e24bcb74）合入＋本地构建 r6 制品后已供给，run-15 全式 0.00185 实证转正）：</b></p>
  * <ul>
  *   <li>公式＝(input−cached)×p_in + cached×p_cached + output×p_out（UsageAdjudicator
  *       BigDecimal 精确）；usage 1000/200/500 × 价 1/0.25/2 → 0.00185/call。</li>
@@ -43,6 +43,7 @@ import static org.assertj.core.api.Assertions.within;
  * （公式对任意 N 精确成立），并断言 N==4（2 会话×2 任务，planning 关闭锚定每任务
  * 1 次主调用）。OTLP 推送间隔 1s（env OTEL_METRIC_EXPORT_INTERVAL）＋writer 冲刷
  * PT1S，有界轮询取数。</p>
+ * <p><b>#277 阻塞原因更正（2026-11-17 更正：core !508 已合入 develop，源码供给已落地——阻塞原因改为「等待包含该修复的制品及 DA 联调验证」，blocked 状态不变；PR !514 裁决）</b></p>
  */
 @Tag("integration")
 @Tag("deepanalyze")
@@ -190,17 +191,18 @@ class Feat111CostPricingIT {
     /* ==================== F111-10 缓存公式精确值 ==================== */
 
     /**
-     * <b>#277 遮蔽说明（run-17 源码级实证，遮蔽律口径）：</b>core OpenAIModelClient
-     * 流式路径 parseUsageMetadata(includeCacheTokens=false)（:1418/:2482）无条件丢弃
-     * prompt_tokens_details → cached_input 恒 0 → L1 出口 10 的缓存半程（cached_input
-     * 分项、cached 价贡献、0.00185/0.00370/0.00740 全式）在本制品上不可验，恢复条件
-     * ＝core #277。无缓存半程（input/output 分项与缓存无关算术）照常执行。
+     * <b>前提更新（2026-11-19，run-15/r6）：</b>原 #277 遮蔽说明已失效——core !508
+     * （e24bcb74）后 cached_tokens 流过，EXACT 形态下成本=全式 0.00185（见 10b 转正格）。
+     * 本格语义改为「provider 不报缓存」：stub 用 NO_CACHE_REPORT 形态（无
+     * prompt_tokens_details）→ cached_input 无从产生 → 成本=1000×1/1e6＋500×2/1e6
+     * =0.002 缓存无关算术（断言值不变，只换前提；断言值同 run-01 起 0.002 序列一致）。
      */
     @Test
     @Story("F111-10: 无缓存半程——input/output 分项与缓存无关算术精确")
     @DisplayName("F111-10a: 无缓存半程精确值")
     void uncachedFormulaPartExact() throws Exception {
-        try (Env env = startEnv(priceLine("1", "0.25", "2"), stub -> { })) {
+        try (Env env = startEnv(priceLine("1", "0.25", "2"),
+                stub -> stub.usageMode(DaReflectionCostSupport.UsageMode.NO_CACHE_REPORT))) {
             String s1 = "sess-f111-10-a-" + System.nanoTime();
             String s2 = "sess-f111-10-b-" + System.nanoTime();
             runTask(env, s1);
@@ -213,8 +215,9 @@ class Feat111CostPricingIT {
             assertThat(completed).as("恰好 4 个完成任务（busy 幽灵任务不计入断言）").hasSize(4);
             java.util.function.Predicate<Map<String, String>> main =
                     tags -> "main".equals(tags.get(DaReflectionCostSupport.TAG_PURPOSE));
-            // 本制品上 cached 被 #277 丢弃 → 计价算术输入为 input=1000/output=500（无缓存贡献）
-            // → 单调用成本 = 1000×1/1e6 + 500×2/1e6 = 0.002（不是 L1 全式 0.00185——全式待 #277）
+            // NO_CACHE_REPORT 形态：provider 不报缓存 → cached_input 无从产生
+            // → 计价算术输入为 input=1000/output=500（无缓存贡献）
+            // → 单调用成本 = 1000×1/1e6 + 500×2/1e6 = 0.002（缓存无关算术）
             double inputTokens = awaitSum(env, DaReflectionCostSupport.M_TOKEN_USAGE, OTLP_WAIT,
                     main.and(tags -> "input".equals(tags.get(DaReflectionCostSupport.TAG_TOKEN_TYPE))), 4000);
             double outputTokens = awaitSum(env, DaReflectionCostSupport.M_TOKEN_USAGE, OTLP_WAIT,
@@ -222,7 +225,7 @@ class Feat111CostPricingIT {
             double cost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT, main, 4 * 0.002);
             assertThat(inputTokens).as("token 分项 input=完成任务数×1000").isEqualTo(4000D);
             assertThat(outputTokens).as("token 分项 output=完成任务数×500").isEqualTo(2000D);
-            assertThat(cost).as("成本=4×0.002（cached=0 投影，#277 遮蔽下的缓存无关算术）")
+            assertThat(cost).as("成本=4×0.002（provider 不报缓存 → 缓存无关算术）")
                     .isCloseTo(4 * 0.002D, within(1e-9));
             double session1Cost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT,
                     main.and(tags -> s1.equals(tags.get(DaReflectionCostSupport.TAG_SESSION))),
@@ -243,24 +246,67 @@ class Feat111CostPricingIT {
         }
     }
 
+    /* ==================== F111-10b 转正（2026-11-19）：core !508（e24bcb74「完善模型客户端恢复
+     * 与请求用量契约」）已合 develop 且本地源码构建 r5 制品（0.1.3-feat109111-r5）——流式路径
+     * 保留 prompt_tokens_details，abort 桩前提消失。全式断言照 L1 出口 10。 ==================== */
+
     @Test
-    @Story("F111-10: 缓存半程——cached_input 分项＋cached 价贡献＋0.00185 全式（blocked·#277）")
-    @DisplayName("F111-10b: 缓存半程（#277 遮蔽，INCONCLUSIVE 留恢复条件）")
-    void cachedFormulaPartBlockedBy277() {
-        org.junit.jupiter.api.Assumptions.abort("core #277 前置未交付：流式路径 "
-                + "OpenAIModelClient.parseUsageMetadata(includeCacheTokens=false) 丢弃 "
-                + "prompt_tokens_details，cached_input 恒 0（run-17 源码级实证）。恢复条件＝#277 交付后"
-                + "按 L1 出口 10 全式断言 cached_input=N×200 与 0.00185/0.00370/0.00740——"
-                + "不把 cache=0 当通过（L2 §7.2）。");
+    @Story("F111-10/13: 缓存半程——cached_input 分项＋cached 价贡献＋0.00185 全式（#277 修复后转正）")
+    @DisplayName("F111-10b/13: 缓存计价全式（cached_input=200 流过）")
+    void cachedFormulaPartExact() throws Exception {
+        try (Env env = startEnv(priceLine("1", "0.25", "2"), stub -> { })) {
+            String s1 = "sess-f111-10b-a-" + System.nanoTime();
+            String s2 = "sess-f111-10b-b-" + System.nanoTime();
+            runTask(env, s1);
+            runTask(env, s1);
+            runTask(env, s2);
+            runTask(env, s2);
+            List<Map<String, Object>> completed = new java.util.ArrayList<>();
+            completed.addAll(completedTasksOf(env, s1));
+            completed.addAll(completedTasksOf(env, s2));
+            assertThat(completed).as("恰好 4 个完成任务").hasSize(4);
+            java.util.function.Predicate<Map<String, String>> main =
+                    tags -> "main".equals(tags.get(DaReflectionCostSupport.TAG_PURPOSE));
+            // 修复后 cached=200 流过 → L1 出口 10 全式：单调用=(1000−200)×1/1e6＋200×0.25/1e6
+            //   ＋500×2/1e6 = 0.0008＋0.00005＋0.001 = 0.00185
+            double inputTokens = awaitSum(env, DaReflectionCostSupport.M_TOKEN_USAGE, OTLP_WAIT,
+                    main.and(tags -> "input".equals(tags.get(DaReflectionCostSupport.TAG_TOKEN_TYPE))), 4000);
+            double outputTokens = awaitSum(env, DaReflectionCostSupport.M_TOKEN_USAGE, OTLP_WAIT,
+                    main.and(tags -> "output".equals(tags.get(DaReflectionCostSupport.TAG_TOKEN_TYPE))), 2000);
+            double cachedTokens = awaitSum(env, DaReflectionCostSupport.M_TOKEN_USAGE, OTLP_WAIT,
+                    main.and(tags -> "cached_input".equals(tags.get(DaReflectionCostSupport.TAG_TOKEN_TYPE))), 800);
+            double cost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT, main, 4 * 0.00185);
+            assertThat(inputTokens).as("token 分项 input=4×1000").isEqualTo(4000D);
+            assertThat(outputTokens).as("token 分项 output=4×500").isEqualTo(2000D);
+            assertThat(cachedTokens).as("token 分项 cached_input=4×200（!508 修复：流式保留 cached）")
+                    .isEqualTo(800D);
+            assertThat(cost).as("成本=4×0.00185（L1 出口 10 全式）").isCloseTo(4 * 0.00185D, within(1e-9));
+            double session1Cost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT,
+                    main.and(tags -> s1.equals(tags.get(DaReflectionCostSupport.TAG_SESSION))),
+                    2 * 0.00185);
+            assertThat(session1Cost).as("会话聚合=2×0.00185").isCloseTo(2 * 0.00185D, within(1e-9));
+            for (Map<String, Object> task : completed) {
+                String taskId = String.valueOf(task.get("id"));
+                double taskCost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT,
+                        main.and(tags -> taskId.equals(tags.get(DaReflectionCostSupport.TAG_TASK))),
+                        0.00185);
+                assertThat(taskCost).as("任务序列成本 taskId=" + taskId)
+                        .isCloseTo(0.00185D, within(1e-9));
+            }
+            Allure.addAttachment("F111-10b/13 转正证据", "text/plain",
+                    "completed=4 cost=" + cost + " input=" + inputTokens + " cached=" + cachedTokens
+                            + " output=" + outputTokens + " stubCalls=" + env.stub().mainCalls());
+        }
     }
 
     /* ==================== F111-14 十进制边界 ==================== */
 
     @Test
-    @Story("F111-14: 微额价目累计在容差内精确、不出现单调用舍入为 0（无缓存价目——Oracle 不依赖缓存维度）")
+    @Story("F111-14: 微额价目累计在容差内精确、不出现单调用舍入为 0（无缓存价目＋provider 不报缓存——Oracle 不依赖缓存维度）")
     @DisplayName("F111-14: 微额价目不归零")
     void microPriceNeverRoundsToZero() throws Exception {
-        try (Env env = startEnv(priceLine("0.000001", null, "0.000002"), stub -> { })) {
+        try (Env env = startEnv(priceLine("0.000001", null, "0.000002"),
+                stub -> stub.usageMode(DaReflectionCostSupport.UsageMode.NO_CACHE_REPORT))) {
             String session = "sess-f111-14-" + System.nanoTime();
             runTask(env, session);
             runTask(env, session);
@@ -271,8 +317,8 @@ class Feat111CostPricingIT {
             double cost = awaitSum(env, DaReflectionCostSupport.M_COST_USD, OTLP_WAIT, main,
                     completedCount * 2e-9);
             double expected = completedCount * 2e-9;
-            assertThat(cost).as("微额累计精确（容差 max(1e-12, abs×1e-9)）且大于 0——无缓存价目下单调用"
-                            + "=1000×1e-12+500×2e-12=2e-9")
+            assertThat(cost).as("微额累计精确（容差 max(1e-12, abs×1e-9)）且大于 0——无缓存价目＋provider 不报缓存，"
+                            + "单调用=1000×1e-12+500×2e-12=2e-9")
                     .isGreaterThan(0D)
                     .isCloseTo(expected, within(Math.max(1e-12, expected * 1e-9)));
             Allure.addAttachment("F111-14 证据", "text/plain",

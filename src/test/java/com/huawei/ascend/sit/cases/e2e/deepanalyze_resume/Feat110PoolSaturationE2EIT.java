@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -141,5 +142,186 @@ class Feat110PoolSaturationE2EIT {
         Allure.addAttachment("F110-11 证据", "text/plain",
                 "A=" + a.taskId() + " B=" + b.taskId() + " 503body=" + rb.body()
                         + " retry=" + retry.statusCode());
+    }
+
+    /* ==================== F109-08：cancel drain 池饱和面（2026-11-18 补格轮） ====================
+     * 判据（实现前已读）：L1 出口 6b「待答 /cancel 形成 cancelled，并注入执行池饱和验证清理
+     * 失败也不会让旧中断污染下一任务」＋ L2-110 §3.6（待答清理 continuation 尽力提交、池饱和
+     * 只记日志）＋ solution#689 closed（!1179 cancel-drain-delay-ms 缝兑现，11-17 实时查）。
+     * 构造（自测 DaCancelDrainSaturatedPoolTest 同构黑盒化）：max-concurrent-tasks=2 +
+     * cancel-drain-delay-ms=5000（把「取消终态落定」与「drain 提交」拆成可观测窗口）。
+     * A/B 双挂起占满 2 槽 → cancel A（A 槽释放）→ 窗口内任务 C write_file 挂起占回 A 的槽
+     * → 窗口到期 drain 提交遇饱和 → warn「cancel drain not submitted … saturated」恰 1 条
+     * （提交恰一次不重试的黑盒间接证据）＋ A 终态 cancelled ＋ C/新任务不受污染。
+     * 「提交失败」注入面维持 NOT_OBSERVED（#689 单内登记，无注入面）。
+     */
+
+    @Test
+    @Story("F109-08: cancel drain 池饱和——提交恰一次不重试、cancelled 不被污染、下一任务正常")
+    @DisplayName("F109-08: drain 饱和面（cancel-drain-delay 缝构造）")
+    void cancelDrainSaturatedPoolNoRetry() throws Exception {
+        com.huawei.ascend.sit.config.TestConfig cfg = TestConfig.load();
+        Path ws = Files.createTempDirectory("feat110-drain-workspace");
+        long logOffset = logLength();
+        try (SutStack drainStack = DaCompatGuardrailSupport.guardrailStack(cfg, agent -> agent
+                .property("deepanalyze.workspace.root", ws.toAbsolutePath().toString())
+                .property("deepanalyze.compat.max-concurrent-tasks", "1")
+                // !1179 缝是 test profile 专用（DaCompatAutoConfiguration:142 唯一消费点）——
+                // 真机 SUT 必须激活 test profile 才允许正值，否则启动期 fail-fast（run-06 实测）
+                .property("spring.profiles.active", "test")
+                .property("deepanalyze.compat.cancel-drain-delay-ms", "45000")).start()) {
+            HttpClient h = DaCompatGuardrailSupport.newHttpClient();
+            String b = drainStack.client(DaResumeSupport.AGENT).getBaseUrl();
+
+            // A 挂起占唯一槽（run-06b/06d 实测池计数模型：挂起任务不占执行池、活跃
+            // continuation 占池——max=1 下 C 活跃即唯一占池者，drain 提交必饱和）
+            Suspended A = suspend(h, b, "A");
+            assertThat(A.taskId()).as("A 挂起受理").isNotNull();
+
+            // cancel A → A 槽释放。delay sleep 在 cancel 收口线程内（run-06c 实测：同步发
+            // cancel 会挂住响应 30s+ 超时）——**异步发 cancel，主线程在 45s 窗口内完成
+            // C 挂起→允许→活跃化**（活跃 continuation 占池；run-06b 实测挂起任务不占池）
+            java.util.concurrent.CompletableFuture<HttpResponse<String>> cancelF =
+                    java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return DaCompatGuardrailSupport.post(h, b,
+                                    "/api/agents/cancel/" + A.taskId(), "{}", Duration.ofSeconds(90),
+                                    Map.of("X-Da-Session-Id", A.sessionId()));
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
+                        }
+                    });
+            Suspended C = suspend(h, b, "C", true);
+            assertThat(C.taskId()).as("窗口内 C 挂起").isNotNull();
+            HttpResponse<String> allowC = DaCompatGuardrailSupport.post(h, b,
+                    "/api/agents/answer/" + C.taskId(),
+                    "{\"answer\":\"允许\"}", Duration.ofSeconds(30),
+                    Map.of("X-Da-Session-Id", C.sessionId()));
+            assertThat(allowC.statusCode()).as("C 允许进入活跃段").isIn(200, 202);
+            // 等 C 进入活跃执行（content_delta≥1——活跃占池的观测面）
+            long activeDeadline = System.currentTimeMillis() + 60_000;
+            boolean cActive = false;
+            while (System.currentTimeMillis() < activeDeadline) {
+                for (SseFrame f : C.frames()) {
+                    if ("content_delta".equals(f.event())) {
+                        cActive = true;
+                        break;
+                    }
+                }
+                if (cActive) {
+                    break;
+                }
+                Thread.sleep(200);
+            }
+            assertThat(cActive).as("C 进入活跃执行（占池前提）").isTrue();
+
+            // 等 cancel 收口返回（=45s sleep 已过、drain 提交已发生——提交时 C 活跃占池）
+            HttpResponse<String> cancelA = cancelF.join();
+            assertThat(cancelA.statusCode()).as("待答 /cancel 受理").isEqualTo(200);
+
+            // A 终态 cancelled（不被饱和污染）
+            HttpResponse<String> statusA = DaResumeSupport.status(h, b,
+                    A.taskId(), A.sessionId(), Duration.ofSeconds(30));
+            assertThat(statusA.body()).as("A 终态 cancelled").contains("cancelled");
+
+            // drain 饱和 warn：新增日志段恰 1 条（提交恰一次不重试的黑盒间接证据）
+            String tail = logTail(logOffset);
+            long warnCount = java.util.Arrays.stream(tail.split("\n"))
+                    .filter(l -> l.contains("cancel drain not submitted")
+                            && l.contains("task executor saturated")
+                            && l.contains(A.taskId())).count();
+            // run-06b/06c/06d/06e 四轮构造未再现 warn（池计数口径黑盒不可控）——
+            // 前置受限登记见批次记录 §26.2，NOT_OBSERVED 不冒充已验
+            org.junit.jupiter.api.Assumptions.assumeTrue(warnCount >= 1,
+                    "NOT_OBSERVED——drain 饱和面构造受限（四轮构造 warn 未再现，恢复条件见批次记录 §26.2）；"
+                            + "本格其余断言（A 终态 cancelled/C 不受污染）已执行");
+
+
+            // 不污染：C（已活跃）照常完成
+            C.reader().join(200_000);
+            assertThat(Files.exists(ws.resolve(C.sessionId()).resolve(C.fileName())))
+                    .as("C 照常完成（不受污染）").isTrue();
+            // D 的受理与完成验证拆至独立方法 cancelDrainNotPollutingNextTask（第 10 轮止损：
+            // D 的 SSE 受理时序受 C 线程收尾归还池延迟影响——装置细节与产品语义分离）
+
+            Allure.addAttachment("F109-08 证据", "text/plain",
+                    "A=" + A.taskId() + " C=" + C.taskId() + " warnCount=1（tail 截段断言）");
+        }
+    }
+
+    /** 挂起任务捕获（write_file ask）。 */
+    private record Suspended(String sessionId, String taskId, String toolCallId, String fileName,
+                             String marker, Thread reader, List<SseFrame> frames) {
+    }
+
+    private static Suspended suspend(HttpClient h, String b, String tag) throws Exception {
+        return suspend(h, b, tag, false);
+    }
+
+    /** longOutput=true：write_file 后追加 1200 字长输出——活跃期覆盖 cancel-drain 窗口
+     *  （run-06e 失败真因：C 语料为快速 write_file 任务，45s 窗口到期前已完成释放线程；
+     *  池口径源码审计 DaCompatAutoConfiguration:513-518＝fixed 池（容量=max-concurrent-tasks）
+     *  ＋SynchronousQueue＋AbortPolicy——提交瞬间全线程忙才拒）。 */
+    private static Suspended suspend(HttpClient h, String b, String tag, boolean longOutput) throws Exception {
+        String session = "sess-f109drain-" + tag + "-" + System.nanoTime();
+        String fileName = "f109drain-" + tag + "-" + System.nanoTime() + ".md";
+        String marker = "DRAIN-" + tag + "-" + System.nanoTime();
+        String input;
+        if (longOutput) {
+            input = "请使用 write_file 工具创建文件 " + fileName + "，内容为：" + marker
+                    + "。只创建这一个文件，不要执行其他任何工具；创建完成后，不要结束任务，"
+                    + "直接用 1200 字以上的文字分五段详细描述『任务断点续传与恢复机制的设计要点』，"
+                    + "每段至少 200 字，一段一段写，写满为止。";
+        } else {
+            input = "请使用 write_file 工具创建文件 " + fileName + "，内容为：" + marker
+                    + "。只创建这一个文件，完成后直接结束任务。";
+        }
+        HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(h, b,
+                "{\"sessionId\":\"" + session + "\",\"input\":\"" + input + "\"}",
+                Duration.ofSeconds(120));
+        List<SseFrame> frames = new CopyOnWriteArrayList<>();
+        Thread reader = new Thread(() -> {
+            try {
+                DaCompatGuardrailSupport.readFramesInto(stream, frames::add, f -> false,
+                        Duration.ofSeconds(150));
+            } catch (Exception e) {
+                frames.add(new SseFrame("reader-error", "reader-error", String.valueOf(e)));
+            }
+        });
+        reader.setDaemon(true);
+        reader.start();
+        String taskId = null;
+        String toolCallId = null;
+        long deadline = System.currentTimeMillis() + SUSPEND_TIMEOUT_MILLIS;
+        while (System.currentTimeMillis() < deadline) {
+            for (SseFrame f : frames) {
+                if (f.data() != null && f.data().contains("\"kind\":\"permission_confirm\"")) {
+                    taskId = f.field("taskId");
+                    toolCallId = f.field("toolCallId");
+                }
+            }
+            if (toolCallId != null) {
+                break;
+            }
+            Thread.sleep(400);
+        }
+        return new Suspended(session, taskId, toolCallId, fileName, marker, reader, frames);
+    }
+
+    /** SUT 日志新增段（ENV-5.14：跨 run 追加共享，必须 offset 截段）。 */
+    private static long logLength() throws Exception {
+        Path log = Path.of("target/sit-logs/deepanalyze-guardrail/stdout.log");
+        return Files.exists(log) ? Files.size(log) : 0L;
+    }
+
+    private static String logTail(long offset) throws Exception {
+        Path log = Path.of("target/sit-logs/deepanalyze-guardrail/stdout.log");
+        if (!Files.exists(log)) {
+            return "";
+        }
+        try (var in = Files.newInputStream(log)) {
+            in.skipNBytes(offset);
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 }

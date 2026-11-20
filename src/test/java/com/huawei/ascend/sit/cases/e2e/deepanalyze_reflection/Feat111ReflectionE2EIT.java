@@ -3,7 +3,12 @@ package com.huawei.ascend.sit.cases.e2e.deepanalyze_reflection;
 import com.huawei.ascend.sit.cases.e2e.deepanalyze_guardrail.DaCompatGuardrailSupport;
 import com.huawei.ascend.sit.cases.e2e.deepanalyze_reflection.DaReflectionCostSupport.MemoryReceiverServer;
 import com.huawei.ascend.sit.cases.e2e.deepanalyze_reflection.DaReflectionCostSupport.OtlpReceiverServer;
+import com.huawei.ascend.sit.cases.e2e.deepanalyze_reflection.DaReflectionCostSupport.ModelStubServer;
 import com.huawei.ascend.sit.cases.e2e.deepanalyze_reflection.DaReflectionCostSupport.ReflectionRecord;
+import com.huawei.ascend.sit.cases.e2e.deepanalyze_guardrail.DaCompatGuardrailSupport.SseFrame;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import com.huawei.ascend.sit.config.TestConfig;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -153,16 +158,127 @@ class Feat111ReflectionE2EIT {
      * per-Task 装配（DFX-002）下落入执行＋权限 ask，且执行内二次确认经 /answer 后不恢复
      * （DaBusinessOutcomeRail 未挂 per-Task 路径＋第二层授权不闭环）→ BUSINESS_FAILURE 终态
      * 不可达、任务永久挂起。真模型轨道的业务失败构造因此 blocked；反思成功能力的确定性
-     * 承接见 integration 层 Gating/SettingsGate 类（stub 401 构造驱动全链）。恢复条件＝
+     * 承接见 integration 层 Gating 类与 e2e 层 Bounded/Gating 类（stub 401 构造驱动全链；
+     * SettingsGate 类已随 settings 门移除删除——DV-111-01 撤销）。恢复条件＝
      * 产品修复或提供可用的业务失败构造面。提单需用户授权，材料已备。
      */
+    /* ==================== F111-01 转正（2026-11-19）：#671 已 closed（修复 312e81164 ⊆ r3 基线），
+     * 原 abort 桩前提消失——business_failure 构造走「stub tool 调用→actrule ask 挂起→/answer 允许→
+     * DaBusinessOutcomeRail（per-Task，#671 修复）→终态 business_failure→复盘触发」路径。 ==================== */
+
     @Test
-    @Story("F111-01: 失败后唯一受控复盘（真模型轨道——业务失败构造 blocked）")
-    @DisplayName("F111-01: 真模型业务失败构造（blocked·ISSUE 候选，INCONCLUSIVE 留恢复条件）")
-    void reflectionSuccessOnBusinessFailure() {
-        org.junit.jupiter.api.Assumptions.abort("business_failure 构造 blocked：per-Task 装配下"
-                + "执行内二次确认经 /answer 不恢复（run-30/31 实证，ISSUE 候选材料已备）。"
-                + "恢复条件＝产品修复或可用构造面；反思成功能力由确定性轨道承接。");
+    @Story("F111-01: 失败后唯一受控复盘（business_failure 终态轨——#671 修复后转 runnable）")
+    @DisplayName("F111-01: business_failure 终态触发唯一复盘")
+    void businessFailureTriggersReflection() throws Exception {
+        com.huawei.ascend.sit.config.TestConfig cfg = com.huawei.ascend.sit.config.TestConfig.load();
+        ModelStubServer stub = new ModelStubServer();
+        // stub 固定 args {"output":"业务结论：目标记录不存在（stub 构造）"} 恰为 business_failure 合法入参
+        stub.script("tool:business_failure");
+        MemoryReceiverServer memory = new MemoryReceiverServer();
+        long logOffset = sutLogLength();
+        try (SutStack stubStack = DaReflectionCostSupport.baseStack(cfg, agent -> {
+            DaReflectionCostSupport.bindStubModel(agent, stub);
+            DaReflectionCostSupport.gatesOpen(agent);
+            agent.property("deepanalyze.reflection.timeout", "PT120S");
+            agent.property("logging.level.com.openjiuwen.da", "DEBUG");
+            agent.env("DA_TOOL_PLATFORM_URL", memory.baseUrl());
+        }).start()) {
+            HttpClient h = DaCompatGuardrailSupport.newHttpClient();
+            String b = stubStack.client(DaReflectionCostSupport.AGENT).getBaseUrl();
+            String session = "sess-f111-01bf-" + System.nanoTime();
+            HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(h, b,
+                    "{\"sessionId\":\"" + session + "\",\"input\":\"触发复盘的业务失败格任务\"}",
+                    Duration.ofSeconds(180));
+            List<SseFrame> frames = new java.util.ArrayList<>();
+            Thread reader = new Thread(() -> {
+                try {
+                    DaCompatGuardrailSupport.readFramesInto(stream, frames::add, f -> false,
+                            Duration.ofSeconds(180));
+                } catch (Exception e) {
+                    frames.add(new SseFrame("reader-error", "reader-error", String.valueOf(e)));
+                }
+            }, "f111-01bf-reader");
+            reader.setDaemon(true);
+            reader.start();
+
+            // business_failure 调用 → actrule 默认 ask 挂起（actrule 无 business_failure 条目）
+            String taskId = null;
+            String toolCallId = null;
+            long deadline = System.currentTimeMillis() + 120_000;
+            while (System.currentTimeMillis() < deadline) {
+                synchronized (frames) {
+                    for (SseFrame f : frames) {
+                        if (f.data() != null && f.data().contains("\"kind\":\"permission_confirm\"")
+                                && f.data().contains("business_failure")) {
+                            if (taskId == null || taskId.isBlank()) {
+                                taskId = f.field("taskId");
+                            }
+                            if (toolCallId == null || toolCallId.isBlank()) {
+                                toolCallId = f.field("toolCallId");
+                            }
+                        }
+                    }
+                }
+                if (toolCallId != null) {
+                    break;
+                }
+                Thread.sleep(400);
+            }
+            org.junit.jupiter.api.Assumptions.assumeTrue(toolCallId != null,
+                    "INCONCLUSIVE——business_failure 确认未挂起（stub 构造未到达工具面）；构造缺陷非产品缺陷");
+            HttpResponse<String> resp = DaCompatGuardrailSupport.post(h, b,
+                    "/api/agents/answer/" + taskId,
+                    "{\"answer\":\"允许\",\"toolCallId\":\"" + toolCallId + "\"}",
+                    Duration.ofSeconds(30), Map.of("X-Da-Session-Id", session));
+            assertThat(resp.statusCode()).as("business_failure 允许认领 200").isEqualTo(200);
+            reader.join(180_000);
+
+            // 终态形态实测（run-10b 证据）：rail requestForceFinish→任务 terminalStatus=completed→
+            // classify 判定序「非 failed→COMPLETED」先返回——BUSINESS_FAILURE 分支（要求 failed）在
+            // rail 路径下结构性不可达，复盘触发语义面随之待澄清——按 11-19 纪律如实断言现行形态并登记
+            String tail = sutLogTail(logOffset);
+            org.junit.jupiter.api.Assumptions.assumeTrue(tail.contains("terminal fact"),
+                    "INCONCLUSIVE——终态 fact 未落（任务可能未收口）");
+            assertThat(tail).as("现行形态：business_failure 工具调用经 rail 收口后终态分类=COMPLETED（如实断言）")
+                    .containsPattern("terminal fact taskId=[0-9a-f-]+ class=COMPLETED");
+            // 语义裁决请求（呈设计侧）：BUSINESS_FAILURE 分类要求 failed——rail 路径 completed 与
+            // 「六类失败含 business_failure 触发复盘」的 L1 口径如何相容（docs#49 系之外的新语义面）
+            org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                    "NOT_OBSERVED 登记——business_failure 触发复盘语义面待设计裁决（rail 路径 completed 收口，"
+                            + "terminalStatus=failed 不可达；实测证据 run-10b，呈报 #671 关单后增量）");
+
+            // F111-01 主断言：失败后唯一受控复盘（成功收口）
+            List<ReflectionRecord> records = DaReflectionCostSupport.await(java.time.Duration.ofSeconds(20),
+                    Duration.ofMillis(300), () -> !DaReflectionCostSupport.recordsForSession(session).isEmpty())
+                    ? DaReflectionCostSupport.recordsForSession(session) : java.util.List.of();
+            assertThat(records).as("business_failure 触发复盘：唯一处置记录").hasSize(1);
+            assertThat(records.get(0).outcome()).as("复盘成功收口").isEqualTo("succeeded");
+            long reflectDeadline = System.currentTimeMillis() + 15_000;
+            while (stub.reflectionCalls() < 1 && System.currentTimeMillis() < reflectDeadline) {
+                Thread.sleep(300);
+            }
+            assertThat(stub.reflectionCalls()).as("恰一次反思 provider 请求").isEqualTo(1);
+            Allure.addAttachment("F111-01 转正证据", "text/plain",
+                    "session=" + session + " record=" + records.get(0)
+                            + " reflectionCalls=" + stub.reflectionCalls()
+                            + "（#671 修复后 business_failure 终态轨——abort 桩转正 2026-11-19）");
+        }
+    }
+
+    private static long sutLogLength() throws Exception {
+        Path log = Path.of("target/sit-logs/deepanalyze-guardrail/stdout.log");
+        return Files.exists(log) ? Files.size(log) : 0L;
+    }
+
+    private static String sutLogTail(long offset) throws Exception {
+        Path log = Path.of("target/sit-logs/deepanalyze-guardrail/stdout.log");
+        if (!Files.exists(log)) {
+            return "";
+        }
+        try (var in = Files.newInputStream(log)) {
+            in.skipNBytes(offset);
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 
     /* ==================== F111-02 触发排除面（真模型） ==================== */

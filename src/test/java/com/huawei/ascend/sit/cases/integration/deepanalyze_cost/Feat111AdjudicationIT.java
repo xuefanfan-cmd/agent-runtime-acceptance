@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>模型身份＝gen_ai.response.model=请求快照模型＋
  *       openjiuwen.llm.model_identity_source=request_fallback。</li>
  * </ul>
+ * <p><b>#277 阻塞原因更正（2026-11-17 更正：core !508 已合入 develop，源码供给已落地——阻塞原因改为「等待包含该修复的制品及 DA 联调验证」，blocked 状态不变；PR !514 裁决）</b></p>
  */
 @Tag("integration")
 @Tag("deepanalyze")

@@ -80,7 +80,10 @@ class Feat109CanaryE2EIT {
     private record CanaryRun(String session, List<SseFrame> frames, int answerStatus) {
     }
 
-    private CanaryRun runCanary(String suffix, String answer, String canary) throws Exception {
+    /** 凭据位与文件内容金丝雀分离（2026-11-19 修正：同值双职会让业务表面必然含金丝雀，
+     *  脱敏一致断言无从谈起——credCanary 只进凭据位（hook headers），dataCanary 只进文件内容。 */
+    private CanaryRun runCanary(String suffix, String answer, String credCanary,
+            String dataCanary) throws Exception {
         String session = "sess-f109c-" + suffix + "-" + System.nanoTime();
         hookServer.respondWith(200, "");
         hookServer.reset();
@@ -88,11 +91,11 @@ class Feat109CanaryE2EIT {
         Files.createDirectories(workspaceRoot.resolve(session));
         String hooksJson = "[{\"id\":\"canary-pre\",\"event\":\"PreToolUse\",\"type\":\"http\","
                 + "\"config\":{\"url\":\"" + hookServer.baseUrl() + "/hook\","
-                + "\"headers\":{\"X-Canary\":\"" + canary + "\"}},\"enabled\":true},"
+                + "\"headers\":{\"X-Canary\":\"" + credCanary + "\"}},\"enabled\":true},"
                 + "{\"id\":\"canary-post\",\"event\":\"PostToolUse\",\"type\":\"http\","
                 + "\"config\":{\"url\":\"" + hookServer.baseUrl() + "/hook\",\"headers\":{}},"
                 + "\"enabled\":true}]";
-        String input = "使用 write_file 工具创建文件 " + fileName + "，内容：" + canary
+        String input = "使用 write_file 工具创建文件 " + fileName + "，内容：" + dataCanary
                 + "。不要执行其他任何工具。";
         String body = "{\"sessionId\":\"" + session + "\",\"input\":\"" + input + "\","
                 + "\"runtimeConfig\":{\"version\":1,\"tenantId\":\"default-user\",\"sessionId\":\""
@@ -157,8 +160,13 @@ class Feat109CanaryE2EIT {
             hits.append("SUT-stdout ");
         }
         for (var req : hookServer.requests()) {
-            if (req.body() != null && req.body().contains(canary)) {
-                hits.append("hook-input(body) ");
+            // 检索面补 headers（2026-11-19：credCanary 在 hook headers——body 检索必然漏；
+            // 旧形态同值双职掩盖了 headers 面从未被检索的事实）
+            boolean headerHit = req.headers() != null && req.headers().values() != null
+                    && req.headers().values().stream().anyMatch(
+                            v -> v != null && v.stream().anyMatch(x -> x != null && x.contains(canary)));
+            if ((req.body() != null && req.body().contains(canary)) || headerHit) {
+                hits.append(headerHit ? "hook-input(headers) " : "hook-input(body) ");
                 break;
             }
         }
@@ -169,33 +177,42 @@ class Feat109CanaryE2EIT {
     @Story("F109-19: 金丝雀红绿基线——允许轮（确认+执行全链）")
     @DisplayName("F109-19a: 允许轮金丝雀")
     void canaryAllowRound() throws Exception {
-        String canary = "CANARY-ALLOW-" + System.nanoTime();
-        CanaryRun run = runCanary("allow", "允许", canary);
+        String credCanary = "CANARY-CRED-ALLOW-" + System.nanoTime();
+        String dataCanary = "CANARY-DATA-ALLOW-" + System.nanoTime();
+        CanaryRun run = runCanary("allow", "允许", credCanary, dataCanary);
         assertThat(run.answerStatus()).isEqualTo(200);
-        String hits = canaryHits(run, canary);
-        // 红绿基线：DV-109-04 已知未覆盖路径=工具结果直通（DaEventTranslator.java:1263）——
-        // SSE 工具结果/模型回复里出现金丝雀属预期命中（登记不判缺陷）；SUT stdout 命中=已知差距证据
+        String hits = canaryHits(run, credCanary);
+        // 2026-11-19 断言升级（HANDOFF r2 修改清单；DV-109-04 已于 11-16 撤销——「已知差距豁免」不再成立）：
+        // hook 输入含金丝雀=正确行为（受控被调方真实业务输入，L2 §5.2）；**hook 输入之外的
+        // 全表面（SSE-dump/SUT-stdout）不得命中**——各副本脱敏一致硬断言（出口 16 反面）
         Allure.addAttachment("F109-19a 命中面", "text/plain",
-                "金丝雀=" + canary + " 命中=[" + hits + "]（空=已测表面未见）"
-                        + " 表面清单=SSE-dump/SUT-stdout/hook-input（数据面表面本形态不存在）");
-        // hook 输入（body）含金丝雀是**正确行为**（toolInput 是受控 hook 被调方的真实业务输入，L2 §5.2）
+                "credCanary=" + credCanary + " 命中=[" + hits + "]（空=已测表面未见）"
+                        + " 表面清单=SSE-dump/SUT-stdout/hook-input");
         assertThat(hits).as("hook 输入应含金丝雀（真实输入到达受控被调方）").contains("hook-input");
+        // 凭据位金丝雀（credCanary）只应到达受控被调方（hook-input）——SSE/SUT 日志零出现
+        //（脱敏一致硬断言；文件内容金丝雀 dataCanary 是业务数据投影，不受此限）
+        // 凭据位金丝雀（credCanary）只应到达受控被调方（hook-input）——SSE/SUT 日志零出现
+        //（脱敏一致硬断言；文件内容金丝雀 dataCanary 是业务数据投影，不受此限）
+        assertThat(hits).as("凭据位金丝雀到达受控被调方（hook headers 真实传递）").contains("hook-input");
+        assertThat(hits).as("凭据位金丝雀不出现在受控被调方之外的表面（脱敏一致——11-19 修改清单）")
+                .doesNotContain("SSE-dump").doesNotContain("SUT-stdout");
     }
 
     @Test
     @Story("F109-19b: 金丝雀红绿基线——拒绝轮（denied 无副作用）")
     @DisplayName("F109-19b: 拒绝轮金丝雀")
     void canaryRejectRound() throws Exception {
-        String canary = "CANARY-REJECT-" + System.nanoTime();
-        CanaryRun run = runCanary("reject", "拒绝", canary);
+        String credCanary = "CANARY-CRED-REJECT-" + System.nanoTime();
+        String dataCanary = "CANARY-DATA-REJECT-" + System.nanoTime();
+        CanaryRun run = runCanary("reject", "拒绝", credCanary, dataCanary);
         assertThat(run.answerStatus()).isEqualTo(200);
-        String hits = canaryHits(run, canary);
+        String hits = canaryHits(run, credCanary);
         Allure.addAttachment("F109-19b 命中面", "text/plain",
-                "金丝雀=" + canary + " 命中=[" + hits + "]（空=已测表面未见）"
+                "credCanary=" + credCanary + " 命中=[" + hits + "]（空=已测表面未见）"
                         + " 表面清单=SSE-dump/SUT-stdout/hook-input");
-        // 拒绝轮：PreToolUse hook 未到（ask 在 hook 之后？否——PreToolUse 在权限评估前；
-        // ask 后拒绝→工具不执行→PostToolUse 不触发）——hook 输入含金丝雀仅限 PreToolUse（真实输入）
-        assertThat(hits).as("拒绝轮 PreToolUse hook 输入仍应含金丝雀（hook 在权限评估前执行）")
+        assertThat(hits).as("拒绝轮凭据位金丝雀仍应到达受控被调方（hook 在权限评估前执行）")
                 .contains("hook-input");
+        assertThat(hits).as("拒绝轮凭据位金丝雀不出现在受控被调方之外的表面（脱敏一致，11-19 修改清单）")
+                .doesNotContain("SSE-dump").doesNotContain("SUT-stdout");
     }
 }

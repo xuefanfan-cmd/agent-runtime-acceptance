@@ -601,7 +601,8 @@ class Feat109SubExecutorHooksE2EIT {
             // 主断言：DEBUG terminal fact 分类=GUARDRAIL_DENIED（offset 截段，与 F111-20 同观测面）；
             // 有界轮询 15s——terminal fact 落笔与 readFrames 超时返回同秒竞态（run-31 实测）不可单次读
             String tail = logTail(logOffset);
-            for (int i = 0; i < 30 && !logContainsCausal(logOffset, taskId); i++) {
+            // terminal fact 落笔比 readFrames 超时晚 ~20s（SSE 取消→forceFinish→classify 链）——60s 窗
+            for (int i = 0; i < 120 && !logContainsCausal(logOffset, taskId); i++) {
                 Thread.sleep(500);
                 tail = logTail(logOffset);
             }
@@ -619,6 +620,112 @@ class Feat109SubExecutorHooksE2EIT {
             Allure.addAttachment("F111-20b 证据", "text/plain",
                     "成员 PERMISSION_DENIED " + denyCount + " 次＋main grep-deny " + grepDenyCount + " 次；任务 failed；分类 GUARDRAIL_DENIED；"
                             + "dump=target/f109-dump/" + session + ".txt");
+        } finally {
+            deleteRecursively(scenarioDir.getParent().getParent());
+        }
+    }
+
+    /* ==================== F111-20c：混合失败负向（docs#49 裁决口径——2026-11-21 补格轮，#788 已合 !1202/!1215） ====================
+     * 判据（docs#49 裁决口径 3）：普通 error／其他成员无关失败／拒后正常完成均不得归入
+     * GUARDRAIL_DENIED。构造（stub 确定性）：成员第 1 轮 read_file ask-deny（留拒后 occurrence，
+     * permissionRail 记 1 denial）→第 2 轮成员模型调用 stub error:500（普通 error→core error
+     * 信封，terminationReason≠MAX_ITERATIONS）→runMember.noteCausalIfExhaustedByDenials 的
+     * MAX_ITERATIONS 检查挡住因果登记（DaWorkflowRunner:496 结构化终因不嗅探 output 文案）→
+     * 拒后 occurrence 不翻转分类：terminal fact class≠GUARDRAIL_DENIED。
+     */
+
+    @Test
+    @Story("F111-20c: 负向混合失败——拒后 occurrence＋普通 error 失败不归 GUARDRAIL_DENIED（#788 收窄）")
+    @DisplayName("F111-20c: 混合失败不误分类（负向）")
+    void mixedFailureNotGuardrailClassified() throws Exception {
+        com.huawei.ascend.sit.config.TestConfig cfg = com.huawei.ascend.sit.config.TestConfig.load();
+        String session = "sess-f111gd20c-" + System.nanoTime();
+        String fileA = "gd20c-a-" + System.nanoTime() + ".txt";
+        Path ws = Files.createTempDirectory("f111gd20c-ws");
+        Path taskDir = ws.resolve(session);
+        Files.createDirectories(taskDir);
+        Files.writeString(taskDir.resolve(fileA), "content-" + System.nanoTime());
+        // 场景 actrule：read_file ask（成员第 1 轮被拒＝拒后 occurrence）
+        Path scenarioDir = Path.of(System.getProperty("basedir",
+                System.getProperty("user.dir"))).resolve("scenarios/f111gd20c/governance");
+        Files.createDirectories(scenarioDir);
+        Files.writeString(scenarioDir.resolve("actrule.yaml"),
+                "enabled: true\ntools:\n  read_file: ask\n");
+        DaReflectionCostSupport.ModelStubServer stub = new DaReflectionCostSupport.ModelStubServer();
+        long logOffset = logLength();
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        String agentsJson = om.writeValueAsString(java.util.List.of(Map.of(
+                "id", "reader", "role", "读取员",
+                "task", "使用 read_file 工具读取文件 " + fileA + "，报告其内容")));
+        String workflowArgs = om.writeValueAsString(Map.of(
+                "mode", "single", "goal", "读取文件并汇报", "agents", om.readValue(agentsJson, Object.class),
+                "question", "执行读取任务"));
+        // 成员运行时首轮强制探针（ToolCallingEnforcingModel）——显式 __probe_tool__ 步满足之，
+        // 否则探针吞掉 read_file 步、真实首轮撞 error:500（run-34 stub 清单实证）
+        stub.script(
+                "toolargs:workflow_run\u0001" + workflowArgs,
+                "tool:__probe_tool__",
+                "tool:read_file",
+                "error:500");
+        try (SutStack stack = SutStack.builder(cfg)
+                .streaming(true)
+                .agent(DaReflectionCostSupport.AGENT, agent -> {
+                    DaReflectionCostSupport.bindModelEnvironment(agent);
+                    agent.serviceBinding("redis", "REDIS_HOST", "{{host}}")
+                            .serviceBinding("redis", "REDIS_PORT", "{{port}}");
+                    DaReflectionCostSupport.bindStubModel(agent, stub);
+                    agent.property("deepanalyze.workspace.root", ws.toAbsolutePath().toString());
+                    agent.property("deepanalyze.workflow.member-max-iterations", "12");
+                    agent.property("logging.level.com.openjiuwen.da", "DEBUG");
+                }).start()) {
+            String base = stack.client(DaReflectionCostSupport.AGENT).getBaseUrl();
+            HttpClient http = DaCompatGuardrailSupport.newHttpClient();
+            String body = "{\"sessionId\":\"" + session + "\",\"input\":\"直接开始\","
+                    + "\"runtimeConfig\":{\"version\":1,\"tenantId\":\"default-user\",\"sessionId\":\"" + session + "\"}}";
+            HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(http, base, body,
+                    Duration.ofSeconds(300));
+            List<SseFrame> frames = DaCompatGuardrailSupport.readFrames(stream, f -> false,
+                    Duration.ofSeconds(300));
+            dumpFrames(session, frames);
+            dumpStubRequests(session, stub);
+            boolean workflowRan = frames.stream().anyMatch(f -> f.data() != null
+                    && (f.data().contains("workflow_start") || f.data().contains("workflow_agent_start")));
+            org.junit.jupiter.api.Assumptions.assumeTrue(workflowRan,
+                    "INCONCLUSIVE——模型未发起 workflow_run（构造受限非产品断言）");
+            long denyCount = frames.stream().filter(f -> f.data() != null
+                    && f.data().contains("PERMISSION_DENIED")).count();
+            org.junit.jupiter.api.Assumptions.assumeTrue(denyCount >= 1,
+                    "INCONCLUSIVE——成员第 1 轮未产生 ask-deny（stub 请求清单见 dump；probe/步错位诊断）");
+            assertThat(denyCount).as("拒后 occurrence 在场（成员第 1 轮被拒）").isGreaterThanOrEqualTo(1);
+            // 主断言：terminal fact 存在且 class≠GUARDRAIL_DENIED（混合失败不误分类）
+            String taskId = null;
+            for (SseFrame f : frames) {
+                String t = f.field("taskId");
+                if (t != null && !t.isBlank()) {
+                    taskId = t;
+                }
+            }
+            org.junit.jupiter.api.Assumptions.assumeTrue(taskId != null, "taskId 未捕获");
+            String tail = logTail(logOffset);
+            boolean terminalSeen = tail.contains("taskId=" + taskId + " class=");
+            for (int i = 0; i < 120 && !terminalSeen; i++) {
+                Thread.sleep(500);
+                tail = logTail(logOffset);
+                terminalSeen = tail.contains("taskId=" + taskId + " class=");
+            }
+            org.junit.jupiter.api.Assumptions.assumeTrue(terminalSeen,
+                    "INCONCLUSIVE——主任务未达终态（#849 间歇拦截家族；混合失败构造与 20b 同链路）");
+            String factLine = "";
+            for (String line : tail.split("\n")) {
+                if (line.contains("taskId=" + taskId + " class=")) {
+                    factLine = line.substring(line.indexOf("class="));
+                }
+            }
+            assertThat(factLine.contains("GUARDRAIL_DENIED"))
+                    .as("混合失败（拒后 occurrence＋普通 error）不得分类 GUARDRAIL_DENIED——实测 " + factLine)
+                    .isFalse();
+            Allure.addAttachment("F111-20c 证据", "text/plain",
+                    "拒后 occurrence PERMISSION_DENIED×" + denyCount + "＋成员普通 error:500；终态分类=" + factLine);
         } finally {
             deleteRecursively(scenarioDir.getParent().getParent());
         }

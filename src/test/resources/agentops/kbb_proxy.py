@@ -110,6 +110,11 @@ async def handle(reader, writer):
             await asyncio.sleep(STALL_SECONDS)
             return  # 不回响应直接断开：产品侧 30s 超时先到，触发 unknown
 
+        if MODE == "stall_probe" and method == "GET" and "/collections" in path:
+            log("stalling probe GET for", STALL_SECONDS, "s (probe timeout → 503)")
+            await asyncio.sleep(STALL_SECONDS)
+            return
+
         out_body = body
         if MODE == "tamper_owner" and is_upsert:
             try:

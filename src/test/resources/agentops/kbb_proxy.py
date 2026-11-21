@@ -110,6 +110,19 @@ async def handle(reader, writer):
             await asyncio.sleep(STALL_SECONDS)
             return  # 不回响应直接断开：产品侧 30s 超时先到，触发 unknown
 
+        if MODE == "auth_required":
+            expected = os.environ.get("KBB_PROXY_EXPECTED_KEY", "correct-token")
+            auth = headers.get("authorization", "") or headers.get("api-key", "")
+            ok = auth in (expected, "Bearer " + expected)
+            if not ok:
+                log("auth rejected (got:", (auth[:40] or "<none>") + ")")
+                body = b'{"error": {"message": "Unauthorized"}}'
+                writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
+                             + b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+                await writer.drain()
+                return
+            log("auth ok, passthrough")
+
         if MODE == "stall_probe" and method == "GET" and "/collections" in path:
             log("stalling probe GET for", STALL_SECONDS, "s (probe timeout → 503)")
             await asyncio.sleep(STALL_SECONDS)

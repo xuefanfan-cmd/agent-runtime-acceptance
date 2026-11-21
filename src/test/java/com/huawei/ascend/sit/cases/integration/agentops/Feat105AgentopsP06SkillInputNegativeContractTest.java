@@ -138,7 +138,7 @@ class Feat105AgentopsP06SkillInputNegativeContractTest {
 
 
     /** 手工构造裸 ZIP（STORED 无压缩，允许重复条目名——用于 UNSAFE_SKILL_ARCHIVE 族）。 */
-    private byte[] rawZip(List<List<String>> entries) {
+    private byte[] rawZip(List<List<String>> entries, int generalPurposeFlags) {
         var out = new java.io.ByteArrayOutputStream();
         var central = new java.io.ByteArrayOutputStream();
         try (var d = new java.io.DataOutputStream(out); var dc = new java.io.DataOutputStream(central)) {
@@ -152,7 +152,7 @@ class Feat105AgentopsP06SkillInputNegativeContractTest {
                 offsets[i] = out.size();
                 d.writeInt(0x04034b50);          // local file header
                 d.writeShort(20);                 // version needed
-                d.writeShort(0);                  // flags
+                d.writeShort(generalPurposeFlags); // flags（bit0=加密）
                 d.writeShort(0);                  // method: stored
                 d.writeShort(0); d.writeShort(0); // time/date
                 d.writeInt((int) crc.getValue());
@@ -167,7 +167,7 @@ class Feat105AgentopsP06SkillInputNegativeContractTest {
                 crc.reset(); crc.update(data);
                 dc.writeInt(0x02014b50);          // central directory
                 dc.writeShort(20); dc.writeShort(20);
-                dc.writeShort(0); dc.writeShort(0);
+                dc.writeShort(generalPurposeFlags); dc.writeShort(0);
                 dc.writeShort(0); dc.writeShort(0);
                 dc.writeInt((int) crc.getValue());
                 dc.writeInt(data.length); dc.writeInt(data.length);
@@ -243,7 +243,7 @@ class Feat105AgentopsP06SkillInputNegativeContractTest {
         // (b) 重复成员名（Java ZipOutputStream 拒绝写重复条目——手工构造裸 ZIP）
         byte[] dupZip = rawZip(List.of(
                 List.of("dup_skill/SKILL.md", skillMd("dup_skill", "重复成员第一份")),
-                List.of("dup_skill/SKILL.md", skillMd("dup_skill", "重复成员第二份"))));
+                List.of("dup_skill/SKILL.md", skillMd("dup_skill", "重复成员第二份"))), 0);
         assertRejected(submitSkill(dupZip, casesValid(), validConfig()),
                 "UNSAFE_SKILL_ARCHIVE", "重复成员名");
     }
@@ -305,6 +305,50 @@ class Feat105AgentopsP06SkillInputNegativeContractTest {
         // 索引定位：错误详情应能关联到重复 ID（0 起始或 1 起始索引其一）
         assertTrue(body.contains("same-id") || body.contains("index") || body.contains("索引"),
                 "重复 ID 错误应定位到具体条目：" + body.substring(0, Math.min(300, body.length())));
+    }
+
+    // ---------- 压缩炸弹 → 413 SKILL_ARCHIVE_TOO_LARGE ----------
+
+    @Test
+    @Order(6)
+    @Story("p06.bomb: 解压后超限（105MB>100MB）→ 413 SKILL_ARCHIVE_TOO_LARGE")
+    @DisplayName("P06.6: 压缩炸弹 → 413（受理前拒绝，不落地解压）")
+    void p06ZipBomb() throws Exception {
+        // deflate 对重复字节压缩率极高：105MB 压缩后约百 KB——multipart 本体很小，
+        // 产品须在归档校验阶段按未压缩尺寸拒绝（max_uncompressed_bytes=100MB 默认）
+        int size = 105 * 1024 * 1024;
+        byte[] huge = new byte[size];
+        java.util.Arrays.fill(huge, (byte) 'A');
+        byte[] head = ("---\nname: bomb_skill\ndescription: 压缩炸弹 fixture\n---\n\n# bomb\n\n")
+                .getBytes(StandardCharsets.UTF_8);
+        var bos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(bos)) {
+            zos.setLevel(java.util.zip.Deflater.BEST_SPEED);
+            zos.putNextEntry(new ZipEntry("bomb_skill/SKILL.md"));
+            zos.write(head);
+            zos.write(huge);
+            zos.closeEntry();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        HttpResponse<String> r = submitSkill(bos.toByteArray(), casesValid(), validConfig());
+        assertEquals(413, r.statusCode(), "压缩炸弹应 413：" + r.statusCode() + " " + r.body());
+        assertEquals("SKILL_ARCHIVE_TOO_LARGE",
+                JSON.readTree(r.body()).path("error").path("code").asText(), "413 错误码");
+    }
+
+    // ---------- 加密条目 → UNSAFE_SKILL_ARCHIVE ----------
+
+    @Test
+    @Order(7)
+    @Story("p06.encrypted: 加密标志位条目 → UNSAFE_SKILL_ARCHIVE（不尝试解密）")
+    @DisplayName("P06.7: 加密标志 ZIP → 422 UNSAFE_SKILL_ARCHIVE")
+    void p06EncryptedEntry() throws Exception {
+        // general purpose bit0（加密）置位 + 常规数据——校验器应按标志拒绝而非尝试解密
+        byte[] encZip = rawZip(List.of(
+                List.of("enc_skill/SKILL.md", skillMd("enc_skill", "加密标志 fixture"))), 0x0001);
+        assertRejected(submitSkill(encZip, casesValid(), validConfig()),
+                "UNSAFE_SKILL_ARCHIVE", "加密标志条目");
     }
 
     // ---------- 正向对照：合法包必须受理（防负向族误伤正常输入） ----------

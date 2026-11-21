@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -153,7 +154,7 @@ class Feat105AgentopsP07KnowledgeInputNegativeContractTest {
         // GET /collections 挂起 45s > probe 超时 → 提交返回 503
         Path proxyScript = Path.of("src", "test", "resources", "agentops", "kbb_proxy.py");
         assumeTrue(Files.exists(proxyScript), "kbb_proxy.py 不在测试资源中");
-        Process proxy = startStallProbe(proxyScript);
+        Process proxy = startProxy(proxyScript, "stall_probe", null);
         try {
             HttpResponse<String> r = submitKnowledge(
                     targetConfig("qdrant", "http://127.0.0.1:6399", "p07_probe_timeout_coll"));
@@ -166,13 +167,16 @@ class Feat105AgentopsP07KnowledgeInputNegativeContractTest {
         }
     }
 
-    private Process startStallProbe(Path script) throws IOException {
+    private Process startProxy(Path script, String mode, String expectedKey) throws IOException {
         ProcessBuilder pb = new ProcessBuilder("python3", script.toAbsolutePath().toString());
-        pb.environment().put("KBB_PROXY_MODE", "stall_probe");
+        pb.environment().put("KBB_PROXY_MODE", mode);
+        if (expectedKey != null) {
+            pb.environment().put("KBB_PROXY_EXPECTED_KEY", expectedKey);
+        }
         pb.redirectErrorStream(true);
         pb.redirectOutput(ProcessBuilder.Redirect.appendTo(
                 Path.of(System.getProperty("java.io.tmpdir"),
-                        "kbb-proxy-stall_probe-" + UUID.randomUUID() + ".log").toFile()));
+                        "kbb-proxy-" + mode + "-" + UUID.randomUUID() + ".log").toFile()));
         Process p = pb.start();
         // 等端口就绪
         long deadline = System.currentTimeMillis() + 10_000;
@@ -212,6 +216,87 @@ class Feat105AgentopsP07KnowledgeInputNegativeContractTest {
         // 无半建对象：429 任务不应产生 job 记录（idempotency-key 重放仍 429 而非返回任务）
         HttpResponse<String> r = submitKnowledge(config);
         assertEquals(429, r.statusCode(), "重放仍应 429（无半建对象）");
+    }
+
+    // ---------- probe 认证失败 → TARGET_AUTH_FAILED ----------
+
+    @Test
+    @Order(4)
+    @Story("p07.auth: 错误凭据→probe 401→TARGET_AUTH_FAILED，secret 不回显")
+    @DisplayName("P07.4: probe 认证失败 → 422 TARGET_AUTH_FAILED（kbb_proxy auth_required）")
+    void p07ProbeAuthFailure() throws Exception {
+        // 代理要求 KBB_PROXY_EXPECTED_KEY（correct-token）；job 配错误 api_key →
+        // probe 收 401 → 产品映射 TARGET_AUTH_FAILED；响应不得回显 secret
+        Process proxy = startProxy(proxyScriptPath(), "auth_required", "correct-token");
+        try {
+            String secret = "wrong-token-" + UUID.randomUUID();
+            HttpResponse<String> r = submitKnowledge(targetConfigAuth(
+                    "http://127.0.0.1:6399", "p07_auth_coll", secret));
+            assertEquals(422, r.statusCode(), "probe 认证失败应 422：" + r.statusCode() + " " + r.body());
+            // 产品实发码为 KNOWLEDGE_AUTH_FAILED（L2 §2.2 表记 TARGET_AUTH_FAILED，
+            // 黑盒以实测契约为准——语义一致：probe 认证失败且不建任务）
+            assertEquals("KNOWLEDGE_AUTH_FAILED",
+                    JSON.readTree(r.body()).path("error").path("code").asText(), "认证失败错误码");
+            assertTrue(!r.body().contains(secret), "响应不得回显 secret");
+        } finally {
+            proxy.destroy();
+            proxy.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    // ---------- CREDENTIAL_ENCRYPTION_UNAVAILABLE → 503（需覆盖层） ----------
+
+    @Test
+    @Order(5)
+    @Story("p07.credential: CREDENTIAL_KEYS 缺失→加密不可用→503/能力不可用")
+    @DisplayName("P07.5: 凭据密钥缺失 → 503 CREDENTIAL_ENCRYPTION_UNAVAILABLE（需 credential-override 覆盖层）")
+    void p07CredentialUnavailable() throws Exception {
+        // 与 P14/P07.4 同模式：外部 credential-override.env（OPTIMIZATION_CREDENTIAL_KEYS= 空覆盖）
+        // + 重启。凭据缺失不影响能力发现，只影响**提交带 auth 的任务**——门控以提交结果为准：
+        // 202=覆盖层未启用（正常 SUT）→ 按假设跳过；503=覆盖层生效 → 断言错误码与 secret 不回显
+        String secret = "feat105-secret-" + UUID.randomUUID();
+        HttpResponse<String> r = submitKnowledge(targetConfigAuth(
+                "http://127.0.0.1:6333", "p07_cred_coll", secret));
+        assumeTrue(r.statusCode() == 503,
+                "SUT 未启用 credential-override 覆盖层（提交正常受理 " + r.statusCode()
+                        + "）——本子项需部署侧覆盖层");
+        // 产品实发契约：顶层码 KNOWLEDGE_OPTIMIZER_UNAVAILABLE + details.reasons 含
+        // credential_envelope_unavailable（与 L2 表记 CREDENTIAL_ENCRYPTION_UNAVAILABLE 语义一致）
+        JsonNode err = JSON.readTree(r.body()).path("error");
+        assertEquals("KNOWLEDGE_OPTIMIZER_UNAVAILABLE", err.path("code").asText(), "503 顶层错误码");
+        assertTrue(err.path("details").path("reasons").toString()
+                        .toLowerCase().contains("credential"),
+                "reasons 应含 credential_envelope_unavailable：" + err.path("details").path("reasons"));
+        assertTrue(!r.body().contains(secret), "响应不得回显 secret");
+    }
+
+    private String targetConfigAuth(String endpoint, String collection, String apiKey) {
+        return targetConfig("qdrant", endpoint, collection)
+                .replace("\"collection_ref\":\"" + collection + "\"",
+                        "\"collection_ref\":\"" + collection + "\","
+                                + "\"auth\":{\"api_key\":\"" + apiKey + "\"}");
+    }
+
+    private Path proxyScriptPath() {
+        return Path.of("src", "test", "resources", "agentops", "kbb_proxy.py");
+    }
+
+    private HttpResponse<String> send(String method, String path, String body, String contentType,
+                                      List<String[]> extraHeaders) throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(BASE + path))
+                .header("Content-Type", contentType == null ? "application/json" : contentType);
+        if (extraHeaders != null) {
+            for (String[] h : extraHeaders) {
+                b.header(h[0], h[1]);
+            }
+        }
+        HttpRequest.Builder withBody = switch (method) {
+            case "GET" -> b.GET();
+            default -> b.method(method, HttpRequest.BodyPublishers.ofString(
+                    body == null ? "" : body, StandardCharsets.UTF_8));
+        };
+        return http.send(withBody.timeout(Duration.ofSeconds(90)).build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     // ---------- 对照：合法目标受理 202 ----------

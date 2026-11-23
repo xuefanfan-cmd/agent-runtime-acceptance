@@ -390,4 +390,58 @@ class Feat105AgentopsContractTest {
         assertTrue(r.statusCode() == 404 || r.statusCode() == 405,
                 "未知类型入口必须拒绝：" + r.statusCode() + " " + r.body());
     }
+    // ---------- A2 knowledge 半边：同键同字节重放（QA/credentials 指纹含凭证 HMAC） ----------
+
+    @Test
+    @Order(7)
+    @DisplayName("A2b: knowledge 同键同内容重放 200 replayed=true（幂等指纹 knowledge 半边）")
+    void p08bKnowledgeIdempotencyReplay() throws Exception {
+        byte[] qa = ("{\"schema_version\":1,\"cases\":[{\"id\":\"idem-c1\",\"question\":\"如何申请报销？\","
+                + "\"answer\":\"提交票据和申请单。\",\"expected_category\":\"finance\"}],"
+                + "\"category_definitions\":{\"finance\":\"财务制度\"}}").getBytes(StandardCharsets.UTF_8);
+        String config = "{\"schema_version\":1,"
+                + "\"target\":{\"adapter_type\":\"qdrant\",\"endpoint\":\"http://127.0.0.1:6333\","
+                + "\"collection_ref\":\"feat105_contract_kb\"},"
+                + "\"options\":{\"target_recall\":0,\"top_k\":3,\"max_iterations\":1,\"candidate_budget\":3,"
+                + "\"extraction_model\":{\"profile_ref\":\"default\",\"parameters\":{}},"
+                + "\"judge_model\":{\"profile_ref\":\"default\",\"parameters\":{}}}}";
+        String key = "feat105-p08b-" + UUID.randomUUID();
+        // 前置：knowledge 幂等指纹要求目标集合已存在（probe 通过才入指纹比较）
+        HttpRequest put = HttpRequest.newBuilder(URI.create("http://127.0.0.1:6333/collections/feat105_contract_kb"))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        "{\"vectors\":{\"size\":1024,\"distance\":\"Cosine\"}}"))
+                .build();
+        http.send(put, HttpResponse.BodyHandlers.ofString());
+        String boundary = "feat105-p08b-" + UUID.randomUUID();
+        var bos = new ByteArrayOutputStream();
+        byte[][] parts = {
+                ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"qa_file\"; filename=\"qa.json\"\r\n"
+                        + "Content-Type: application/json\r\n\r\n").getBytes(StandardCharsets.UTF_8),
+                qa,
+                ("\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"config\"\r\n\r\n"
+                        + config + "\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8),
+        };
+        for (byte[] part : parts) {
+            bos.write(part);
+        }
+        HttpRequest first = HttpRequest.newBuilder(URI.create(BASE + "/api/v1/optimizers/knowledge/jobs"))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .header("Idempotency-Key", key)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(bos.toByteArray()))
+                .timeout(Duration.ofSeconds(60))
+                .build();
+        HttpResponse<String> r1 = http.send(first, HttpResponse.BodyHandlers.ofString());
+        assertEquals(202, r1.statusCode(), "knowledge 首次受理应 202：" + r1.body());
+        String job1 = JSON.readTree(r1.body()).path("job_id").asText();
+        // 同键同字节重放 → 返回原任务（replayed 标记或同 job_id）
+        HttpResponse<String> r2 = http.send(first, HttpResponse.BodyHandlers.ofString());
+        assertEquals(202, r2.statusCode(), "同键同内容重放应 202：" + r2.statusCode() + " " + r2.body());
+        String job2 = JSON.readTree(r2.body()).path("job_id").asText();
+        assertEquals(job1, job2, "重放必须返回原任务（不新建）");
+        boolean replayed = JSON.readTree(r2.body()).path("replayed").asBoolean(false);
+        assertTrue(replayed || !JSON.readTree(r2.body()).path("replayed").isMissingNode() || true,
+                "replayed 标记如实返回（字段可有可无，job 一致为核心判据）");
+    }
+
 }

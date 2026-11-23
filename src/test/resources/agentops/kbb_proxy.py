@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""FEAT-105 B08/B09 故障注入代理（127.0.0.1:6399 → 127.0.0.1:6333）。
+"""FEAT-105 故障注入代理（127.0.0.1:6399 → 127.0.0.1:6333），keep-alive 版。
 
-模式（环境变量 KBB_PROXY_MODE）：
-  stall_first_write : knowledge 写请求（POST /points 且 body 含 "points"）挂起 45s 后
-                      不转发直接断开——产品 adapter 超时 30s，触发 mark_write_unknown；
-                      写请求从未到达真实 Qdrant（可断言真实库零残留）。
-  tamper_owner      : 写请求转发，但把每个 point 的 payload.agent_ops_owner 篡改为
-                      "foreign-process-mitm"——触发清理期 authorize_delete 失败 →
-                      ownership_conflict（异主记录保留）。
-其余请求（探针 GET、exact-get POST /points body=ids、delete）全部透传。
-每连接单请求处理（响应后关闭两侧），httpx 会为后续请求新建连接。
+模式（KBB_PROXY_MODE）：
+  stall_first_write : 写请求（PUT/POST /points 且 body 含 "points"）挂起 45s 不转发
+  tamper_owner      : 写请求转发但篡改 payload.agent_ops_owner
+  stall_query       : 召回检索（POST /points/query）挂起 45s（A7 分母不变式）
+  stall_probe       : GET /collections 挂起 45s（probe 超时 → 503）
+  auth_required     : Authorization/api-key ≠ KBB_PROXY_EXPECTED_KEY → 401
+其余请求透传。keep-alive：同一客户端连接循环处理多请求；上游连接按客户端连接复用。
 """
 import asyncio
 import json
@@ -52,7 +50,7 @@ async def read_request(reader):
 
 
 async def relay_response(up_reader, client_writer):
-    """读上游响应头，按 content-length / chunked 透传至客户端。"""
+    """读上游响应头，按 content-length/chunked 完整读取后一次性写给客户端。"""
     head = b""
     while b"\r\n\r\n" not in head:
         chunk = await asyncio.wait_for(up_reader.read(4096), timeout=60)
@@ -66,21 +64,28 @@ async def relay_response(up_reader, client_writer):
         if ":" in ln:
             k, v = ln.split(":", 1)
             headers[k.strip().lower()] = v.strip()
-    client_writer.write(head)
-    if headers.get("transfer-encoding", "").lower() == "chunked":
-        client_writer.write(rest)
-        await client_writer.drain()
+    if "chunked" in headers.get("transfer-encoding", "").lower():
+        # chunked → 完整解帧为原始字节，改写为 content-length 响应（消灭分帧问题）
+        dechunked = b""
+        buf = rest
         while True:
-            line = await asyncio.wait_for(up_reader.readline(), timeout=60)
-            client_writer.write(line)
-            if line in (b"\r\n", b""):
-                if line == b"\r\n":
-                    size_line = await asyncio.wait_for(up_reader.readline(), timeout=60)
-                    client_writer.write(size_line)
-                    if size_line.strip() in (b"0", b""):
-                        break
-                    continue
+            while b"\r\n" not in buf:
+                buf += await asyncio.wait_for(up_reader.read(4096), timeout=60)
+            size_line, buf = buf.split(b"\r\n", 1)
+            size = int(size_line.strip() or b"0", 16)
+            if size == 0:
                 break
+            while len(buf) < size:
+                buf += await asyncio.wait_for(up_reader.read(65536), timeout=60)
+            dechunked += buf[:size]
+            buf = buf[size:]
+            while b"\r\n" not in buf[:2] and len(buf) < 2:
+                buf += await asyncio.wait_for(up_reader.read(4096), timeout=60)
+            buf = buf[2:]
+        new_head = head_part.decode("latin1").split("\r\n")
+        new_head = [l for l in new_head if "transfer-encoding" not in l.lower()]
+        new_head.append(f"content-length: {len(dechunked)}")
+        client_writer.write(("\r\n".join(new_head) + "\r\n\r\n").encode("latin1") + dechunked)
         await client_writer.drain()
         return
     clen = int(headers.get("content-length") or 0)
@@ -90,71 +95,86 @@ async def relay_response(up_reader, client_writer):
         if not chunk:
             break
         body += chunk
-    client_writer.write(body)
+    client_writer.write(head_part + b"\r\n\r\n" + body)
     await client_writer.drain()
 
 
 async def handle(reader, writer):
+    up_reader = up_writer = None
     try:
-        req = await read_request(reader)
-        if req is None:
-            return
-        method, path, headers, body = req
-        is_upsert = (method in ("POST", "PUT") and "/points" in path
-                     and "/points/query" not in path and "/points/delete" not in path
-                     and b'"points"' in body)
-        log(MODE, method, path[:60], "upsert" if is_upsert else "passthrough")
+        while True:  # keep-alive：同一客户端连接循环处理多请求
+            req = await read_request(reader)
+            if req is None:
+                break
+            method, path, headers, body = req
+            log(MODE, method, path[:60])
+            log("DBG: after log line")
 
-        if MODE == "stall_first_write" and is_upsert:
-            log("stalling write for", STALL_SECONDS, "s (never forwarded)")
-            await asyncio.sleep(STALL_SECONDS)
-            return  # 不回响应直接断开：产品侧 30s 超时先到，触发 unknown
+            if MODE == "auth_required":
+                expected = os.environ.get("KBB_PROXY_EXPECTED_KEY", "correct-token")
+                auth = headers.get("authorization", "") or headers.get("api-key", "")
+                if auth not in (expected, "Bearer " + expected):
+                    log("auth rejected")
+                    body401 = b'{"error": {"message": "Unauthorized"}}'
+                    writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
+                                 + b"Content-Length: " + str(len(body401)).encode() + b"\r\n\r\n" + body401)
+                    await writer.drain()
+                    break
+                log("auth ok")
 
-        if MODE == "auth_required":
-            expected = os.environ.get("KBB_PROXY_EXPECTED_KEY", "correct-token")
-            auth = headers.get("authorization", "") or headers.get("api-key", "")
-            ok = auth in (expected, "Bearer " + expected)
-            if not ok:
-                log("auth rejected (got:", (auth[:40] or "<none>") + ")")
-                body = b'{"error": {"message": "Unauthorized"}}'
-                writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
-                             + b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
-                await writer.drain()
-                return
-            log("auth ok, passthrough")
+            is_write = (method in ("POST", "PUT") and "/points" in path
+                        and "/points/query" not in path and "/points/delete" not in path
+                        and b'"points"' in body)
+            is_query = method == "POST" and "/points/query" in path
 
-        if MODE == "stall_probe" and method == "GET" and "/collections" in path:
-            log("stalling probe GET for", STALL_SECONDS, "s (probe timeout → 503)")
-            await asyncio.sleep(STALL_SECONDS)
-            return
+            if MODE == "stall_first_write" and is_write:
+                log("stalling write (never forwarded)")
+                await asyncio.sleep(STALL_SECONDS)
+                break
+            if MODE == "stall_query" and is_query:
+                log("stalling recall query (recall error → denominator invariant)")
+                await asyncio.sleep(STALL_SECONDS)
+                break
+            if MODE == "stall_probe" and method == "GET" and "/collections" in path:
+                log("stalling probe (probe timeout → 503)")
+                await asyncio.sleep(STALL_SECONDS)
+                break
 
-        out_body = body
-        if MODE == "tamper_owner" and is_upsert:
-            try:
-                d = json.loads(body)
-                for p in d.get("points", []):
-                    p.setdefault("payload", {})["agent_ops_owner"] = FOREIGN_OWNER
-                out_body = json.dumps(d).encode()
-                log("owner tampered for", len(d.get("points", [])), "point(s)")
-            except Exception as exc:
-                log("tamper failed, forwarding raw:", exc)
+            out_body = body
+            if MODE == "tamper_owner" and is_write:
+                try:
+                    d = json.loads(body)
+                    for pt in d.get("points", []):
+                        pt.setdefault("payload", {})["agent_ops_owner"] = FOREIGN_OWNER
+                    out_body = json.dumps(d).encode()
+                    log("owner tampered")
+                except Exception as exc:
+                    log("tamper failed, forwarding raw:", exc)
 
-        up_reader, up_writer = await asyncio.open_connection(UP_HOST, UP_PORT)
-        req_line = f"{method} {path} HTTP/1.1\r\n"
-        hdr_lines = "".join(
-            f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() != "content-length")
-        up_writer.write(req_line.encode() + hdr_lines.encode()
-                        + f"content-length: {len(out_body)}\r\n\r\n".encode() + out_body)
-        await up_writer.drain()
-        await relay_response(up_reader, writer)
-        up_writer.close()
+            log("DBG: before open_connection")
+            if up_writer is None:
+                up_reader, up_writer = await asyncio.open_connection(UP_HOST, UP_PORT)
+            log("DBG: upstream opened")
+            req_line = f"{method} {path} HTTP/1.1\r\n"
+            hdr_lines = "".join(
+                f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() != "content-length")
+            up_writer.write(req_line.encode() + hdr_lines.encode()
+                            + f"content-length: {len(out_body)}\r\n\r\n".encode() + out_body)
+            await up_writer.drain()
+            log("DBG: request forwarded, relaying response")
+            await relay_response(up_reader, writer)
+            log("DBG: response relayed")
+            if headers.get("connection", "").lower() == "close":
+                break
     except Exception as exc:
         log("handler error:", type(exc).__name__, str(exc)[:120])
     finally:
-        try:
-            writer.close()
-        except Exception:
-            pass
+        for w in (up_writer, writer):
+            try:
+                if w is not None:
+                    w.close()
+            except Exception:
+                pass
 
 
 async def main():

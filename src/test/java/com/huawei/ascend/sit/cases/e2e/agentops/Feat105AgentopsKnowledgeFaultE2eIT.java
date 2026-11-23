@@ -342,6 +342,33 @@ class Feat105AgentopsKnowledgeFaultE2eIT {
                 + " reconcile=" + recBody.substring(0, Math.min(300, recBody.length())));
     }
 
+    // ---------- 105-A7 召回口径：检索异常记 error 不缩分母 ----------
+
+    @Test
+    @Order(3)
+    @Story("a7.denominator: 召回检索异常→errors 记录、分母保持有效 QA 数")
+    @DisplayName("A7: 检索异常不缩分母（kbb_proxy stall_query）")
+    void a7RecallErrorKeepsDenominator() throws Exception {
+        String coll = "feat105_fault_a7_" + UUID.randomUUID().toString().substring(0, 8);
+        createCollection(coll);
+        startProxy("stall_query");
+        JsonNode created = submitKnowledge("a7", coll, "http://127.0.0.1:" + PROXY_PORT);
+        String jobId = created.get("job_id").asText();
+        String st = pollTerminal(jobId, 600);
+        // 写入正常落地（PUT 透传），召回检索被挂起 → 召回阶段记 error
+        assertTrue(List.of("failed", "succeeded").contains(st), "A7 应收敛终态：" + st);
+        Map<String, String> arts = artifactMap(jobId);
+        String recallId = arts.get("knowledge_recall_report");
+        assertNotNull(recallId, "召回报告产物应存在：" + arts.keySet());
+        JsonNode recall = JSON.readTree(download(jobId, recallId)).path("recall");
+        // 不变式 1：检索异常被记入 errors（不静默吞）
+        assertTrue(recall.path("errors").isArray() && recall.path("errors").size() >= 1,
+                "检索异常应记入 errors：" + recall.path("errors"));
+        // 不变式 2：分母 = 有效 QA 数（1），不因异常缩水
+        assertEquals(1, recall.path("denominator").asLong(-1), "分母必须等于有效 QA 数（异常不缩分母）");
+        System.out.println("[A7] terminal=" + st + " recall=" + recall);
+    }
+
     private void createCollection(String coll) throws Exception {
         HttpRequest put = HttpRequest.newBuilder(URI.create(QDRANT + "/collections/" + coll))
                 .header("Content-Type", "application/json")

@@ -376,9 +376,13 @@ CREATE TABLE IF NOT EXISTS extension_requests (
   status     TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- plugins.version：DA 自 solution 875b65d5b（2026-11-17，DaPluginController 启动时恢复插件状态）起
+-- 读写该列（SELECT id, version, enabled FROM plugins），缺列则 DA 启动失败；列形状取自同一提交的
+-- DaPluginControllerTest（version TEXT，可空）。
 CREATE TABLE IF NOT EXISTS plugins (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
+  version    TEXT,
   enabled    BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

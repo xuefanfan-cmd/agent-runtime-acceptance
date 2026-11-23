@@ -182,6 +182,9 @@ public final class ProcessLauncher implements SutLauncher {
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
         config.environment().forEach(pb.environment()::put);
+        if (config.workingDirectory() != null) {
+            pb.directory(config.workingDirectory().toFile());
+        }
 
         Process process;
         try {
@@ -190,14 +193,71 @@ public final class ProcessLauncher implements SutLauncher {
             throw new IllegalStateException(
                     "Failed to start " + agent.name() + " from " + jar, e);
         }
-        long pid = process.pid();
+        try {
+            long pid = process.pid();
+            int port = config.port() > 0
+                    ? awaitFixedPort(agent, config.port(), process, logFile, config)
+                    : resolveRandomPort(agent, pid, process, logFile, config);
 
-        int port = config.port() > 0
-                ? awaitFixedPort(agent, config.port(), process, logFile, config)
-                : resolveRandomPort(agent, pid, process, logFile, config);
+            String baseUrl = "http://localhost:" + port;
+            // Ownership transfers only once the ready instance is returned to the caller.
+            return new ManagedSutInstance(agent.name(), pid, port, baseUrl, process, logFile);
+        } catch (RuntimeException | Error failure) {
+            stopFailedLaunch(process, failure);
+            throw failure;
+        }
+    }
 
-        String baseUrl = "http://localhost:" + port;
-        return new ManagedSutInstance(agent.name(), pid, port, baseUrl, process, logFile);
+    private static void stopFailedLaunch(Process process, Throwable failure) {
+        boolean interrupted = Thread.interrupted();
+        try {
+            try {
+                process.destroy();
+                interrupted |= awaitFailedLaunchExit(process, 10);
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            try {
+                if (process.isAlive()) {
+                    process.destroyForcibly();
+                    interrupted |= awaitFailedLaunchExit(process, 5);
+                    if (process.isAlive()) {
+                        failure.addSuppressed(new IllegalStateException(
+                                "Failed launch process is still alive after forced termination"));
+                    }
+                }
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /** Finish the bounded reap even if interrupted; the caller restores the interrupt flag. */
+    private static boolean awaitFailedLaunchExit(Process process, int seconds) {
+        boolean interrupted = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        try {
+            long remaining;
+            while ((remaining = deadline - System.nanoTime()) > 0) {
+                try {
+                    if (process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+            }
+            return interrupted;
+        } finally {
+            // Preserve interruption even if waitFor unexpectedly throws an unchecked exception.
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private Path resolveJar(SutAgent agent) {
@@ -295,6 +355,9 @@ public final class ProcessLauncher implements SutLauncher {
                             .timeout(Duration.ofSeconds(3)).GET().build(),
                     HttpResponse.BodyHandlers.discarding());
             return response.statusCode() == 200;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while probing agent readiness", interrupted);
         } catch (Exception notReadyYet) {
             return false; // connection refused / not bound yet / not ready
         }

@@ -144,6 +144,21 @@ sut:
           deepanalyze.compat.enabled: "true"
           deepanalyze.compat.max-events-per-task: "5000"
           deepanalyze.auth.enabled: "false"
+    # FEAT-112：任务异常率降级门验收载体——DA 宿主 + 降级门扩展 + demo 故障注入 stub 一体的可执行包
+    # （agent-solution common/example/task-degradation-gate-acceptance-demo，由 scripts/sut/sut-sources.yml
+    # openjiuwen 环境构建并 install）。用例按自身声明的部署形态托管启动（窗口/认证/禁用等由用例注入），
+    # 不支持 url 远端模式；模型地址由用例接到其 stub，不在此配置。feat112-peer 为同一制品的第二实例名，
+    # 供多实例场景两进程并存时各自独立的日志与端口解析。
+    feat112:
+      group: com.openjiuwen.example
+      artifact: degradation-agent-runtime
+      version: 0.1.0
+      ready-mode: tcp
+    feat112-peer:
+      group: com.openjiuwen.example
+      artifact: degradation-agent-runtime
+      version: 0.1.0
+      ready-mode: tcp
     # FEAT-069：DA 宿主数据面（deepanalyze-java 数据面权限与写方迁移）——本批次被测 SUT。
     # 回归基线 0.1.3-feat069-r2 = agent-solution common@095b7fb89（!890 SIT P1 修复批，#469/#471/#472/#473-A）；
     # 原基线 0.1.3-feat069 = agent-solution common@6864dc3dd（!841 feat/feat-069-data-plane

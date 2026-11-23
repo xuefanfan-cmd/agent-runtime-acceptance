@@ -726,6 +726,12 @@ public final class SutStack implements AutoCloseable {
             return this;
         }
 
+        /** Working directory of the launched process (managed Java agents); default inherits the test JVM's. */
+        public AgentBuilder workingDirectory(java.nio.file.Path directory) {
+            this.configOverrides.workingDirectory(directory);
+            return this;
+        }
+
         /** Spring Boot property override ({@code --key=value}). */
         public AgentBuilder property(String key, String value) {
             this.configOverrides.property(key, value);

@@ -86,3 +86,8 @@ envs:
       - { source: agent-solution, module: common/example/multi_react_travel_hosted_demo }
       - { source: agent-solution, module: common/example/multi_deep_research_hosted_demo }
       - { source: agent-solution, module: common/example/versatile-orchestration-demo }
+      # FEAT-112 降级门验收载体：必须排在 agent-runtime-ext-java 与 deepanalyze-java 之后——载体打包的
+      # 降级门扩展与 DA 宿主都取自上面刚 install 的源码构建（Central 已发布的同号 0.1.3 不含降级门）。
+      # agent-solution 源须包含 FEAT-112 改动（SUT_SOURCE_DIR 指向含该改动的检出）。产物与
+      # application-openjiuwen.yml 的 sut.agents.feat112 / feat112-peer 坐标对应。
+      - { source: agent-solution, module: common/example/task-degradation-gate-acceptance-demo }

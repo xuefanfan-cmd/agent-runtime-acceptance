@@ -100,6 +100,12 @@ public final class AgentConfig {
     /** How readiness is determined for this agent (default {@link ReadyMode#AGENT_CARD}). */
     private ReadyMode readyMode = ReadyMode.AGENT_CARD;
 
+    /**
+     * Working directory of a launched agent process; {@code null} (default) inherits the test JVM's. For agents that
+     * read deployment assets relative to their working directory (e.g. scenario overlays).
+     */
+    private java.nio.file.Path workingDirectory;
+
     public AgentConfig profile(String profile) {
         this.profile = profile;
         return this;
@@ -294,6 +300,15 @@ public final class AgentConfig {
     }
 
     /** How readiness is determined for this agent (default {@link ReadyMode#AGENT_CARD}). */
+    public AgentConfig workingDirectory(java.nio.file.Path directory) {
+        this.workingDirectory = directory == null ? null : directory.toAbsolutePath();
+        return this;
+    }
+
+    public java.nio.file.Path workingDirectory() {
+        return workingDirectory;
+    }
+
     public ReadyMode readyMode() {
         return readyMode;
     }

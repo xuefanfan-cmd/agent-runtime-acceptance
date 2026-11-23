@@ -48,3 +48,6 @@ reports/runtime/
 work-src/
 .claude/
 .codecheckcli
+
+# FEAT-112 source-fetch cache (790MB, contains nested git checkouts)
+feat112/.src-cache/

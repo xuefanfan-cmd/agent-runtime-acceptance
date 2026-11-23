@@ -31,9 +31,9 @@ public final class Feat112Coverage {
     /** Covered scenarios whose tests carry only part of the requirement; the remainder is a registered gap. */
     public static final Map<String, String> PARTIAL = Map.of(
             "FEAT-112-A2", "键缺席时如何处理特性档未规定，待特性设计确认；确认前结论只说明实现行为",
-            "FEAT-112-C4", "故障代际值不在诊断面与日志中（特性不可观测 Issue 待提，见 feat112/issues-unobservable-20261117.md），“递增代际”的效果由 C5、C8 验证",
+            "FEAT-112-C4", "故障代际值不在诊断面与日志中（可观测性增强已提单 openJiuwen/agent-solution#856），“递增代际”的效果由 C5、C8 验证",
             "FEAT-112-E3", "出厂配置下 business_failure 落入默认 ask，探针先停在待确认；该工具是否需要用户确认待特性设计确认",
-            "FEAT-112-E7", "取消请求到达瞬间的窗口在一次同步调用内，对外与日志均不可观测（特性不可观测 Issue 待提，见 feat112/issues-unobservable-20261117.md）",
+            "FEAT-112-E7", "取消请求到达瞬间的窗口在一次同步调用内，对外与日志均不可观测（经开发核查接受关闭：落定语义=控制面终态事实链，E7 按调用级粒度验证，不另提 Issue）",
             "FEAT-112-I1", "启动记录的正式载体待 DA L2 明确；监控保留原故障告警属部署验收，不在本场景");
 
     /** A section 5 scenario row: {@code {domain}{seq}[-{variant}][.{testpoint}]} (testplan §5 ID rule). */

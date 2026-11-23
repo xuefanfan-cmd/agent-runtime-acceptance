@@ -49,14 +49,19 @@ work-src/
 .claude/
 .codecheckcli
 
-# FEAT-112 source-fetch cache (790MB, contains nested git checkouts)
-feat112/.src-cache/
-
-# Review-type docs and outbound comment drafts stay local only (never committed);
-# other docs must describe the issue instead of referencing these files (rule 2026-11-23)
-feat112/SIT-REVIEW-*.md
-feat112/review-*.md
-feat112/pr*-comment-*.md
-feat112/pr*-correction-*.md
+# Test repo carries only test cases and case docs (rule 2026-11-23).
+# feat112/: whitelist only what the tests read at run time plus its provenance;
+# all other working docs (reviews, drafts, guides, issue records) stay local.
+feat112/*
+!feat112/README.md
+!feat112/FEAT-112-task-degradation-gate-testplan.md
+!feat112/testplan-revision-20261112.revised.md
+!feat112/expectation-fingerprints.txt
+!feat112/baseline-05af9cc3/
+!feat112/tools/
+# Dev-handoff jar bundles and notes stay local
+feat058-jars/
+feat033-jars/
+feat057-jars/
 # Issue drafts are tracked as issues in the gitcode repos; local originals only
 docs/issues/

@@ -18,7 +18,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 本次设计基线为已合入 PR 498 的提交 `05af9cc3796ac953aee157e9c0b35621552232f4`；以下设计快照固定于该提交，不代表可变缓存工作树：
 - [特性档](../../feat112/baseline-05af9cc3/feature.md)：§2 验收出口、§3.1 准入、§3.2 健康面、§5 状态/窗口机制。
 - [L2 设计](../../feat112/baseline-05af9cc3/design-L2.md)：实现证据及明确列出的需求差距，不用于覆盖需求。
-- [testplan](../../feat112/FEAT-112-task-degradation-gate-testplan.md)：docs main 已合入版本 `a1db9d86`，§5 共 65 行；同步来源与 commit 见 [文档入口](../../feat112/README.md)。PR 483 已以 `a1db9d86` 内容合入 docs main；按特性档修订的 testplan（三轮，逐项清单见 [修订记录](../../feat112/testplan-revision-20261112.md)）已于 2026-11-17 提交为 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549)，合入并回读前本地副本仍是 `a1db9d86`，本文与代码按修订后的预期执行。2026-11-16 逐条评审后的修订版 §5 共 82 行，工作副本为 [testplan-revision-20261112.revised.md](../../feat112/testplan-revision-20261112.revised.md)（`Feat112Coverage.testplan()` 优先读取它，运行来源记录其 sha256），逐条结论见 [逐条评审记录](../../feat112/testplan-item-review-20261112.md)。发布测试报告时必须记实际使用的文档 commit，不以可变文件路径代替版本基线。
+- [testplan](../../feat112/FEAT-112-task-degradation-gate-testplan.md)：docs main 已合入版本 `a1db9d86`，§5 共 65 行；同步来源与 commit 见 [文档入口](../../feat112/README.md)。PR 483 已以 `a1db9d86` 内容合入 docs main；按特性档修订的 testplan（三轮，逐项修订清单本地留档）已于 2026-11-17 提交为 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549)，合入并回读前本地副本仍是 `a1db9d86`，本文与代码按修订后的预期执行。2026-11-16 逐条评审后的修订版 §5 共 82 行，工作副本为 [testplan-revision-20261112.revised.md](../../feat112/testplan-revision-20261112.revised.md)（`Feat112Coverage.testplan()` 优先读取它，运行来源记录其 sha256），逐条评审结论本地留档。发布测试报告时必须记实际使用的文档 commit，不以可变文件路径代替版本基线。
 - 多维比对（不作预期来源）：DA L2（docs PR 538 刷新中）、ext L2 分类规格（docs PR 463）、代码。与特性档不一致之处逐条登记到差异清单与 PR 评论，不改写本文期望。
 - 被测物来源：agent-core-java `develop` 最新（当前 `e24bcb74d`）+ solution `common` 最新（当前 `1127a9ece7b`），由 `feat112/tools/build-carrier.sh` 在干净工作树中构建，构建清单 `feat112-build-manifest.json` 记录两边 commit、制品 sha256 与载体内捆绑 core 的一致性校验；运行时不一致即拒绝。
 - demo：solution 仓 `common/example/task-degradation-gate-acceptance-demo/`。
@@ -51,7 +51,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | 新增场景 | 验收出口15/17/18 与 §5.1.2 中未被任何场景承接的要求 | 新增 C8（探针取消后旧任务故障回 OPEN）、C9（OPEN 中旧故障重算静默期）、E12（认领后待答触顶按无结论释放）、H4（两实例半开名额互不影响） |
 | F5 对照 | §3.1 列出 9 个在途控制面入口；“保持原契约”以门 CLOSED 时同一请求的响应为对照 | 由 5 个入口扩到 9 个，每个入口先在 CLOSED 取基线，OPEN 下比对状态码与错误码，不只验“不含 ENGINE_DEGRADED” |
 | 供监控的字段与日志 | 监控规则属部署验收；但提供给监控的字段与日志是被测物输出，SIT 应覆盖 | I1 增验新进程启动记录中的 `instanceId` 与诊断一致；启动记录的正式载体待开发确认（部分承接）。告警保留不在 SIT |
-| 组件级验收撤回 | 测试仓只做 SIT：对外契约观测不到时依次取进程日志、持久化数据；都不可观测则提特性不可观测 Issue，不以直接调用产品内部类、测试自造内部事实代替（用户 2026-11-16） | 撤掉 `Feat112MechanismTest`、`Feat112TerminalClassificationTest`。A1、B6、B7、C4、E15、E7、E8、E9、E11 改为 SIT 或登记未承接；不可观测项见 `feat112/issues-unobservable-20261117.md` |
+| 组件级验收撤回 | 测试仓只做 SIT：对外契约观测不到时依次取进程日志、持久化数据；都不可观测则提特性不可观测 Issue，不以直接调用产品内部类、测试自造内部事实代替（用户 2026-11-16） | 撤掉 `Feat112MechanismTest`、`Feat112TerminalClassificationTest`。A1、B6、B7、C4、E15、E7、E8、E9、E11 改为 SIT 或登记未承接；不可观测项的简稿本地留档（后随 2026-11-20 处置：3/4 合并为增强提单 openJiuwen/agent-solution#856，5 经开发核查接受关闭） |
 | 期望文本漂移 | ID 对账发现不了“ID 不变、期望改了”（C7、E3 都曾如此） | `Feat112ArchitectureTest` 增加期望文本指纹：每行场景/前置/步骤/期望的哈希与 `feat112/expectation-fingerprints.txt` 比对，变化即失败，复核承接用例后用 `run-feat112.sh fingerprints` 重新登记 |
 
 ### 1.2 测试层级
@@ -362,7 +362,7 @@ PPT本轮不直接重写；将代码/报告证据链接回此表后，再更新D
 | FAIL / conditional_not_triggered | E3、E16 | 前置不成立，结论无效。E3：出厂配置下 `business_failure` 落默认 ask。E16（2026-11-20 更正原因）：topP NPE 已在 solution `96c23d4ea` 修复（本轮证据中成员正常运行、workflow completed），现激活败在替身剧本未命中成员请求——测试侧待重写激活逻辑，非产品问题 |
 | NOT_EXECUTED | A1、E17、E18 | 覆盖缺口（待特性设计确认），无用例 |
 
-Linux 实跑暴露并修复的测试侧问题六项（均不计产品问题，详见 `feat112/testplan-item-review-20261112.md` 2026-11-19/20 进展）：数据面基线 `plugins` 补 `version` 列（solution `875b65d5b` 起 DA 启动读取）；Redis 夹具停容器后不再取映射端口；libfaketime 下 DA 约慢 9 倍——各等待上限放宽、过期余量 30s→120s、静默期 10s→30s、加 `NO_FAKE_STAT`；测试客户端单请求超时 60s→600s；DA 先标任务完成后交终态给门，时钟用例改为等 `terminal fact taskId=` 日志行再读门（B7 HALF_OPEN 一度误判 must_violation 即此竞态）；隔离交付默认进程保留 LANG/LC_*（否则 Linux JVM 按 ASCII 解析内置技能中文目录名、DA 启动失败），主动终止期间的读流异常不算错。
+Linux 实跑暴露并修复的测试侧问题六项（均不计产品问题，复核记录本地留档）：数据面基线 `plugins` 补 `version` 列（solution `875b65d5b` 起 DA 启动读取）；Redis 夹具停容器后不再取映射端口；libfaketime 下 DA 约慢 9 倍——各等待上限放宽、过期余量 30s→120s、静默期 10s→30s、加 `NO_FAKE_STAT`；测试客户端单请求超时 60s→600s；DA 先标任务完成后交终态给门，时钟用例改为等 `terminal fact taskId=` 日志行再读门（B7 HALF_OPEN 一度误判 must_violation 即此竞态）；隔离交付默认进程保留 LANG/LC_*（否则 Linux JVM 按 ASCII 解析内置技能中文目录名、DA 启动失败），主动终止期间的读流异常不算错。
 
 另记（DA 范围，非本特性条款）：POSIX locale 部署环境下 DA 因内置技能中文目录名启动失败，建议开发关注。
 
@@ -375,7 +375,7 @@ Linux 实跑暴露并修复的测试侧问题六项（均不计产品问题，�
 - E11、F4：需 PostgreSQL 数据面部署形态（待实现）；
 - E17、E18：等 PR 463、PR 538 合入再定。
 
-2026-11-16 的组件级结论（A1、B6、B7、C4 代际部分、E15、E7 瞬间部分、E8、E9、E11）全部撤回，不计入验收；不可观测项见 `feat112/issues-unobservable-20261117.md`（4 条，未提交）。
+2026-11-16 的组件级结论（A1、B6、B7、C4 代际部分、E15、E7 瞬间部分、E8、E9、E11）全部撤回，不计入验收；不可观测 4 条的简稿本地留档（2026-11-20 处置：3/4 合并为增强提单 openJiuwen/agent-solution#856，5 经开发核查接受关闭）。
 
 本轮实跑（载体同 §8.2）：`sit-20261117`、`sit-20261117b`。
 - E8（新 SIT：`max-concurrent-tasks=1`，经 `/answer` 续跑占满执行池后新任务认领即被拒）：PASS，既有 503 `ENGINE_BUSY`，名额释放、保持 HALF_OPEN、样本不变，续跑结束后下一任务成为探针。
@@ -400,7 +400,7 @@ Linux 实跑暴露并修复的测试侧问题六项（均不计产品问题，�
 | PASS（77） | 除下列 5 项外的全部场景 | 首次执行即通过的新场景：A3–A6、B6、C8、C9、E5.1、E10、E12、H4；改写后通过：C7/B4（三段）、C3/E2（`/run-stream` 后续任务）、C4、D3、F2、I1（启动记录 `instanceId` 与诊断一致）、J2、J3；复跑通过：E5.2、G8、F-reg、J4；E5.3 为组件级 |
 | FAIL / must_violation | G5a | 同 §8.3：交付默认配置下匿名可读诊断面；修复方向待特性设计在三种方案中选择 |
 | FAIL / conditional_not_triggered | E3 | 出厂 actrule 下 `business_failure` 落入默认 ask，探针停在待确认；待开发答复 |
-| FAIL / conditional_not_triggered | E5.4 | 载体上工作流成员无法构建：core `e24bcb74d` 把 `ModelRequestConfig.topP` 改为可空，solution `DaWorkflowRunner.memberRequestConfig` 拆箱 NPE（非 FEAT-112 缺陷，见 `feat112/issue-core-topp-npe-20261116.md`）；结论无效，修复后重跑 |
+| FAIL / conditional_not_triggered | E5.4 | 载体上工作流成员无法构建：core `e24bcb74d` 把 `ModelRequestConfig.topP` 改为可空，solution `DaWorkflowRunner.memberRequestConfig` 拆箱 NPE（非 FEAT-112 缺陷，草稿本地留档；经开发核查指定基线已修复、确认关闭）；结论无效，修复后重跑 |
 | 未承接 | E5.5、E5.6 | 公开面造不出“无错误码、无类目、非 core”且由成员拒绝引起的任务失败；“护栏拦截导致任务失败”的确定路径未建立（PR 538 评审） |
 
 部分承接（`Feat112Coverage.PARTIAL`）：A1、A2（键缺席待特性设计确认，结论只说明实现行为）、C4、E3、E7、E8、E11、F3（team 存在分支需 PostgreSQL）、I1（启动记录正式载体待开发确认；告警保留属部署验收）。

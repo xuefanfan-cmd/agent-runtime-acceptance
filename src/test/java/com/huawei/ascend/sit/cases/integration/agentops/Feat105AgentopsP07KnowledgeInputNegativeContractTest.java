@@ -205,16 +205,22 @@ class Feat105AgentopsP07KnowledgeInputNegativeContractTest {
     @DisplayName("P07.4: 队列容量上限 → 429（需 queue-capacity.env 覆盖层）")
     void p07QueueCapacity() throws Exception {
         // 未启用覆盖层时受理 202 → 按假设跳过（与 P14 timeout-override 同模式）
-        String config = targetConfig("qdrant", "http://127.0.0.1:6333",
-                "p07_queue_ctrl_" + UUID.randomUUID().toString().substring(0, 8));
-        HttpResponse<String> probe = submitKnowledge(config);
+        String coll = "p07_queue_ctrl_" + UUID.randomUUID().toString().substring(0, 8);
+        // probe 要求集合先存在——否则 422 集合不存在，测不到容量面
+        HttpRequest put = HttpRequest.newBuilder(URI.create("http://127.0.0.1:6333/collections/" + coll))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        "{\"vectors\":{\"size\":1024,\"distance\":\"Cosine\"}}"))
+                .build();
+        http.send(put, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> probe = submitKnowledge(targetConfig("qdrant", "http://127.0.0.1:6333", coll));
         assumeTrue(probe.statusCode() == 429,
                 "SUT 未启用 OPTIMIZATION_MAX_QUEUED_JOBS=0 覆盖层——本子项需部署侧 queue-capacity.env（P14 同模式）");
         assertEquals(429, probe.statusCode(), "队列容量超限应 429");
         JsonNode err = JSON.readTree(probe.body()).path("error");
         assertTrue(!err.path("code").asText().isEmpty(), "429 应带结构化错误码");
         // 无半建对象：429 任务不应产生 job 记录（idempotency-key 重放仍 429 而非返回任务）
-        HttpResponse<String> r = submitKnowledge(config);
+        HttpResponse<String> r = submitKnowledge(targetConfig("qdrant", "http://127.0.0.1:6333", coll));
         assertEquals(429, r.statusCode(), "重放仍应 429（无半建对象）");
     }
 

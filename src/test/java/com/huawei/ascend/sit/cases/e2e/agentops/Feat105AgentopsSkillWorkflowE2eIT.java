@@ -558,9 +558,9 @@ class Feat105AgentopsSkillWorkflowE2eIT {
         assertEquals("succeeded", st, "K03 应异步完成不等待人工：" + st);
         // 结构断言 1：conflict_report 产物存在
         Map<String, String> arts = artifactMap(jobId);
-        assertTrue(arts.containsKey("conflict_report"), "冲突报告产物应存在：" + arts.keySet());
+        assertTrue(arts.containsKey("skill_conflict_report"), "冲突报告产物应存在：" + arts.keySet());
         // 结构断言 2：报告为可解析 JSON 且含逐来源结构（来源/证据/理由字段族）
-        byte[] reportBytes = download(jobId, arts.get("conflict_report"));
+        byte[] reportBytes = download(jobId, arts.get("skill_conflict_report"));
         JsonNode report = JSON.readTree(new String(reportBytes, StandardCharsets.UTF_8));
         assertTrue(report.isObject() || report.isArray(),
                 "冲突报告应为结构化 JSON：" + report.getNodeType());

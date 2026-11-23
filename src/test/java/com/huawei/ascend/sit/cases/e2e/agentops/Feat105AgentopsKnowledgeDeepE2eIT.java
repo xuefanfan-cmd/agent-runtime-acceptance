@@ -224,6 +224,25 @@ new String[]{"报销流程？", "提交票据。", "finance"},
         Map<String, String> arts = artifactMap(jobId);
         assertNotNull(arts.get("knowledge_cleanup_report"), "清理报告产物应存在");
         assertEquals(0, qdrantPointCount("feat105_deep_b03"), "清理后零残留");
+        // 召回公式复算（L2 §3.3）：overall_recall == hit_count/denominator + NFKC 归一
+        assertNotNull(arts.get("knowledge_recall_report"), "召回报告产物应存在");
+        HttpResponse<String> recallResp = send("GET",
+                "/api/v1/optimization-jobs/" + jobId + "/artifacts/" + arts.get("knowledge_recall_report"),
+                null, null, null);
+        assertEquals(200, recallResp.statusCode(), "召回报告下载应 200");
+        JsonNode recall = JSON.readTree(recallResp.body()).path("recall");
+        assertEquals("complete", recall.path("status").asText(), "召回状态 complete");
+        long denominator = recall.path("denominator").asLong(-1);
+        long hit = recall.path("hit_count").asLong(-1);
+        double overall = recall.path("overall_recall").asDouble(-1);
+        assertTrue(denominator >= 3, "分母应覆盖全部有效 QA（3 条）：" + denominator);
+        if (denominator > 0) {
+            assertEquals((double) hit / denominator, overall, 1e-9,
+                    "召回公式：overall_recall == hit_count/denominator");
+        }
+        String recallText = recall.toString();
+        assertTrue(!recallText.contains("ｆ"), "NFKC 归一：全角分类不应以原样出现在召回报告（"
+                + "category_recall=" + recall.path("category_recall") + "）");
     }
 
     // ---------- 105-B05 质检阻断 ----------

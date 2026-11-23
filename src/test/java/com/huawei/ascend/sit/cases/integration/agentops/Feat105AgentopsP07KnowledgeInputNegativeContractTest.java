@@ -113,6 +113,13 @@ class Feat105AgentopsP07KnowledgeInputNegativeContractTest {
         String code1 = JSON.readTree(r1.body()).path("error").path("code").asText();
         assertTrue(code1.equals("INVALID_KNOWLEDGE_TARGET") || code1.equals("UNSAFE_ADAPTER_CAPABILITY"),
                 "不支持协议的错误码应属于目标校验族：" + code1);
+        // (a2) 已注册但不可用的 Adapter（LQ-5：当前仅 qdrant 可注册）→ UNSAFE_ADAPTER_CAPABILITY
+        HttpResponse<String> rCap = submitKnowledge(
+                targetConfig("milvus", "http://127.0.0.1:19530", "milvus_collection"));
+        assertEquals(422, rCap.statusCode(), "不可用 Adapter 应 422：" + rCap.statusCode());
+        String capCode = JSON.readTree(rCap.body()).path("error").path("code").asText();
+        assertTrue(capCode.equals("UNSAFE_ADAPTER_CAPABILITY") || capCode.equals("INVALID_KNOWLEDGE_TARGET"),
+                "不可用 Adapter 错误码：" + capCode + "（若为后者，UNSAFE_ADAPTER_CAPABILITY 专属码未被实现触发——登记）");
         // (b) 缺 collection_ref
         HttpResponse<String> r2 = submitKnowledge(
                 "{\"schema_version\":1,\"target\":{\"adapter_type\":\"qdrant\","

@@ -63,7 +63,9 @@ compile() {
   find "$base/judge" "$base/base" "$base/fixtures/task_degradation_gate" \
        "$base/cases/integration/task_degradation_gate" \
        -name '*.java' > "$OUT/sources.txt"
-  printf '%s\n' "$base/lifecycle/ProcessLauncherTest.java" "$ROOT/feat112/tools/RunSelected.java" >> "$OUT/sources.txt"
+  # ProcessLauncherTest is a local-only component test (gitignored); compile it only where it exists.
+  [ -f "$base/lifecycle/ProcessLauncherTest.java" ] && printf '%s\n' "$base/lifecycle/ProcessLauncherTest.java" >> "$OUT/sources.txt"
+  printf '%s\n' "$ROOT/feat112/tools/RunSelected.java" >> "$OUT/sources.txt"
   javac -proc:none -encoding UTF-8 -cp "$ROOT/target/classes$SEP$(cat "$OUT/test-cp.txt")" \
     -d "$OUT/classes" @"$OUT/sources.txt"
   echo "compiled $(wc -l < "$OUT/sources.txt") sources into $OUT/classes"

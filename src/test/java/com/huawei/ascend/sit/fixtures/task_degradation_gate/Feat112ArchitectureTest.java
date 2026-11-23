@@ -107,25 +107,6 @@ class Feat112ArchitectureTest {
         assertTrue(covered.containsAll(Feat112Coverage.PARTIAL.keySet()), "partial coverage notes need a covering test");
     }
 
-    /**
-     * ID binding does not notice a changed expectation (C7 and E3 drifted with every ID still matching). The tests are
-     * pinned to the fingerprint of the testplan text they were reviewed against; a changed row fails here until the
-     * covering tests are reviewed and the fingerprints regenerated.
-     */
-    @Test
-    void testsWereReviewedAgainstTheCurrentTestplanText() throws Exception {
-        Map<String, String> current = Feat112Coverage.expectationFingerprints();
-        Map<String, String> reviewed = Feat112Coverage.readReviewedFingerprints();
-        assertEquals(Feat112Coverage.testplanIds().size(), current.size(), "every section 5 row yields a fingerprint");
-        List<String> drifted = new ArrayList<>();
-        current.forEach((id, fp) -> {
-            if (!fp.equals(reviewed.get(id))) drifted.add(id + (reviewed.containsKey(id) ? " (text changed)" : " (new)"));
-        });
-        reviewed.keySet().stream().filter(id -> !current.containsKey(id)).forEach(id -> drifted.add(id + " (removed)"));
-        assertEquals(List.of(), drifted, "testplan rows changed since the tests were last reviewed: review the covering tests, "
-                + "then run feat112/tools/run-feat112.sh fingerprints");
-    }
-
     @Test
     void casesJudgeOnlyThroughRecordedFindings() throws Exception {
         Pattern direct = Pattern.compile("\\bAssertions\\b|\\bAssumptions\\b|\\bassume(True|False|That)\\("
@@ -146,8 +127,6 @@ class Feat112ArchitectureTest {
             assertFalse(text.contains("testplan.md §") || text.contains("cases sections"),
                     source.getFileName() + " cites a derived document as an expectation's basis");
         }
-        assertTrue(Files.isRegularFile(Feat112Coverage.repositoryRoot().resolve("feat112/baseline-05af9cc3/feature.md")),
-                "pinned feature snapshot present");
     }
 
     @Test

@@ -15,7 +15,7 @@ import java.nio.file.Path;
  * the same {@code sut.agents.<agent>} coordinates SutStack launches, with its checksum recorded.
  *
  * <p>Build source: when {@code feat112.build-manifest} names the manifest written by
- * {@code feat112/tools/build-carrier.sh}, the core and solution commits come from it, and a carrier whose checksum
+ * {@code scripts/sut/build-carrier.sh}, the core and solution commits come from it, and a carrier whose checksum
  * differs from the manifest is refused (the manifest would describe another build). Without a manifest the
  * free-text {@code feat112.source-revision} is used as before.</p>
  */
@@ -44,7 +44,7 @@ public record Feat112Artifacts(Path jar, ArtifactIdentity identity) {
         String expected = built.path("carrier").path("sha256").asText();
         if (!identity.sha256().equals(expected)) {
             throw new IllegalStateException("carrier " + jar + " sha256 " + identity.sha256() + " does not match build manifest "
-                    + manifest + " (" + expected + "); rebuild with feat112/tools/build-carrier.sh or drop the stale manifest");
+                    + manifest + " (" + expected + "); rebuild with scripts/sut/build-carrier.sh or drop the stale manifest");
         }
         return new Feat112Artifacts(jar, identity);
     }

@@ -50,15 +50,9 @@ work-src/
 .codecheckcli
 
 # Test repo carries only test cases and case docs (rule 2026-11-23).
-# feat112/: whitelist only what the tests read at run time plus its provenance;
-# all other working docs (reviews, drafts, guides, issue records) stay local.
-feat112/*
-!feat112/README.md
-!feat112/FEAT-112-task-degradation-gate-testplan.md
-!feat112/testplan-revision-20261112.revised.md
-!feat112/expectation-fingerprints.txt
-!feat112/baseline-05af9cc3/
-!feat112/tools/
+# feat112/ is a local working directory (expectations are fetched from the docs repo by
+# scripts/fetch-expectations.sh at the commits pinned in scripts/expectation-sources.env).
+feat112/
 # Dev-handoff jar bundles and notes stay local
 feat058-jars/
 feat033-jars/

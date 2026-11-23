@@ -10,7 +10,7 @@
 #               demo directory is untracked there and is copied in, its content hash recorded
 #
 # Usage (from the acceptance repo root):
-#   M2=D:/m2-feat112 feat112/tools/build-carrier.sh
+#   M2=D:/m2-feat112 scripts/sut/build-carrier.sh
 # Optional: CORE_REPO, SOL_REPO, WORK, SKIP_FETCH=1, SKIP_BACKUP=1,
 #   SOL_REF (default origin/common after a fetch: the latest common branch, built in a clean worktree so the
 #   local checkout is neither touched nor needs pulling; use SOL_REF=HEAD for the checkout's own commit),

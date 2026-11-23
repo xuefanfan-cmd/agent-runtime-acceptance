@@ -16,11 +16,11 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 ## 1. 基线、范围与端到端关系
 
 本次设计基线为已合入 PR 498 的提交 `05af9cc3796ac953aee157e9c0b35621552232f4`；以下设计快照固定于该提交，不代表可变缓存工作树：
-- [特性档](../../feat112/baseline-05af9cc3/feature.md)：§2 验收出口、§3.1 准入、§3.2 健康面、§5 状态/窗口机制。
-- [L2 设计](../../feat112/baseline-05af9cc3/design-L2.md)：实现证据及明确列出的需求差距，不用于覆盖需求。
-- [testplan](../../feat112/FEAT-112-task-degradation-gate-testplan.md)：docs main 已合入版本 `a1db9d86`，§5 共 65 行；同步来源与 commit 见 [文档入口](../../feat112/README.md)。PR 483 已以 `a1db9d86` 内容合入 docs main；按特性档修订的 testplan（三轮，逐项修订清单本地留档）已于 2026-11-17 提交为 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549)，合入并回读前本地副本仍是 `a1db9d86`，本文与代码按修订后的预期执行。2026-11-16 逐条评审后的修订版 §5 共 82 行，工作副本为 [testplan-revision-20261112.revised.md](../../feat112/testplan-revision-20261112.revised.md)（`Feat112Coverage.testplan()` 优先读取它，运行来源记录其 sha256），逐条评审结论本地留档。发布测试报告时必须记实际使用的文档 commit，不以可变文件路径代替版本基线。
+- 特性档（docs 仓 `develop/02-features/FEAT-112-task-degradation-gate.md` @ `05af9cc3`，核对一律回 docs 仓看该提交）：§2 验收出口、§3.1 准入、§3.2 健康面、§5 状态/窗口机制。
+- L2 设计（docs 仓 `develop/03-architecture/L2-Low-Level-Design/deepanalyze/FEAT-112-task-degradation-gate.md` @ `05af9cc3`）：实现证据及明确列出的需求差距，不用于覆盖需求。
+- testplan：测试仓不存副本。执行文本按 [scripts/expectation-sources.env](../../scripts/expectation-sources.env) 的 pin 由 `scripts/fetch-expectations.sh` 取到 `target/expectations/`，`Feat112Coverage` 读取；pin 变更即预期变更，须随用例复核一起评审。按特性档修订的三轮 testplan（§5 共 84 行）经 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549) 已合入 docs main，当前 pin 为 main 提交 `80934552`（内容已核验）。每轮实跑前运行 `scripts/fetch-expectations.sh check-sync` 对照 docs main；发布测试报告时记 pin 的 commit，不以可变文件路径代替版本基线。
 - 多维比对（不作预期来源）：DA L2（docs PR 538 刷新中）、ext L2 分类规格（docs PR 463）、代码。与特性档不一致之处逐条登记到差异清单与 PR 评论，不改写本文期望。
-- 被测物来源：agent-core-java `develop` 最新（当前 `e24bcb74d`）+ solution `common` 最新（当前 `1127a9ece7b`），由 `feat112/tools/build-carrier.sh` 在干净工作树中构建，构建清单 `feat112-build-manifest.json` 记录两边 commit、制品 sha256 与载体内捆绑 core 的一致性校验；运行时不一致即拒绝。
+- 被测物来源：agent-core-java `develop` 最新（当前 `e24bcb74d`）+ solution `common` 最新（当前 `1127a9ece7b`），由 `scripts/sut/build-carrier.sh` 在干净工作树中构建，构建清单 `feat112-build-manifest.json` 记录两边 commit、制品 sha256 与载体内捆绑 core 的一致性校验；运行时不一致即拒绝。
 - demo：solution 仓 `common/example/task-degradation-gate-acceptance-demo/`。
 
 链路为：**特性要求 → testplan ID → 本文 case/判据 → 驱动真实 demo → 留证 → 独立判定 → 判据自测 → 执行报告 → D1/D2 反馈**。

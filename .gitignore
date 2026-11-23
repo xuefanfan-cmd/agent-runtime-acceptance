@@ -51,3 +51,12 @@ work-src/
 
 # FEAT-112 source-fetch cache (790MB, contains nested git checkouts)
 feat112/.src-cache/
+
+# Review-type docs and outbound comment drafts stay local only (never committed);
+# other docs must describe the issue instead of referencing these files (rule 2026-11-23)
+feat112/SIT-REVIEW-*.md
+feat112/review-*.md
+feat112/pr*-comment-*.md
+feat112/pr*-correction-*.md
+# Issue drafts are tracked as issues in the gitcode repos; local originals only
+docs/issues/

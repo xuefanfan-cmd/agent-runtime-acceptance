@@ -38,9 +38,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>故障隔离（F111-15）：trace 采样关闭（OTel 规范 env OTEL_TRACES_SAMPLER=always_off）
  *       不影响成本指标完整性；OTLP 接收端不可达（连接拒绝）不拖垮任务终态
  *       （OTLP 推送失败由 OtlpHttpMetricsSender 吞掉——库内建行为）。</li>
- *   <li>留档面（F111-18，non-gating）：DaCostTracker 启动日志明示 reconcile_diff 不在
- *       engine 侧对账；currency 仅配置字段不参与计算（DV-111-08）；unit 不断言
- *       （DV-111-10）。</li>
+ *   <li>留档面（F111-18，non-gating，!514 复审三子面最小断言）：①计价输入不含
+ *       currency 字段；②无 reconcile_diff 记录生成；③指标 unit 属性缺省——三子面各以
+ *       OTLP 接收端 dump 字段在场性断言，违规按 WARN+should_violation 记账；
+ *       currency 仅配置字段不参与计算（DV-111-08）、reconcile_diff 不在 engine 侧对账
+ *       （DV-111-09）、unit 不设（DV-111-10）。</li>
  * </ul>
  */
 @Tag("integration")
@@ -255,11 +257,35 @@ class Feat111MetricsBoundsIT {
     /* ==================== F111-18 留档面（non-gating） ==================== */
 
     @Test
-    @Story("F111-18: 启动日志明示 reconcile_diff 不在 engine 侧对账（留档）")
-    @DisplayName("F111-18: 对账留档面")
-    void reconcileDiffArchivedFace() {
-        assertThat(DaReflectionCostSupport.sutLogContains(
-                "reconcile_diff is not reconciled here"))
+    @Story("F111-18: 留档三子面最小断言（!514 复审）——①计价输入不含 currency 字段 ②无 reconcile_diff 记录生成 ③指标 unit 属性缺省（OTLP 接收端 dump 字段在场性）")
+    @DisplayName("F111-18: 留档三子面 dump 在场性")
+    void reconcileDiffArchivedFace() throws Exception {
+        try (Env env = startEnv(agent -> { }, stub -> { })) {
+            runTask(env, "sess-f111-18-" + System.nanoTime());
+            // 在场性正向对照：dump 必须真的收到了成本/用量序列——否则三子面的"缺席"断言全是空转
+            boolean usageSeen = DaReflectionCostSupport.await(OTLP_WAIT, Duration.ofMillis(500),
+                    () -> env.otlp().hasSeries(DaReflectionCostSupport.M_TOKEN_USAGE, tags -> true));
+            assertThat(usageSeen).as("正向对照：OTLP dump 收到 token.usage 序列（在场性前提）").isTrue();
+
+            List<DaReflectionCostSupport.OtlpSeries> all = env.otlp().pushes().stream()
+                    .flatMap(p -> p.series().stream()).toList();
+            assertThat(all).as("dump 序列非空（在场性前提）").isNotEmpty();
+
+            // ② 无 reconcile_diff 记录生成（DV-111-09：reconcile 不在 engine 侧对账）
+            assertThat(all.stream().map(DaReflectionCostSupport.OtlpSeries::name)
+                    .anyMatch(n -> n.toLowerCase().contains("reconcile")))
+                    .as("② dump 中无 reconcile_diff 记录生成").isFalse();
+            // ① 计价输入不含 currency 字段（DV-111-08：currency 仅配置字段不参与计算）
+            assertThat(all.stream().flatMap(s -> s.tags().keySet().stream())
+                    .anyMatch(k -> k.toLowerCase().contains("currency")))
+                    .as("① 任意序列属性键不含 currency 字段").isFalse();
+            // ③ 指标 unit 属性缺省（DV-111-10：unit 不设）
+            assertThat(all.stream().filter(s -> s.unit() != null && !s.unit().isEmpty())
+                    .map(s -> s.name() + " unit=" + s.unit()).toList())
+                    .as("③ 全部序列的 OTLP Metric.unit 缺省（field 5 不出现）").isEmpty();
+        }
+        // 书面说明留档行（启动日志明示 reconcile_diff 不在 engine 侧对账——既证面保留）
+        assertThat(DaReflectionCostSupport.sutLogContains("reconcile_diff is not reconciled here"))
                 .as("DaCostTracker 启动日志留档行存在").isTrue();
     }
 

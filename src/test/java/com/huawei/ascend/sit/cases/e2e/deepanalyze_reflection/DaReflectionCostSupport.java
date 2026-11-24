@@ -1029,7 +1029,8 @@ public final class DaReflectionCostSupport {
     /* ==================== 受控 OTLP 接收端（protobuf wire 解析） ==================== */
 
     /** 一个指标序列（一次推送中的累计值）。 */
-    public record OtlpSeries(String name, Map<String, String> tags, double value) {
+    /** 一条 OTLP 序列（F111-18 扩展：unit=Metric 级 unit 字段原文——OTLP Metric field 5，缺省为 null）。 */
+    public record OtlpSeries(String name, Map<String, String> tags, double value, String unit) {
     }
 
     /** 一次 OTLP 推送快照。 */
@@ -1038,7 +1039,7 @@ public final class DaReflectionCostSupport {
 
     /**
      * 进程内受控 OTLP/HTTP 接收端（http/protobuf；wire format 最小解析——
-     * ExportMetricsServiceRequest → ResourceMetrics[1] → ScopeMetrics[2] → Metric{name=1,sum=7}
+     * ExportMetricsServiceRequest → ResourceMetrics[1] → ScopeMetrics[2] → Metric{name=1,unit=5,sum=7}
      * → Sum{data_points=1} → NumberDataPoint{attributes=7, as_double=4, as_int=6}；
      * KeyValue{key=1,value=2} → AnyValue{string_value=1}）。
      */
@@ -1227,10 +1228,14 @@ public final class DaReflectionCostSupport {
 
         private static void parseMetric(byte[] metric, List<OtlpSeries> out) {
             String name = null;
+            String unit = null;
             byte[] sum = null;
             for (Field field : fields(metric)) {
                 if (field.number() == 1 && field.wireType() == 2) {
                     name = new String(field.value(), StandardCharsets.UTF_8);
+                } else if (field.number() == 5 && field.wireType() == 2) {
+                    // F111-18 ③子面：OTLP Metric.unit（field 5）——缺省（不设）时该 field 不出现
+                    unit = new String(field.value(), StandardCharsets.UTF_8);
                 } else if (field.number() == 7 && field.wireType() == 2) {
                     sum = field.value();
                 }
@@ -1239,11 +1244,12 @@ public final class DaReflectionCostSupport {
                 return;
             }
             for (byte[] dataPoint : messages(sum, 1)) {
-                parseDataPoint(name, dataPoint, out);
+                parseDataPoint(name, unit, dataPoint, out);
             }
         }
 
-        private static void parseDataPoint(String metricName, byte[] dataPoint, List<OtlpSeries> out) {
+        private static void parseDataPoint(String metricName, String unit, byte[] dataPoint,
+                List<OtlpSeries> out) {
             Map<String, String> tags = new LinkedHashMap<>();
             double value = 0;
             for (Field field : fields(dataPoint)) {
@@ -1255,7 +1261,7 @@ public final class DaReflectionCostSupport {
                     value = field.fixed64();
                 }
             }
-            out.add(new OtlpSeries(metricName, Map.copyOf(tags), value));
+            out.add(new OtlpSeries(metricName, Map.copyOf(tags), value, unit));
         }
 
         private static void parseKeyValue(byte[] keyValue, Map<String, String> tags) {

@@ -34,17 +34,17 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 068-S10/S11（真机 e2e）共用基座——与 067 线 {@link DaOrchestrationE2EBase} 同型但<b>独立实现</b>：
- * SUT 钉本批自己的制品条目 {@code deepanalyze-feat068}（r3 回归起 = {@code 0.1.3-feat068-r3:exec}，
- * 源=common@cf4571b30（!860，内含 #462 观察层断链修复），指纹见 01-Design_File/20261019-feat-068-team-template/
- * evidence/20261019-build-feat068/ r3 段），证据不共用 067 线的 SUT 钉子，也不耦合其在途文件。
+ * 068-S10/S11/S12/S13（真机 e2e）共用基座——与 067 线 {@code DaOrchestrationE2EBase} 同型但<b>独立实现</b>：
+ * SUT 钉本批自己的制品条目 {@code deepanalyze-feat068}（本轮 = {@code 0.1.3-feat068-r6:exec}，
+ * 源=common@babb882b9（基线检出 sit-baseline-r3，2026-11-24 构建，!510 评审后实现轮），
+ * 指纹见 01-Design_File/20261019-feat-068-team-template/evidence/20261019-build-feat068/ r6 段），
+ * 证据不共用 067 线的 SUT 钉子，也不耦合其在途文件。
  *
  * <p>继承的已登记偏差（与 067 线同族，判据均为结构性、不受影响）：
  * <ul>
  *   <li>DEFAULT_TOOL_CALL_TIMEOUT=1800（本基座 env 注入）——产品默认 300s 下 shipped 模板不可达，已登记产品缺陷 D3；</li>
- *   <li>checkpointer in_memory 绕行（fat jar ServiceLoader TCCL 问题，产品缺陷 D4；撤除绑定 #465 回归轮，需 core 前移）；</li>
- *   <li>max-iterations=4（yml system-properties）——绕模型网关间歇超时；stream-idle 越界键已于 2026-10-21
- *       移除（docs#32 裁决：显式越界在 058 落地后启动即拒）。</li>
+ *   <li>checkpointer：r4 起撤除 in_memory 绕行（D4 修复 f4ac34e6/!400 已进 r4+ core 基线，默认装配可用）；</li>
+ *   <li>max-iterations=4（yml system-properties）——绕模型网关间歇超时（D3 族，结构性）。</li>
  * </ul>
  * 本轮 PASS 不得被读成"用户用默认配置也能跑通模板"（同 067 线口径）。
  *
@@ -52,10 +52,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 模型未调用 {@code workflow_run} = L3 不确定性 ⇒ INCONCLUSIVE（不判 FAIL）；
  * 任务 failed = 产品侧失败 ⇒ FAIL（与模型未配合严格分流）。
  *
- * <p><b>2026-10-26（r5 起）权限确认续跑</b>：!873 权限引擎落线后，bash 类工具按治理裁定
- * permission=ask（governance/actrule.yaml，无配置开关），长任务可能以待答收场——产品设计交互。
+ * <p><b>权限确认续跑（!873 权限引擎落线后的产品设计交互）</b>：治理裁定 bash 类工具 permission=ask
+ * （governance/actrule.yaml，场景合并只紧不松、无配置开关），长任务可能以待答收场——<b>不是缺陷</b>。
  * {@link #resolvePermissionAsks} 沿设计面续跑（/answer 批准 → /stream 重放取 complete 聚合帧），
- * 快照与 /run 同形，下游断言不变。</p>
+ * 快照与 /run 同形，下游断言不变。
  */
 abstract class DaTemplateE2EBase extends BaseManagedStackTest {
 
@@ -124,15 +124,13 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
     private static final int MAX_PERMISSION_ROUNDS = 3;
 
     /**
-     * 2026-10-26（r5 起，随 !873 权限引擎落线）：治理裁定对 bash 类工具 permission=ask
-     * （engine 治理资源 governance/actrule.yaml {@code tools.bash: ask}，场景合并只紧不松、无配置开关），
-     * 长任务可能以待答（awaiting_answer）收场——这是<b>产品设计的交互面，不是缺陷</b>。
-     * 测试侧沿设计面续跑：POST /answer/{taskId} 批准（缺省 toolCallId=回填最近一个待答，服务端组包
-     * 结构化 {approved,feedback}）→ 轮询 /status/{taskId} 待记录离开待答 → 终态后经
-     * GET /stream/{taskId} 重放取 complete 终帧（携带 output+toolCalls 聚合）组装与 /run 同形的快照。
-     * 每轮 Allure 留证；上限 {@value MAX_PERMISSION_ROUNDS} 轮。
+     * 权限确认续跑（!873 权限引擎落线，产品设计交互）：POST /answer/{taskId} 批准（服务端组包
+     * 结构化 {approved,feedback}，纯文本会被丢弃形成死循环——契约见 DaCompatController/DaTaskRecordAnswerTest）
+     * → 轮询 /status/{taskId} 待记录离开待答 → 终态后经 GET /stream/{taskId} 重放取 complete 终帧
+     * （携带 output+toolCalls 聚合）组装与 /run 同形的快照。每轮 Allure 留证；上限 {@value MAX_PERMISSION_ROUNDS} 轮。
+     * protected：子类（DaTemplateSessionChannelE2EIT）的 postRun 通道复用同一续跑契约。
      */
-    private JsonNode resolvePermissionAsks(final JsonNode initial, final String sessionId) throws Exception {
+    protected JsonNode resolvePermissionAsks(final JsonNode initial, final String sessionId) throws Exception {
         JsonNode resp = initial;
         final String taskId = resp.path("taskId").asText();
         int round = 0;
@@ -159,13 +157,15 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
         return resp;
     }
 
-    /** 轮询任务记录直到离开 awaiting_answer（completed/failed），返回末次 status 文本。 */
-    private String pollUntilLeftAwaiting(final String taskId, final String sessionId) throws Exception {
+    /** 轮询任务记录直到真正终态（completed/failed）。2026-11-24 修正：原实现见非 awaiting 即返回，
+     * 但 /answer 恢复后任务先回到 running（ask_user 场景主 agent 还要继续多轮 LLM），立即返回会让
+     * stream 重放拿不到 complete 帧——e2e-21 S12a 首用实证。 */
+    private String pollUntilTerminal(final String taskId, final String sessionId) throws Exception {
         final long deadline = System.nanoTime() + RUN_TIMEOUT.toNanos();
         String status = "awaiting_answer";
         while (System.nanoTime() < deadline) {
             status = taskStatus(taskId, sessionId);
-            if (!"awaiting_answer".equals(status)) {
+            if ("completed".equals(status) || "failed".equals(status)) {
                 return status;
             }
             Thread.sleep(5000L);
@@ -185,9 +185,11 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
         return MAPPER.readTree(response.body()).path("status").asText();
     }
 
-    /** 终态后组装与 /run 同形的快照：complete 终帧（output+toolCalls）＋记录 status 兜底。 */
+    /** 终态后组装与 /run 同形的快照：complete 终帧（output+toolCalls）＋记录 status 兜底；
+     * 2026-11-24 增 /status 聚合兜底（ENV-3.12：status 出参含 toolCalls 聚合）——stream 重放
+     * 未取得 complete 帧时（兼容层发射缺口，ENV-5.19 同族）不放弃取证。 */
     private JsonNode awaitContinuationSnapshot(final String taskId, final String sessionId) throws Exception {
-        final String recordStatus = pollUntilLeftAwaiting(taskId, sessionId);
+        final String recordStatus = pollUntilTerminal(taskId, sessionId);
         final HttpResponse<InputStream> stream = DaCompatSseSupport.openStream(
                 http, base, taskId, sessionId, null, RUN_TIMEOUT);
         final List<DaCompatSseSupport.Frame> frames = DaCompatSseSupport.readFrames(stream.body(),
@@ -208,6 +210,23 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
         if (complete != null) {
             snapshot.set("output", complete.path("output"));
             snapshot.set("toolCalls", complete.path("toolCalls"));
+        } else {
+            // 兜底：/status/{taskId} 的聚合出参（compat 层同源聚合面）
+            final HttpRequest statusReq = HttpRequest.newBuilder()
+                    .uri(URI.create(base + "/status/" + taskId))
+                    .timeout(READ_TIMEOUT)
+                    .header(SESSION_HEADER, sessionId)
+                    .GET()
+                    .build();
+            final HttpResponse<String> statusResp = http.send(statusReq,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            Allure.addAttachment("续跑 /status 兜底快照（stream 无 complete 帧）", "text/plain",
+                    truncate(statusResp.body(), 8192));
+            final JsonNode statusBody = MAPPER.readTree(statusResp.body());
+            if (statusBody.has("output") || statusBody.has("toolCalls")) {
+                snapshot.set("output", statusBody.path("output"));
+                snapshot.set("toolCalls", statusBody.path("toolCalls"));
+            }
         }
         Allure.addAttachment("权限续跑后快照", "text/plain", truncate(snapshot.toString(), 4096));
         return snapshot;
@@ -243,10 +262,9 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
                 + snapshot.path("error").asText());
     }
 
-    /** 取 workflow_run 出参并断言成功形态。r3 线格式=JSON 对象（status/workflow_id/final_output/steps）
-     * ——2026-10-21 e2e-07 实测锚定，取代 r2 时代自 067 run-16 携带的「ToolOutput(」文本形态假设
-     * （该假设在 r2 期间因 GAP-068-01 从未见真实出参、从未被验证，属 Oracle 确认错误）。
-     * 返回解析后的出参根节点。 */
+    /** 取 workflow_run 出参并断言成功形态：JSON 对象（status/workflow_id/final_output/steps[]）。
+     * 该形态于 2026-10-21 e2e-07 实测锚定（r3 起稳定，历经 r3/r4/r5 三代制品回归不变）；
+     * 若换基线后形态漂移，先做三方定位再经用户确认改 Oracle（形态类断言=实现细节，判据钉契约不钉形态）。 */
     protected com.fasterxml.jackson.databind.JsonNode requireSuccessOutput(final JsonNode call) {
         final String raw = call.path("output").asText();
         assertThat(raw).as("workflow_run 的 tool_result 应回填 output（#462 修复后应非空）").isNotBlank();
@@ -286,9 +304,9 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
         return steps;
     }
 
-    /* ---- 步骤级期望推导（GAP-068-01 恢复，2026-10-21 r3 回归升级）----
-     * 执行基准与 SUT 同源：静态模板期望从被测制品 classpath 的随包 yaml 经同一 BlueprintLoader 编译推导；
-     * 动态模板（@ 通道）期望直接调用同制品的 DynamicTeamTemplates 纯函数推导——用例内不硬编码数字。 */
+    /* ---- 步骤级期望推导（执行基准与 SUT 同源，用例内零硬编码）----
+     * 静态模板期望从被测制品 classpath 的随包 yaml 经同一 BlueprintLoader 编译推导；
+     * 动态模板（@ 通道）期望直接调用同制品的 DynamicTeamTemplates 纯函数推导。 */
 
     /** 期望步骤（编译产物推导）：skipAllowed=该步在资产里声明了 skip_if（非 NEVER）。 */
     protected record ExpectedStep(String id, String member, boolean skipAllowed) {
@@ -338,28 +356,6 @@ abstract class DaTemplateE2EBase extends BaseManagedStackTest {
                         .isFalse();
             }
         }
-    }
-
-    protected static String extractWorkflowId(final String raw) {
-        final int at = raw.indexOf("workflow_id=");
-        if (at < 0) {
-            return "";
-        }
-        final int from = at + "workflow_id=".length();
-        int end = from;
-        while (end < raw.length() && ", }".indexOf(raw.charAt(end)) < 0) {
-            end++;
-        }
-        return raw.substring(from, end);
-    }
-
-    private static String between(final String text, final String from, final String to) {
-        final int a = text.indexOf(from);
-        if (a < 0) {
-            return "";
-        }
-        final int b = text.indexOf(to, a + from.length());
-        return b < 0 ? "" : text.substring(a + from.length(), b);
     }
 
     protected static String truncate(final String text, final int max) {

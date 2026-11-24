@@ -18,7 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Oracle 来源：FEAT-068 Feature §2 行1（parallel-deep-retrieval 为八套之一，"照各自形态执行"）；
  * L2-068 §2.1（{语义,精确}双路并行→汇总）；对应 L2 §7.1 行8 的同型判据（"双路标记汇聚到汇总员"）。
  *
- * <p>判据边界：结构性断言（步骤集/顺序/双路步与汇总步的产物在场）；不断言检索质量。
+ * <p>成员工具面：e2e 侧观测＝成员工具实调记录 ⊆ 白名单（SUT 日志成员工具 outcome 面，随执行轮取证）；
+ * 静态承载见组件层 {@code TemplateMemberToolSetStaticTest}（MEMBER_TOOLS 与 L2-067 清单对账）。
+ *
+ * <p>判据边界：结构性断言（步骤集/顺序/双路步与汇总步的产物在场）；不断言检索质量与产物内容。
  */
 @Tag("e2e")
 @Tag("deepanalyze")
@@ -39,14 +42,13 @@ class DaTemplateParallelRetrievalE2EIT extends DaTemplateE2EBase {
         failIfTaskFailed(snapshot);
         final com.fasterxml.jackson.databind.JsonNode call = requireWorkflowRunCall(snapshot);
 
-        // ① 点名核对（input 为对象节点，取序列化文本——首轮实测缺陷）
+        // ① 点名核对（input 为对象节点，取序列化文本——r2 首轮实测缺陷）
         final String callInput = call.path("input").isMissingNode() ? "" : call.path("input").toString();
         assertThat(callInput).as("① workflow_run 的入参应点名 parallel-deep-retrieval；实收=%s",
                 truncate(callInput, 512)).contains("parallel-deep-retrieval");
 
-        // ② 步骤级留痕（GAP-068-01 恢复：#462 观察层断链修复后 tool_result 回填——2026-10-21 随 r3
-        //    制品回归升级回真执行）。期望=被测制品 classpath 随包资产编译序（semantic→exact→summary，
-        //    资产未声明 skip_if ⇒ 三步均不得 skipped），不在用例内硬编码。
+        // ② 步骤级留痕（#462 修复后 tool_result 回填，r3 起为真执行面）。
+        //    期望=被测制品 classpath 随包资产编译序（semantic→exact→summary，资产未声明 skip_if ⇒ 三步均不得 skipped）。
         assertStepsMatch(extractSteps(requireSuccessOutput(call)),
                 expectedStepsFromAsset("parallel-deep-retrieval"));
 

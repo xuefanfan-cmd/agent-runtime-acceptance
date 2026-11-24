@@ -25,11 +25,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>与 FEAT-065/066/067 线的 {@code OrchestrationTestSupport}/{@code DaWorkflowTestSupport} 同一装配哲学：
  * 被测单元的公开构造器全部可注入，无需拉起宿主进程、无需模型凭据。确定性成员执行体由测试提供是
  * FEAT-065 §3「成员绑定契约」明文交给装配方的设计位置——<b>这不是 Mock LLM</b>（真实模型形态由
- * 068-S10/S11 端到端承接，两层互为对照）。
+ * 068-S10/S11 端到端承接，两层互为对照；测试方向已经用户确认）。
  *
  * <p>模板资产读取自被测制品 classpath（engine plain jar 的 {@code /workflow-templates/*.yaml}），
- * 制品坐标 {@code deepanalyze-engine:0.1.3-feat068}（源=agent-solution common@6cdf72a6b，
- * 指纹见批次 evidence/20261019-build-feat068/）。
+ * 制品坐标 {@code deepanalyze-engine:0.1.3-feat068-r6}（源=agent-solution common@babb882b9，
+ * 基线检出 sit-baseline-r3，2026-11-24 构建；指纹见批次 evidence/20261019-build-feat068/ r6 段）。
+ * 换基线时本制品钉子与指纹必须重测（期望常量随基线漂移纪律）。
  */
 final class DeepanalyzeTemplateTestSupport {
 

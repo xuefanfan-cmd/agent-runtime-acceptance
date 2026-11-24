@@ -23,10 +23,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Oracle 来源：FEAT-068 Feature §2 行3 / §4 场景表 / §5.1.4；L2-068 §2.3（crossKbComparison /
  * zeroHallucination）、§5（成员 id=searcher-i、步骤 id=search-i、comparator/cross-validator/citation-reporter）。
- * 行号挂点（基线 ce9019d86，post-085 形态：类已移入 orchestration 包，类体与 !768 版逐字等价——已 diff 核证）：crossKbComparison :31-56、zeroHallucination :59-75、空列表 :33-35。
+ * 源码挂点（基线 r6=babb882b9，2026-11-24 实读）：crossKbComparison :31-51、zeroHallucination :59-70、
+ * 空列表 :33-35、null :32；类 javadoc 明写「1 个也照常生成单路形态」（:28）。
+ *
+ * <p><b>068-S05 单库退化=MUST 硬断言（!510 评审升格，2026-11-18）</b>：Oracle=Feature §4 场景表
+ * 「单库退化」行（L1 :63 逐字："两种形态均照常生成单路形态,不报错:跨库对比=一路检索+对比汇总;
+ * 零幻觉变体=一路检索+交叉验证+引用报告"，!344 后现行文）。两形态各一 gating 方法：
+ * 跨库对比单库=一路检索+对比汇总（searcher-1/comparator，search-1→compare）；
+ * 零幻觉变体单库=一路检索+交叉验证+引用报告（searcher-1/cross-validator/citation-reporter，
+ * search-1→validate→report）。生成器为纯函数——"照常生成、不报错"由"调用无异常+结构断言全过"承载。
+ * 原「保守观察项」口径随 !344 的 A1 销项（Feature 单库退化行扩写覆盖两形态）废止。
  *
  * <p>主断言与失效拦截：若生成器把 kbId 拼进标识或依赖闭合被破坏，S04 的 containsExactly/dependsOn
- * 断言即红（细档最小例子 2）。
+ * 断言即红（细档最小例子 2）；单库退化若报错或生成多路/缺员形态，S05 两个 gating 方法即红。
  */
 @Tag("component")
 @Tag("feat-068")
@@ -35,6 +44,9 @@ class DynamicTeamTemplateTest {
 
     /** 刻意含非 ASCII 与连字符的知识库 id：验证"只进指令、不进标识"。 */
     private static final List<String> KB_IDS = List.of("kb-阿尔法-α", "kb-beta/01", "kb:γ:特殊");
+
+    /** 单库退化（MUST）的单一知识库 id。 */
+    private static final List<String> SINGLE_KB = List.of("kb-only-1");
 
     @Test
     @Story("068-S04: 动态跨库对比契约")
@@ -73,8 +85,8 @@ class DynamicTeamTemplateTest {
     }
 
     @Test
-    @Story("068-S05: 动态零幻觉契约")
-    @DisplayName("068-S05 validate 依赖全部检索步、report 只依赖 validate；无 comparator")
+    @Story("068-S05: 动态零幻觉契约与单库退化硬断言")
+    @DisplayName("068-S05 零幻觉变体（多库）：validate 依赖全部检索步、report 只依赖 validate；无 comparator")
     void zeroHallucinationAddsValidateAndCitationReport() {
         final var spec = DynamicTeamTemplates.zeroHallucination(KB_IDS);
 
@@ -96,15 +108,67 @@ class DynamicTeamTemplateTest {
     }
 
     @Test
-    @Story("068-S05: 动态零幻觉契约")
-    @DisplayName("068-S05 观察项（REQ-006，保守口径）：零幻觉单库退化照常生成，不作 gating")
-    void zeroHallucinationSingleKbDegeneratesGracefully() {
-        // 观察（非 gating）：设计未单列承诺（Feature §4 单库退化行只覆盖跨库对比形态），
-        // 代码事实 zeroHallucination 复用 crossKbComparison（钉子 :65），单库可生成；口径待 ISSUE #34 A1。
-        final var spec = DynamicTeamTemplates.zeroHallucination(List.of("kb-only-1"));
-        assertThat(spec.members()).as("单库退化应生成 1 检索员 + 交叉验证员 + 引用报告员").hasSize(3);
-        assertThat(spec.steps().stream().map(s -> s.id()))
-                .as("单库退化步骤应为 search-1/validate/report").containsExactly("search-1", "validate", "report");
+    @Story("068-S05: 动态零幻觉契约与单库退化硬断言")
+    @DisplayName("068-S05 单库退化（MUST 硬断言）跨库对比形态：一路检索+对比汇总，照常生成不报错")
+    void crossKbComparisonSingleKbDegeneratesToSinglePathForm() {
+        // Oracle：Feature §4 场景表「单库退化」行（!344 现行文，L1 :63）——跨库对比=一路检索+对比汇总。
+        // 2026-11-18 评审升格为 MUST 硬断言（原保守观察项废止）；生成器纯函数，调用无异常+结构全过=照常生成。
+        final var spec = DynamicTeamTemplates.crossKbComparison(SINGLE_KB);
+
+        assertThat(spec.type()).as("单库跨库对比产物应为依赖图形态（DAG）").isEqualTo(BlueprintType.DAG);
+        assertThat(spec.id()).as("单库退化产物 id 应与多库一致（跨库对比分析）").isEqualTo("跨库对比分析");
+
+        final var memberIds = spec.members().stream().map(m -> m.id()).toList();
+        assertThat(memberIds).as("单库退化成员应恰为一路检索员 + 对比分析师（MUST：一路检索+对比汇总）")
+                .containsExactly("searcher-1", "comparator");
+
+        final var stepIds = spec.steps().stream().map(s -> s.id()).toList();
+        assertThat(stepIds).as("单库退化步骤应恰为一路检索 + 对比汇总")
+                .containsExactly("search-1", "compare");
+
+        final var compare = spec.steps().stream().filter(s -> s.id().equals("compare")).findFirst().orElseThrow();
+        assertThat(compare.dependsOn()).as("对比汇总步应依赖唯一检索步")
+                .containsExactly("search-1");
+
+        final var searcher = spec.members().stream().filter(m -> m.id().equals("searcher-1")).findFirst().orElseThrow();
+        assertThat(searcher.instruction()).as("检索员指令应含真实 kbId（kbId 只进指令）")
+                .contains("kb-only-1");
+        assertThat(memberIds.stream().noneMatch(id -> id.contains("kb-only-1")))
+                .as("kbId 不得泄入成员标识").isTrue();
+    }
+
+    @Test
+    @Story("068-S05: 动态零幻觉契约与单库退化硬断言")
+    @DisplayName("068-S05 单库退化（MUST 硬断言）零幻觉形态：一路检索+交叉验证+引用报告，照常生成不报错")
+    void zeroHallucinationSingleKbDegeneratesToSinglePathForm() {
+        // Oracle：Feature §4 场景表「单库退化」行（!344 现行文，L1 :63）——零幻觉变体=一路检索+交叉验证+引用报告。
+        // 2026-11-18 评审升格为 MUST 硬断言（原方法 zeroHallucinationSingleKbDegeneratesGracefully 为
+        // 非 gating 观察项，随 A1 销项废止并升格；源码挂点 zeroHallucination :59-70 复用 crossKbComparison）。
+        final var spec = DynamicTeamTemplates.zeroHallucination(SINGLE_KB);
+
+        assertThat(spec.type()).as("单库零幻觉产物应为依赖图形态（DAG）").isEqualTo(BlueprintType.DAG);
+        assertThat(spec.id()).as("单库退化产物 id 应与多库一致（零幻觉分析-动态）").isEqualTo("零幻觉分析-动态");
+
+        final var memberIds = spec.members().stream().map(m -> m.id()).toList();
+        assertThat(memberIds).as("单库退化成员应恰为一路检索员 + 交叉验证员 + 引用报告员（MUST：三员单路形态）")
+                .containsExactly("searcher-1", "cross-validator", "citation-reporter")
+                .doesNotContain("comparator");
+
+        final var stepIds = spec.steps().stream().map(s -> s.id()).toList();
+        assertThat(stepIds).as("单库退化步骤应恰为 一路检索 → 交叉验证 → 引用报告")
+                .containsExactly("search-1", "validate", "report")
+                .doesNotContain("compare");
+
+        final var validate = spec.steps().stream().filter(s -> s.id().equals("validate")).findFirst().orElseThrow();
+        assertThat(validate.dependsOn()).as("交叉验证步应依赖唯一检索步")
+                .containsExactly("search-1");
+        final var report = spec.steps().stream().filter(s -> s.id().equals("report")).findFirst().orElseThrow();
+        assertThat(report.dependsOn()).as("引用报告步应只依赖交叉验证步")
+                .containsExactly("validate");
+
+        final var searcher = spec.members().stream().filter(m -> m.id().equals("searcher-1")).findFirst().orElseThrow();
+        assertThat(searcher.instruction()).as("检索员指令应含真实 kbId（kbId 只进指令）")
+                .contains("kb-only-1");
     }
 
     @Test
@@ -112,7 +176,7 @@ class DynamicTeamTemplateTest {
     @DisplayName("068-S06 两形态空列表均抛 IllegalArgumentException（代码层契约，不过会话面）")
     void bothFormsRejectEmptyKbList() {
         assertThatThrownBy(() -> DynamicTeamTemplates.crossKbComparison(List.of()))
-                .as("跨库对比空列表应以参数异常拒绝（L2 :38）")
+                .as("跨库对比空列表应以参数异常拒绝（L2 :33-35）")
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> DynamicTeamTemplates.zeroHallucination(List.of()))
                 .as("零幻觉变体空列表同样拒绝（复用跨库对比入口）")

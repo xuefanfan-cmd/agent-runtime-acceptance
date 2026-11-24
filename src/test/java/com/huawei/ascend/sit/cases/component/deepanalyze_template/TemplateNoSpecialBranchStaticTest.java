@@ -18,17 +18,18 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * REQ-012 静态合同（<b>post-085 形态重定向版</b>）：动态产物与手写图纸<b>同权</b>——进同一请求/调度通道，无专用执行分支。
+ * REQ-012 静态合同（post-085 形态）：动态产物与手写图纸<b>同权</b>——进同一请求/调度通道，无专用执行分支。
  *
  * <p>Oracle 演进：原断言（Feature §5.1.1 / L2-068 §3.3，钉子 6cdf72a6b 形态）为"会话工具不引用动态生成器"；
  * 2026-10-19 用户裁决改测新形态后，被测面由 Feat-Func-085 接管——{@code workflow_run} 新增原版
  * {@code teamName}/@cross-kb-comparison 通道（085 L2 :182），动态产物与装载图纸走<b>同一个</b>
- * {@code Request} 通道（WorkflowRunTool.java :169 蓝图路径 / :183 动态路径 / :185 团队名→模板路径同型）。
- * 本类断言新形态下的"同权"实现事实：
+ * {@code Request} 通道。本类断言新形态下的"同权"实现事实（锚点经 2026-11-24 对 r6 基线
+ * WorkflowRunTool.java 实读复核，行号有漂移、内容锚不变）：
  * <ol>
- *   <li>动态分支产出与蓝图路径<b>同一 Request 通道</b>（无专用调度分支）；</li>
+ *   <li>蓝图路径与动态路径<b>同一 Request 通道</b>（WorkflowRunTool.java :229 蓝图 / :244 动态，同型
+ *       {@code new Request(...)}）；</li>
  *   <li>名字→全文解析接缝仍不装载（{@code loadTemplate} 委托 {@code BlueprintTemplates.load} 返回
- *       YAML 全文，装载归 {@code BlueprintLoader} 单点 :169/:185）；</li>
+ *       YAML 全文，装载归 {@code BlueprintLoader} 单点 :246/:282-283）；</li>
  *   <li>文本装载路径与团队名→模板路径共用 {@code BlueprintLoader.load}。</li>
  * </ol>
  * 缺源码根时记 SKIPPED（INCONCLUSIVE），不判产品 FAIL。
@@ -49,9 +50,9 @@ class TemplateNoSpecialBranchStaticTest {
         assertThat(tool).as("扫描自检：应能扫到会话工具类名").contains("class WorkflowRunTool");
 
         // ① 同一 Request 通道：蓝图路径与动态路径同型（new Request(spec, question)）
-        assertThat(tool).as("蓝图路径应经 BlueprintLoader.load 进 Request（:169 同型）")
+        assertThat(tool).as("蓝图路径应经 BlueprintLoader.load 进 Request")
                 .contains("new Request(BlueprintLoader.load(blueprint)");
-        assertThat(tool).as("动态跨库对比产物应直接进同一 Request 通道（:183 同型，085 接管后的同权实现）")
+        assertThat(tool).as("动态跨库对比产物应直接进同一 Request 通道（085 接管后的同权实现）")
                 .contains("new Request(DynamicTeamTemplates.crossKbComparison(kbIds)");
 
         // ② 解析接缝只做名字→全文（不装载）
@@ -60,7 +61,7 @@ class TemplateNoSpecialBranchStaticTest {
         assertThat(tool).as("loadTemplate 仍返回 YAML 全文（Optional<String>）")
                 .contains("static Optional<String> loadTemplate");
 
-        // ③ 文本装载归 BlueprintLoader 单点：工具内两次装载都经它（蓝图直给 :169 / 团队名→模板 :185）
+        // ③ 文本装载归 BlueprintLoader 单点：工具内两次装载都经它（蓝图直给 / 团队名→模板）
         assertThat(tool).as("模板全文与手写图纸共用 BlueprintLoader.load（同权装载，无模板专用装载分支）")
                 .contains("BlueprintLoader.load(loadTemplate(id)");
     }

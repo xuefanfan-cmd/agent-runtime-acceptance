@@ -45,14 +45,13 @@ class DaTemplateCouncilE2EIT extends DaTemplateE2EBase {
         final com.fasterxml.jackson.databind.JsonNode call = requireWorkflowRunCall(snapshot);
 
         // ① 模型确实点名了 council 模板（调用入参应含模板名）。
-        // input 是工具入参的对象节点（asText() 返回空串——首轮实测缺陷），改取节点序列化文本。
+        // input 是工具入参的对象节点（asText() 返回空串——r2 首轮实测缺陷），改取节点序列化文本。
         final String callInput = call.path("input").isMissingNode() ? "" : call.path("input").toString();
         assertThat(callInput).as("① workflow_run 的入参应点名 multi-perspective-council；实收=%s",
                 truncate(callInput, 512)).contains("multi-perspective-council");
 
-        // ② 步骤级留痕（GAP-068-01 恢复：#462 观察层断链修复后 tool_result 回填——2026-10-21 随 r3
-        //    制品回归升级回真执行）。期望=被测制品 classpath 随包 council 资产经同一 BlueprintLoader
-        //    编译的步骤序（p_*×3 → r_*×3 → audit），不在用例内硬编码。
+        // ② 步骤级留痕（#462 观察层断链修复后 tool_result 回填，2026-10-21 随 r3 起为真执行面）。
+        //    期望=被测制品 classpath 随包 council 资产经同一 BlueprintLoader 编译的步骤序（p_*×3 → r_*×3 → audit）。
         assertStepsMatch(extractSteps(requireSuccessOutput(call)),
                 expectedStepsFromAsset("multi-perspective-council"));
 

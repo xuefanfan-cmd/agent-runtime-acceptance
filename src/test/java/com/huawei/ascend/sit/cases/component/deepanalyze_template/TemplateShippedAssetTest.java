@@ -22,11 +22,16 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  * 068-S01：八套随仓模板逐套装载与结构判据（含 REQ-015 坏图纸负例变体）。
  *
  * <p>Oracle 来源：FEAT-068 Feature §2 行1（"每套均可被图纸装载器装载为合法图纸，成员声明非空、
- * 图纸类型明确"）；L2-068 §2.1 结构表；L2 §7.3（权威清单已扩为 12 项，035a2afd）「模板 YAML 若被改坏（违规），装载期 fail-fast——
- * 与普通坏图纸同一错误面」（REQ-015）。资产读取自被测制品 classpath（随包分发的真实资产）。
+ * 图纸类型明确"）；L2-068 §2.1 结构表；L2 §7.3（权威违规清单，035a2afd 后扩为 12 项）
+ * 「模板 YAML 若被改坏（违规），装载期 fail-fast——与普通坏图纸同一错误面」（REQ-015）。
+ * 资产读取自被测制品 classpath（随包分发的真实资产）。
  *
  * <p>主断言与失效拦截：若任何一套资产被改坏（成员空/类型错/依赖悬空），本类断言必须红——
  * 拦不住即"模板即判据"失效（细档最小例子 1）。
+ *
+ * <p>基线注记：r6（babb882b9）相对 068 原钉 ce9019d86，research-pipeline/zero-hallucination
+ * 各微调 1 行注释（#34 B2/B3 销项），结构面（members/steps/type）零变化——负例构造锚
+ * （searcher 成员行、"type: dag"）经 2026-11-24 对该基线源文件实读确认仍有效。
  */
 @Tag("component")
 @Tag("feat-068")
@@ -66,7 +71,7 @@ class TemplateShippedAssetTest {
     @DisplayName("068-S01 负例（REQ-015）：资产被改坏（删成员致引用悬空）→ 装载期 BlueprintException fail-fast")
     void brokenAssetFailsFastAtLoadTime() throws Exception {
         final String yaml = DeepanalyzeTemplateTestSupport.readClasspath("workflow-templates/research-pipeline.yaml");
-        // 改坏方式：删除 searcher 成员声明，保留引用它的 search 步骤 ⇒ 违规⑦「引用未声明成员」
+        // 改坏方式：删除 searcher 成员声明，保留引用它的 search 步骤 ⇒ 违规「引用未声明成员」
         final String broken = yaml.replace(
                 "- {id: searcher, instruction: 检索并给出证据清单（每条注明来源）}", "");
         assertThat(broken).as("改坏构造应生效（成员行确已被删）").isNotEqualTo(yaml);
@@ -84,6 +89,6 @@ class TemplateShippedAssetTest {
         assertThat(broken).as("改坏构造应生效（类型值确已被改）").isNotEqualTo(yaml);
 
         final Throwable ex = catchThrowableOfType(() -> BlueprintLoader.load(broken), BlueprintException.class);
-        assertThat(ex).as("不可识别类型必须在装载期拒绝（违规③）").isNotNull();
+        assertThat(ex).as("不可识别类型必须在装载期拒绝（违规清单「类型不可识别」项）").isNotNull();
     }
 }

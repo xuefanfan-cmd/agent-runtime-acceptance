@@ -23,18 +23,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 068-S12/S13（2026-10-19 用户裁决纳入本批）：post-085 新形态的**会话侧模板通道**。
  *
- * <p>Oracle 来源：Feat-Func-085（workflow_run 原版入参 {@code teamName}）；team-names.properties
- * （原版中文团队名→随包模板名/动态标记——「跨库对比分析」映射内部标记 {@code @cross-kb-comparison}，
- * 该 @ 串是<b>注册值/内部标记</b>而非入参形态：r2 时代 Allure 附件实证在 ce9019d86 上以 @ 串直调
- * 同样报 Team not found、模型自纠改注册名后才完成——本类旧版用 @ 串作入参属假通过（2026-10-21 修正），
- * 085 文档对 teamName 的可用名清单未记载（潜在文档澄清项，见批次记录）。
+ * <p>Oracle 来源：Feat-Func-085（workflow_run 原版入参 {@code teamName}，契约锚=FEAT-085，
+ * TestPlan depends_on 已登记）；team-names.properties（原版中文团队名→随包模板名/动态标记——
+ * 「跨库对比分析」映射内部标记 {@code @cross-kb-comparison}）。该 @ 串是<b>注册值/内部标记</b>
+ * 而非入参形态：r2 时代 Allure 附件实证以 @ 串直调报 Team not found、模型自纠改注册名后才完成
+ * ——用 @ 串作入参属假通过（2026-10-21 修正），本类一律走注册名通道。085 文档对 teamName 的
+ * 可用名清单未记载（潜在文档澄清项，已在批次记录登记）。
  * 前提：FEAT-068 Feature §2 行7 的 OUT 口径已被 085 关闭（文档滞后偏差，增量审视记录 §3-①）。
  *
  * <p>判据边界：任务级旅程断言（点名→调用→completed→收口非空 + 调用入参足迹）+ 步骤级结构断言
- * （2026-10-21 随 r3 制品回归升级回真执行——GAP-068-01 恢复）：S12a 期望=同制品
- * {@code DynamicTeamTemplates.crossKbComparison(kbIds)} 纯函数推导（每库一检索员+校验/汇总）；
- * S13 期望=research-pipeline 随包资产编译序（verify/write 资产声明 skip_if=DEPS_INCONCLUSIVE，允许跳过）；
- * S12b 为受控拒绝路径、无步骤可断。
+ * （#462 修复后为真执行面）：S12a 期望=同制品 {@code DynamicTeamTemplates.crossKbComparison(kbIds)}
+ * 纯函数推导（每库一检索员+校验/汇总）；S13 期望=research-pipeline 随包资产编译序
+ * （verify/write 资产声明 skip_if=DEPS_INCONCLUSIVE，允许跳过）；S12b 为受控拒绝路径、无步骤可断。
  */
 @Tag("e2e")
 @Tag("deepanalyze")
@@ -61,7 +61,7 @@ class DaTemplateSessionChannelE2EIT extends DaTemplateE2EBase {
         assertThat(call.path("input").toString()).as("调用入参应含注册团队名足迹")
                 .contains("跨库对比分析");
 
-        // 步骤级（GAP-068-01 恢复）：期望由同制品纯函数按本会话 kbIds 推导（每库一检索员+校验/汇总）。
+        // 步骤级（真执行面）：期望由同制品纯函数按本会话 kbIds 推导（每库一检索员+校验/汇总）。
         assertStepsMatch(extractSteps(requireSuccessOutput(call)),
                 expectedCrossKbSteps(List.of("kb-e2e-a", "kb-e2e-b", "kb-e2e-c")));
     }
@@ -70,7 +70,7 @@ class DaTemplateSessionChannelE2EIT extends DaTemplateE2EBase {
     @Test
     @Timeout(value = 25, unit = TimeUnit.MINUTES)
     @Story("068-S12: 会话侧动态模板通道（@cross-kb-comparison + kbScope）")
-    @DisplayName("068-S12 无 scope 点名 @cross-kb-comparison：空列表受控拒绝，任务可达终态且产物可读")
+    @DisplayName("068-S12 无 scope 点名 跨库对比分析：空列表受控拒绝，任务可达终态且产物可读")
     void sessionChannelWithoutScopeIsControlledRejected() throws Exception {
         final Map<String, Object> body = baseBody(newSession("sess-068-s12-empty"),
                 "请用 workflow_run 工具、以 teamName 参数 跨库对比分析 分析：知识库为空时的行为。"
@@ -104,7 +104,7 @@ class DaTemplateSessionChannelE2EIT extends DaTemplateE2EBase {
         assertThat(snapshot.path("status").asText()).as("任务级：映射后应照模板完成编排").isEqualTo("completed");
         assertThat(snapshot.path("output").asText()).as("任务级：收口产物应非空").isNotBlank();
 
-        // 步骤级（GAP-068-01 恢复）：期望=research-pipeline 随包资产编译序（search→verify→write；
+        // 步骤级（真执行面）：期望=research-pipeline 随包资产编译序（search→verify→write；
         // verify/write 声明 skip_if=DEPS_INCONCLUSIVE，允许跳过）。
         assertStepsMatch(extractSteps(requireSuccessOutput(call)),
                 expectedStepsFromAsset("research-pipeline"));
@@ -134,7 +134,7 @@ class DaTemplateSessionChannelE2EIT extends DaTemplateE2EBase {
         Allure.addAttachment("POST /api/agents/run 响应（截断 8KB）", "text/plain",
                 truncate(response.body(), 8192));
         assertThat(response.statusCode()).as("同步执行应返回 200").isEqualTo(200);
-        return MAPPER.readTree(response.body());
+        return resolvePermissionAsks(MAPPER.readTree(response.body()), String.valueOf(body.get("sessionId")));
     }
 
     /** 取 teamName 调用记录（workflow_run 且入参含指定团队名）；模型未配合 ⇒ INCONCLUSIVE。 */

@@ -1004,10 +1004,12 @@ sut:
     # 【2026-10-22 撤除 in_memory】D4 修复（f4ac34e6，!400）已进 r4 core 基线 ⇒ 默认 checkpointer 装配可用，
     # 撤除绕行并同轮解除偏差登记（r3 及以前 core=0.1.17@9966e03d 不含修复故保留，撤除必炸机制见 067 线批次记录 §7F）。
     # 独立条目的理由：068 批次证据须绑定自己的制品指纹，不共用 067 线的 SUT 钉子。
+    # 【2026-11-24 r6】!510 评审后实现轮：源=baselines/agent-solution-r3-babb882b9（sit-baseline-r3 @ babb882b9），
+    # 7 键延续、无新增绕行；指纹见批次 evidence/20261019-build-feat068/ r6 段。
     deepanalyze-feat068:
       group: com.openjiuwen
       artifact: deepanalyze-engine
-      version: 0.1.3-feat068-r5
+      version: 0.1.3-feat068-r6
       classifier: exec
       java:
         system-properties:

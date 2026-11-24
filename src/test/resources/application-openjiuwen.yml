@@ -198,6 +198,7 @@ sut:
       group: com.openjiuwen
       artifact: deepanalyze-engine
       # r5/r6（20261119 F111-13 转正轮）为临时钉已回——见 evidence/20261119-run-1{4,5,6}*＋批次记录 §26.20。
+      # 基线 0.1.3-feat109111-r3 = agent-solution common@babb882b9（!1204）；r7（!1308 三键绑定）为临时钉已回——见批次记录 §26.24（F109-25/26 补格轮）
       version: 0.1.3-feat109111-r3
       classifier: exec
       java:

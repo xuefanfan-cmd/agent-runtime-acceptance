@@ -177,6 +177,11 @@ class Feat110SteeringE2EIT {
     @Story("F110-04: 终态竞态窗口执行期验证（设计预留）——长输出流式窗口内竞态 inject，受理先于终态必被消费")
     @DisplayName("F110-04: 终态竞态窗口执行期验证")
     void terminalRaceWindowExecutionPhaseVerification() throws Exception {
+        // 口径注记（!513 合并版，docs#57 裁决）：本黑盒用例 EXCLUDED——黑盒瞬态无法确定性
+        // 构造，权威验证层=产品仓组件测试 DaResumeFeatureTest
+        // .v3b_lateInjectBeforeTerminal_terminalHeld_followUpRuns（最终 answer 后/onComplete 前
+        // 确定注入，验证续跑消费、单一 done 与终态后拒绝）；本方法保留为取证面（竞态未捕获时
+        // INCONCLUSIVE 旁路如实记账，不冒充覆盖）。
         // 设计初稿 F110-04 预留：「长收尾工具/大事件流放大窗口（受控手段待执行期验证，
         // 若不可控标 partial）」——本方法履行验证义务（run-09 时序教训：长输出指令若在
         // resume 后注入，模型可能在轮询间隙已收尾→inject 404 NOT_RUNNING）。

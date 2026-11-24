@@ -30,7 +30,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-069 执行记录写机制（f069-rec-01/03）与会话删除级联数据库前提（f069-del-01）。
+ * FEAT-069 执行记录写机制（f069-rec-01/03）与会话删除级联数据库前提（f069-del-01/02——
+ * del-02=2026-11-18 评审细化 oracle（完整 sessionId+:todo 后缀精确匹配、禁反解、%/＿ 字面量）
+ * + 三族负向数据不误删）。
  *
  * <p>自管生命周期（同 read-removal 类口径：播种先于启动）。任务经 compat 同步 run 执行
  * （真实 LLM，受控 runner 注入凭据）；落库内容以 DA 账号直读断言（验收第 3/8/12 项的
@@ -232,7 +234,13 @@ class DaDataplaneRecordE2EIT {
             st.execute("DELETE FROM report_references WHERE report_id IN (SELECT id FROM reports WHERE session_id = '" + session + "')");
             st.execute("DELETE FROM reports WHERE session_id = '" + session + "'");
             st.execute("DELETE FROM session_memory WHERE session_id = '" + session + "'");
-            st.execute("DELETE FROM agent_todos WHERE k LIKE '%" + session + "%:todo'");
+            // f069-del-02 oracle（L1 L148 + 2026-11-18 评审细化）：完整 sessionId + 固定 `:todo`
+            // 后缀精确匹配（允许键前存在以 `:` 结尾的完整租户前缀，键结构 {租户}:{sessionId}:todo
+            // ——core TenantNamespaceFactories.KV_STORE_DEFAULT 口径）；禁冒号切段反解 sessionId；
+            // sessionId 中的 %、_ 作字面量不作 LIKE 通配符（谓词无 LIKE）
+            st.execute("DELETE FROM agent_todos WHERE k = '" + session + ":todo' "
+                    + "OR RIGHT(k, CHAR_LENGTH('" + session + "') + 6) = ':" + session + ":todo'");
+            // 删后取证改用同口径谓词（旧形态 LIKE '%<S>%:todo' 属冒号子串+通配反解，评审废止）
 
             // 删后不可查（验收第 8 项数据库前提半边，docs#38 DS-02 口径）——按各表真实键列断言
             try (ResultSet rs = st.executeQuery("SELECT count(*) FROM workflows WHERE session_id = '" + session + "'")) {
@@ -262,13 +270,101 @@ class DaDataplaneRecordE2EIT {
                 rs.next();
                 assertThat(rs.getInt(1)).as("session_memory 删后不可查").isZero();
             }
-            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM agent_todos WHERE k LIKE '%"
-                    + session + "%:todo'")) {
+            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM agent_todos WHERE (k = '"
+                    + session + ":todo' OR RIGHT(k, CHAR_LENGTH('" + session + "') + 6) = ':"
+                    + session + ":todo')")) {
                 rs.next();
-                assertThat(rs.getInt(1)).as("agent_todos 按 sessionId 段删后不可查").isZero();
+                assertThat(rs.getInt(1)).as("agent_todos 按 del-02 oracle 口径删后不可查").isZero();
             }
             Allure.addAttachment("del-01 范围声明", "text/plain",
                     "本用例承载验收第 8 项的数据库前提半边（FK 拆除+DELETE 通路）；上游删除路径改造为上游工程（docs#38 DS-02）");
         }
+    }
+
+    /**
+     * f069-del-02（2026-11-18 评审细化 oracle + 负向数据）：agent_todos 删除按
+     * <b>完整 sessionId + 固定 {@code :todo} 后缀精确匹配</b>（允许键前存在以 {@code :} 结尾的
+     * 完整租户前缀——键结构 {租户}:{sessionId}:todo，core TenantNamespaceFactories.KV_STORE_DEFAULT
+     * 口径）；<b>禁冒号切段反解 sessionId</b>；<b>sessionId 中的 {@code %}、{@code _} 作字面量
+     * 不作 LIKE 通配符</b>。负向数据：近似 sessionId、租户前缀下的其他会话键、
+     * {@code %}/{@code _} 通配展开键——旧形态 {@code LIKE '%<S>%:todo'} 会误删的键族，
+     * 细化后一律不误删。
+     */
+    @Test
+    @Story("f069-del-02: agent_todos 删除 oracle——完整 sessionId + 固定 :todo 后缀精确匹配（允许租户前缀）；禁冒号反解；%/＿ 字面量；负向数据不误删")
+    @DisplayName("del-02: 删除 oracle 精确匹配与负向数据不误删")
+    void agentTodosDeletionOracleExactMatch() throws Exception {
+        // ---- 构造：目标会话键族 + 三族负向键（旧 LIKE 形态会误删的键）----
+        String target = "sess-del02-" + System.nanoTime();
+        String tenant = "t-tenant-069";
+        String likeDecoy1 = "near-" + target + "-x:todo";      // 近似 sessionId（目标为中缀）
+        String likeDecoy2 = target + "x:todo";                 // 近似 sessionId（目标为前缀的长 id）
+        String otherSession = "sess-del02-other-" + System.nanoTime();
+        String tenantOther = tenant + ":" + otherSession + ":todo"; // 租户前缀下的其他会话键
+        // 通配展开 decoy 组（旧 LIKE '%<S2>%:todo' 会命中、细化谓词不命中）
+        String target2 = "s%d_r_" + System.nanoTime();         // 目标 2：含 % 与 _ 字面量
+        String wildcardDecoy1 = "sX_d_" + stripPrefix(target2) + ":todo"; // %/_ 通配展开（旧 LIKE 命中）
+        String wildcardDecoy2 = target2 + "x:todo";            // 尾缀通配展开（旧 LIKE 命中）
+        try (Connection conn = pgConnection(); Statement st = conn.createStatement()) {
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + target + ":todo', '[\"t\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + tenant + ":" + target + ":todo', '[\"t\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + likeDecoy1 + "', '[\"d1\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + likeDecoy2 + "', '[\"d2\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + tenantOther + "', '[\"d3\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + target2 + ":todo', '[\"t2\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + tenant + ":" + target2 + ":todo', '[\"t2\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + wildcardDecoy1 + "', '[\"d4\"]')");
+            st.execute("INSERT INTO agent_todos (k, v) VALUES ('" + wildcardDecoy2 + "', '[\"d5\"]')");
+        }
+        try (Connection conn = pgConnection(); Statement st = conn.createStatement()) {
+            // 前置自证：九行全部在场（任何 decoy 撞键即在此暴露）
+            for (String key : List.of(target + ":todo", tenant + ":" + target + ":todo",
+                    likeDecoy1, likeDecoy2, tenantOther, target2 + ":todo",
+                    tenant + ":" + target2 + ":todo", wildcardDecoy1, wildcardDecoy2)) {
+                try (ResultSet rs = st.executeQuery(
+                        "SELECT count(*) FROM agent_todos WHERE k = '" + key + "'")) {
+                    rs.next();
+                    assertThat(rs.getInt(1)).as("前置：键应在场 k=" + key).isEqualTo(1);
+                }
+            }
+        }
+        try (Connection conn = pgConnection(); Statement st = conn.createStatement()) {
+            // 按细化 oracle 删除目标 1（裸键 + 租户前缀键均应命中）
+            st.execute("DELETE FROM agent_todos WHERE k = '" + target + ":todo' "
+                    + "OR RIGHT(k, CHAR_LENGTH('" + target + "') + 6) = ':" + target + ":todo'");
+            // 按细化 oracle 删除目标 2（sessionId 含 % 与 _ ——作字面量，不作通配符）
+            st.execute("DELETE FROM agent_todos WHERE k = '" + target2 + ":todo' "
+                    + "OR RIGHT(k, CHAR_LENGTH('" + target2 + "') + 6) = ':" + target2 + ":todo'");
+        }
+        try (Connection conn = pgConnection(); Statement st = conn.createStatement()) {
+            // 正向：目标键（裸 + 租户前缀）删除
+            assertThat(countByKey(st, target + ":todo")).as("目标 1 裸键删除").isZero();
+            assertThat(countByKey(st, tenant + ":" + target + ":todo")).as("目标 1 租户前缀键删除").isZero();
+            assertThat(countByKey(st, target2 + ":todo")).as("目标 2（含 %/_）裸键删除").isZero();
+            assertThat(countByKey(st, tenant + ":" + target2 + ":todo")).as("目标 2 租户前缀键删除").isZero();
+            // 负向：三族 decoy 一律不误删（旧 LIKE 形态会误删）
+            assertThat(countByKey(st, likeDecoy1)).as("① 近似 sessionId（中缀）不误删").isEqualTo(1);
+            assertThat(countByKey(st, likeDecoy2)).as("① 近似 sessionId（前缀长 id）不误删").isEqualTo(1);
+            assertThat(countByKey(st, tenantOther)).as("② 租户前缀下的其他会话键不误删").isEqualTo(1);
+            assertThat(countByKey(st, wildcardDecoy1)).as("③ %/_ 通配展开键不误删（字面量语义）").isEqualTo(1);
+            assertThat(countByKey(st, wildcardDecoy2)).as("③ 尾缀通配展开键不误删（字面量语义）").isEqualTo(1);
+        }
+        Allure.addAttachment("del-02 oracle 结论", "text/plain",
+                "细化谓词（k=<S>:todo OR RIGHT(k,len+6)=:<S>:todo）删除目标 1/2 的裸键与租户前缀键；"
+                        + "近似 sessionId ×2、租户前缀其他会话键、%/_ 通配展开键 ×2 全部不误删"
+                        + "（旧形态 LIKE '%<S>%:todo' 对后三族全部误删——评审废止该形态）");
+    }
+
+    /** 键精确计数（不含任何通配语义）。 */
+    private static int countByKey(Statement st, String key) throws SQLException {
+        try (ResultSet rs = st.executeQuery("SELECT count(*) FROM agent_todos WHERE k = '" + key + "'")) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    /** 取 "s%d_r_" 前缀后的数字段（通配展开 decoy 构造辅助）。 */
+    private static String stripPrefix(String target2) {
+        return target2.substring("s%d_r_".length());
     }
 }

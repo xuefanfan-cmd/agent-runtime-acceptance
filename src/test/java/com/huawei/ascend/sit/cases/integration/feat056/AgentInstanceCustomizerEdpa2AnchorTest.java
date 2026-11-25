@@ -32,20 +32,20 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * FEAT-056 C30：真实 MOA 0.1.1 外部锚（零 MOA 源码修改接入外部 Rail）。
+ * FEAT-056 C30：真实 EDPA2.0 0.1.1 外部锚（零 EDPA2.0 源码修改接入外部 Rail）。
  *
- * <p>拉起的是用官方 MOA 源码构建的普通库 + 外部宿主（{@code moa-external-anchor-host-exec.jar}）；
- * 宿主只注册一个外部 {@code AgentInstanceCustomizer}，不改 MOA 源码。护栏/模型不影响本用例：
+ * <p>拉起的是用官方 EDPA2.0 源码构建的普通库 + 外部宿主（{@code edpa2-external-anchor-host-exec.jar}）；
+ * 宿主只注册一个外部 {@code AgentInstanceCustomizer}，不改 EDPA2.0 源码。护栏/模型不影响本用例：
  * canary 在 Agent 调用链入口（beforeInvoke）发出，先于模型调用。
  *
- * <p>产物路径可用 {@code -Dfeat056.moaHost.jar=<path>} 覆盖；缺失时跳过（前置不具备）。
+ * <p>产物路径可用 {@code -Dfeat056.edpa2Host.jar=<path>} 覆盖；缺失时跳过（前置不具备）。
  *
  * @since 0.1.2
  */
 @Tag("integration")
 @Tag("feat-056")
 @Feature("FEAT-056: 业务 Agent（Lib JAR）二次开发扩展点")
-class AgentInstanceCustomizerMoaAnchorTest {
+class AgentInstanceCustomizerEdpa2AnchorTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -69,12 +69,12 @@ class AgentInstanceCustomizerMoaAnchorTest {
     }
 
     @Test
-    @Story("FEAT-056-C30: 真实 MOA 上由外部自定义器注入 Rail 并在执行链触发 canary")
-    void moaExternalCustomizerRailFiresInRealExecutionChain() throws Exception {
-        Path jar = moaHostJar();
-        Assumptions.assumeTrue(Files.isRegularFile(jar), "MOA anchor host jar not built: " + jar);
+    @Story("FEAT-056-C30: 真实 EDPA2.0 上由外部自定义器注入 Rail 并在执行链触发 canary")
+    void edpa2ExternalCustomizerRailFiresInRealExecutionChain() throws Exception {
+        Path jar = edpa2HostJar();
+        Assumptions.assumeTrue(Files.isRegularFile(jar), "EDPA2.0 anchor host jar not built: " + jar);
 
-        Path workDir = Path.of("target", "feat056-fixture", "moa-" + System.nanoTime());
+        Path workDir = Path.of("target", "feat056-fixture", "edpa2-" + System.nanoTime());
         Files.createDirectories(workDir);
         Path log = workDir.resolve("app.log");
         int port = freePort();
@@ -87,18 +87,18 @@ class AgentInstanceCustomizerMoaAnchorTest {
         builder.redirectOutput(log.toFile());
         process = builder.start();
 
-        assertThat(waitForLog(log, "Started MoaExternalAnchorApplication", Duration.ofSeconds(120)))
-                .as("MOA 外部锚宿主已启动（日志：%s）", log).isTrue();
+        assertThat(waitForLog(log, "Started Edpa2ExternalAnchorApplication", Duration.ofSeconds(120)))
+                .as("EDPA2.0 外部锚宿主已启动（日志：%s）", log).isTrue();
 
         String response = sendA2a(port);
         String text = readLog(workDir, log);
 
         assertThat(text)
-                .as("外部自定义器必须被调用到真实 MOA Agent 上")
-                .contains("MOA_EXTERNAL_CUSTOMIZER installed");
+                .as("外部自定义器必须被调用到真实 EDPA2.0 Agent 上")
+                .contains("EDPA2.0_EXTERNAL_CUSTOMIZER installed");
         assertThat(text)
-                .as("外部 Rail 必须在真实 MOA 执行链中触发")
-                .contains("MOA_EXTERNAL_RAIL_CANARY fired");
+                .as("外部 Rail 必须在真实 EDPA2.0 执行链中触发")
+                .contains("EDPA2.0_EXTERNAL_RAIL_CANARY fired");
         assertThat(response).as("请求应完成").contains("TASK_STATE_COMPLETED");
     }
 
@@ -141,13 +141,13 @@ class AgentInstanceCustomizerMoaAnchorTest {
         return stdout + "\n" + rolled;
     }
 
-    private static Path moaHostJar() {
-        String override = System.getProperty("feat056.moaHost.jar");
+    private static Path edpa2HostJar() {
+        String override = System.getProperty("feat056.edpa2Host.jar");
         if (override != null && !override.isBlank()) {
             return Path.of(override);
         }
         String root = System.getProperty("feat056.workspace.root", "/mnt/d/01-文档资料/01-Projects/04-Test_Work");
-        return Path.of(root, ".codex/tmp/20261012-feat056/c30-deploy/moa-external-anchor-host-exec.jar");
+        return Path.of(root, ".codex/tmp/20261012-feat056/c30-deploy/edpa2-external-anchor-host-exec.jar");
     }
 
     private static int freePort() throws IOException {

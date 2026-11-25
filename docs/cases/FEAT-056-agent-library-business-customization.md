@@ -23,7 +23,7 @@ input_maturity: frozen-pr312-preview
 - 关键链路：Library JAR 交付 → 二开应用加入自定义器 → Runtime 在对象执行前回调 → 二开方调用 Core API 注册能力 → 原 A2A/REST 入口执行 → 原所有者释放对象。
 - 本期测试：先做打包/真实 A2A 主路径，再做组件和集成故障矩阵，覆盖对象身份、单次初始化、per-task 清理、Hosted 定向、Rail/Tool、护栏和日志。
 - 本期不测：旁挂/热加载、托管非默认 Agent 按任务新建、同对象并发执行、异构框架、统一 Tool API、通用副作用回滚。
-- 执行结果：47 条权威用例全部 PASS，0 skipped；27 条范围内需求全部 `covered`，无 open/degraded 缺口，`coverage_blocking=0`。通用实例扩展能力是主验收对象；MOA `0.1.1` 作为真实使用方旁证执行。
+- 执行结果：47 条权威用例全部 PASS，0 skipped；27 条范围内需求全部 `covered`，无 open/degraded 缺口，`coverage_blocking=0`。通用实例扩展能力是主验收对象；EDPA2.0 `0.1.1` 作为真实使用方旁证执行。
 - 详细预览：`FEAT-056-需求与测试预览.md`
 - 本期范围：`20261012-FEAT-056-变更包范围卡.md`
 - 输入成熟度：`frozen-pr312-preview`；设计、实现、执行和覆盖均已收口。
@@ -42,11 +42,11 @@ input_maturity: frozen-pr312-preview
 
 | SUT/参与者 | 角色 | 适用能力 | 不适用能力 | 结论与依据 |
 |---|---|---|---|---|
-| `deepagent-a-library + customer-agent-runtime` 示例 | 代表性二开应用 | 原库不改、Rail、Tool、per-task、真实模型、A2A、释放 | 不用于证明 MOA 业务编排语义 | 作为 AC-01/02/06/07/08/09a/13 的主代表 SUT |
-| 测试专用 Library + 宿主变体 | Fixture 应用 | 同版库两个不同扩展、可控错误和回调账本 | 不用于证明真实 MOA 业务语义 | 已实现并执行；用于 AC-02/03/04/05/11/14a/16 |
+| `deepagent-a-library + customer-agent-runtime` 示例 | 代表性二开应用 | 原库不改、Rail、Tool、per-task、真实模型、A2A、释放 | 不用于证明 EDPA2.0 业务编排语义 | 作为 AC-01/02/06/07/08/09a/13 的主代表 SUT |
+| 测试专用 Library + 宿主变体 | Fixture 应用 | 同版库两个不同扩展、可控错误和回调账本 | 不用于证明真实 EDPA2.0 业务语义 | 已实现并执行；用于 AC-02/03/04/05/11/14a/16 |
 | 通用 Hosted 测试宿主 | Fixture 应用 | 单成员/双成员、默认 Agent per-task、相同 conversation 隔离、启动回滚 | 非默认 Agent per-task OUT | 用于 AC-04/09b/10/14b/16 |
 | Core DeepAgent/BaseAgent 组件夹具 | 组件/集成载体 | 精确制造类型错误、destroy 失败、Rail priority、Tool 资源和释放条件 | 单独不能证明真实入口/打包 | 用于 AC-07/11/12/15/16 的故障面，必须与非夹具链路分开记账 |
-| `agent-solution` MOA `0.1.1` | 真实使用方旁证 | 在环境与版本兼容时验证通用定制器能否接入真实 MOA DeepAgent | 官方当前是应用交付，不是官方 Library JAR；不作为 FEAT-056 通用能力门禁 | 用于兼容性 smoke；失败先核对版本/装配，不直接判产品 FAIL |
+| `agent-solution` EDPA2.0 `0.1.1` | 真实使用方旁证 | 在环境与版本兼容时验证通用定制器能否接入真实 EDPA2.0 DeepAgent | 官方当前是应用交付，不是官方 Library JAR；不作为 FEAT-056 通用能力门禁 | 用于兼容性 smoke；失败先核对版本/装配，不直接判产品 FAIL |
 
 ## 3. 黑盒边界、拓扑与前置条件
 
@@ -68,7 +68,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 行为、生命周期、错误面和跨边界证据必须是 `external`；结构合同可使用 `independent`。
 - `self` 只能证明已装配/已连通，不能单独计入能力覆盖或支撑 `closed`。
 - `control` 用于验证主断言对故障敏感，不计入产品能力覆盖。
-- 外部锚包括：真实 A2A/SSE 响应、真实模型链路、生产类实际产物哈希、进程退出/日志、真实 MOA `0.1.1` 执行事件。
+- 外部锚包括：真实 A2A/SSE 响应、真实模型链路、生产类实际产物哈希、进程退出/日志、真实 EDPA2.0 `0.1.1` 执行事件。
 - 每条 P0 用例必须能回答：“若目标行为完全不生效，这条用例会因哪个主断言失败？”
 
 ## 4. 需求覆盖矩阵
@@ -108,7 +108,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 | FEAT-056-C27 | 部分注册失败后的回滚 | execution |
 | FEAT-056-C28 | 对象级 Rail 与请求级 Rail 共存 | execution |
 | FEAT-056-C29 | 同 conversation 并发首建 | execution |
-| FEAT-056-C30 | 真实 MOA 0.1.1 外部锚 | execution |
+| FEAT-056-C30 | 真实 EDPA2.0 0.1.1 外部锚 | execution |
 | FEAT-056-C31 | 官方示例来源保真 | execution |
 | FEAT-056-C33 | init-fail-fast=false 非托管初始化失败不退出进程 | execution |
 | FEAT-056-C34 | init-fail-fast=true 非托管初始化失败使进程退出 | execution |
@@ -141,12 +141,12 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 | lesson ID | 历史经验/漏检 | 本期风险 | 用例族 | case ID | 证据要求 |
 |---|---|---|---|---|---|
 | LESSON-056-00 | 未检到 FEAT-056 专项历史记录 | 把“Bean 存在、配置注入或静态文件”误当成扩展生效 | 全部 | C01～C31 | 每项必须有对象级调用计数、实际事件、协议响应或失败原文 |
-| LESSON-031-01 | 判定权与被判定方同源，测试侧自造期望自证 | FEAT-056 只证明自定义器和 Rail 类存在，未证明真实入口执行 | 外部锚 | C02、C12、C13、C26、C30 | 真实 A2A/SSE、真实 MOA 执行、外部工具返回值或产物哈希 |
+| LESSON-031-01 | 判定权与被判定方同源，测试侧自造期望自证 | FEAT-056 只证明自定义器和 Rail 类存在，未证明真实入口执行 | 外部锚 | C02、C12、C13、C26、C30 | 真实 A2A/SSE、真实 EDPA2.0 执行、外部工具返回值或产物哈希 |
 | LESSON-031-02 | 前置检查、装配检查被计入覆盖并报 PASS | 薄 JAR 构建成功、Bean 数正确被误当扩展生效 | 执行链 | C01、C02、C03、C04、C25 | 必须给出首次执行前后调用增量，并做断言敏感性反证 |
 | LESSON-031-03 | 真实文件只证明来源，不代表真实使用和组合位置 | 样例有 Rail 但不在目标执行链；动态 Tool/请求 Rail 未组合 | 组合/Nesting | C10、C11、C12、C14、C26、C28 | 组合位置、对象身份、动态安装后事件和请求前后增量 |
 | LESSON-031-04 | 中间输出可满足弱断言，目标终点未证明 | 自定义器执行过一次就报 PASS，但新增 Rail 未触发 | 结果归属 | C12、C13、C15、C25 | 新 Rail 唯一 canary 必须来自目标 callback，且撤掉注册后主断言失败 |
 | LESSON-031-05 | blocked/degraded 静默成为正常收口 | C18/C22/C24 曾因未决 Oracle 保留欠账 | 已闭环 | C18、C22、C24 | C18/C22 已执行 PASS，C24 退休并由 C32 替代；覆盖台账无 degraded |
-| LESSON-031-06 | 真实来源未保证真实使用 | 只用测试专用 Library 和自写宿主证明平台能力 | 代表性 | C02、C30、C31 | 至少一个官方合入示例和一个真实 MOA `0.1.1` 外部锚，保留源 revision |
+| LESSON-031-06 | 真实来源未保证真实使用 | 只用测试专用 Library 和自写宿主证明平台能力 | 代表性 | C02、C30、C31 | 至少一个官方合入示例和一个真实 EDPA2.0 `0.1.1` 外部锚，保留源 revision |
 | LESSON-031-07 | 过早归因、单一解释延迟发现其他问题 | 一次并发/启动失败被归到环境，不再换观测面 | 失败归因 | C18、C24、C25、C29 | 候选解释逐条列排除依据；换观测面后仍保留原结论状态 |
 
 ## 5. 端到端场景
@@ -717,25 +717,25 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 归因记录：候选解释 → 排除依据 → 未排除项。
 - 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerContractTest#concurrentFirstAcquireRejectsTheSameConversationAndAllowsAnother`。
 
-### FEAT-056-C30：真实 MOA 兼容性旁证（非门禁）
+### FEAT-056-C30：真实 EDPA2.0 兼容性旁证（非门禁）
 
 - 可执行性/优先级：`runnable / 旁证（11-16 复审裁定：与 TestPlan 正文口径统一，不作为门禁）`
 - 验证形态：`execution`
-- 适用 SUT：MOA 普通库 JAR 形态（`agent-solution origin/common@286184389`，spring-boot repackage 同时产出普通库 JAR + exec 包；历史执行锚 `origin/0.1.1@b67d8a66`）
+- 适用 SUT：EDPA2.0 普通库 JAR 形态（`agent-solution origin/common@286184389`，spring-boot repackage 同时产出普通库 JAR + exec 包；历史执行锚 `origin/0.1.1@b67d8a66`）
 - 执行状态：`0.1.1` 锚已执行 PASS（2026-10-12，`evidence/runs/feat056-c30-20261012-1527/`）；`common@286184389` 锚**待复跑**（11-13 锚点迁移后尚未获得新执行证据）
 - 测试层次：integration + E2E
-- Oracle 来源：开发/用户确认“通用能力”；MOA 源 revision：历史 `b67d8a66`（0.1.1，已执行）、现行 `286184389`（common，待复跑）
-- Given：从官方 MOA 源构建零业务源码修改的薄 JAR，外部宿主增加 canary customizer/Rail。
-- When：通过真实 MOA Agent 的公开入口执行一次；Rail 在 `beforeInvoke` 发出唯一 canary 并完成请求。
-- Then：MOA 原源码无业务改动，外部 Rail 在真实 MOA 执行链中触发，公开响应/流事件可见 canary。
-- PASS：MOA 源 diff 只有允许的测试构建包装或无修改；canary 来自真实执行链。
-- FAIL：只能证明测试自造 DeepAgent，无法在没有改写 MOA 主源码的情况下触发。
-- INCONCLUSIVE：MOA 依赖或打包无法在零业务源码修改下接入；记录具体缺口，不让通用示例 PASS 冒充 MOA 锚。
+- Oracle 来源：开发/用户确认“通用能力”；EDPA2.0 源 revision：历史 `b67d8a66`（0.1.1，已执行）、现行 `286184389`（common，待复跑）
+- Given：从官方 EDPA2.0 源构建零业务源码修改的薄 JAR，外部宿主增加 canary customizer/Rail。
+- When：通过真实 EDPA2.0 Agent 的公开入口执行一次；Rail 在 `beforeInvoke` 发出唯一 canary 并完成请求。
+- Then：EDPA2.0 原源码无业务改动，外部 Rail 在真实 EDPA2.0 执行链中触发，公开响应/流事件可见 canary。
+- PASS：EDPA2.0 源 diff 只有允许的测试构建包装或无修改；canary 来自真实执行链。
+- FAIL：只能证明测试自造 DeepAgent，无法在没有改写 EDPA2.0 主源码的情况下触发。
+- INCONCLUSIVE：EDPA2.0 依赖或打包无法在零业务源码修改下接入；记录具体缺口，不让通用示例 PASS 冒充 EDPA2.0 锚。
 - 配置生效/下游触达证据：源 revision、diff、薄 JAR 哈希、启动日志、协议/i流 canary。
-- 调用增量与唯一数据：MOA conversation 与 canary 唯一。
-- 不应断言：不验收 MOA 自身业务质量，也不要求官方提供 Library JAR。
+- 调用增量与唯一数据：EDPA2.0 conversation 与 canary 唯一。
+- 不应断言：不验收 EDPA2.0 自身业务质量，也不要求官方提供 Library JAR。
 - 归因记录：候选解释 → 排除依据 → 未排除项。
-- 自动化落点：`com.huawei.ascend.sit.cases.integration.feat056.AgentInstanceCustomizerMoaAnchorTest#moaExternalCustomizerRailFiresInRealExecutionChain`。
+- 自动化落点：`com.huawei.ascend.sit.cases.integration.feat056.AgentInstanceCustomizerEdpa2AnchorTest#edpa2ExternalCustomizerRailFiresInRealExecutionChain`。
 
 ### FEAT-056-C31：官方示例来源保真
 
@@ -752,7 +752,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - INCONCLUSIVE：只有源码存在或构建日志，没有执行映射。
 - 配置生效/下游触达证据：commit、文件 SHA-256、jar 内容、启动类映射、日志。
 - 调用增量与唯一数据：使用本轮唯一 version/build ID。
-- 不应断言：不证明官方示例等同生产 MOA。
+- 不应断言：不证明官方示例等同生产 EDPA2.0。
 - 归因记录：候选解释 → 排除依据 → 未排除项。
 - 自动化落点：`com.huawei.ascend.sit.cases.integration.feat056.AgentInstanceCustomizerPackagingContractTest#officialExampleProvenanceMatchesTheExecutedArtifacts`。
 
@@ -1002,14 +1002,14 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 | Hosted 单/双成员测试宿主 | AC-04/09b/10/14b/16 | 已实现于 `agentcore-instance-customizer-verify-demo`；PR #823 |
 | 故障注入自定义器 | 类型、顺序、destroy、priority、日志和失败回滚 | 已实现；组件与真实链路均执行 |
 | Guardrail 启用夹具 | AC-12a/b 的合规 priority 与护栏共存 | 已实现；内层越界 Rail 按设计不作为自动拒绝承诺 |
-| 真实 DeepSeek / MOA 环境 | 官方示例真实模型链路和 MOA `0.1.1` 外部锚 | 已执行；权威运行 0 skipped |
+| 真实 DeepSeek / EDPA2.0 环境 | 官方示例真实模型链路和 EDPA2.0 `0.1.1` 外部锚 | 已执行；权威运行 0 skipped |
 
 ## 8. 自动化落点与执行结果
 
 - 测试仓：`agent-runtime-acceptance`，分支最终以 `main@0f4aca5` 为准（以下"47 PASS"结论仅对该冻结基线成立，不代表 10-16 之后的基线；基线迁移后的执行记录见 2026-11-13/11-16 各轮）。
 - Fixture：`agent-solution` 的 `agentcore-instance-customizer-verify-demo`，PR #823 当前待合入。
 - `component`：Spring 装配、Hosted 生命周期、类型错误、destroy 双失败、并发初始化和 mutation 反证。
-- `integration`：真实 Runtime A2A、托管/非托管启停、Rail/Tool 隔离、打包来源、MOA 外部锚和官方示例。
+- `integration`：真实 Runtime A2A、托管/非托管启停、Rail/Tool 隔离、打包来源、EDPA2.0 外部锚和官方示例。
 - 权威命令：`Run-Sit-Wsl-With-Llm.sh -Dtest='com.huawei.ascend.sit.cases.component.feat056.*Test,com.huawei.ascend.sit.cases.integration.feat056.*Test' test`。
 - 权威结果：47 PASS、0 failure、0 error、0 skipped；mutation 5 条另在独立 run 复跑 PASS。
 - 证据：`evidence/runs/feat056-acceptance-20261015-1033/` 与 `evidence/runs/feat056-acceptance-mutation-20261015-1042/`。
@@ -1035,7 +1035,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 入口与必要资源：宿主应用端口、DeepSeek 凭据、可写 workspace。
 - 可观察输出：SSE 完成状态、工具日志、Rail 事件账本、原/新 Tool 结果。
 - 证据落点：`evidence/<run-id>/` 的请求、SSE、日志、产物哈希、报告。
-- 代表性：实现仓 `agentcore-instance-secondary-development` 是真实通用 Library+宿主+Core/Runtime 组合；MOA `0.1.1` 另作真实使用方旁证，其业务编排差异不改写本期通用生命周期 Oracle。
+- 代表性：实现仓 `agentcore-instance-secondary-development` 是真实通用 Library+宿主+Core/Runtime 组合；EDPA2.0 `0.1.1` 另作真实使用方旁证，其业务编排差异不改写本期通用生命周期 Oracle。
 - 故障与主断言：若自定义器未在真实对象执行前注册 Rail/Tool，则协议响应、工具日志和 Rail 事件三者无法同时出现预期 canary，主断言应失败。
 
 ### 机制 B：故障注入组件/集成

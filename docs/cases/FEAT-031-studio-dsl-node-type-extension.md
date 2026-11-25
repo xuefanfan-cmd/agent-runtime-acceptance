@@ -449,20 +449,6 @@ tags: [integration, studiodsl, feat-031]
 
 ---
 
-## §4 装配契约基线迁移分歧处置（agent-solution #754，2026-11-16 裁定落地）
-
-测试基线迁移（core 0.1.17 / ext 0.1.3 / 语料 0.6.0，测试仓提交 `10ad62d`）后，`StudioIrSdkContractTest`（RT-031-04 装配契约族）5 项分歧经 openJiuwen/agent-solution #754 裁定（2026-11-16，gcw_xU0wjmFE），处置落地如下：
-
-| 分歧 | 裁定 | 测试处置（测试仓 `main@c87ec99`） |
-|---|---|---|
-| RT-031-04-07 schemaVersion 不再拒绝 | 有意偏差（`fa672ec99` 对齐 Python oracle；版本门改卡 workflowVersion） | 缺失/不支持 schemaVersion 断言改为装配成功；unsupported-version.json 的拒绝按 workflowVersion 门固定 |
-| RT-031-04-08 断连不再抛 IR_CONNECTION_BROKEN | 有意偏差（同上对齐） | 断言改为装配成功；缺模型映射仍须 IR_MODEL_MAPPING_MISSING（裁定不放宽），保留拒绝断言 |
-| RT-031-04-09 exception 节点 nodeConfigs identity-only | 有意偏差确认（Java=Python，identity-only 同口径） | 归一后比对：identity-only 类型期望置空 + name 注入对齐，装配投影实测为空 |
-| RT-031-04-14 装配失败原子性 | broken-connection 移出硬错误族；未知组件/缺 type/缺映射保留原子性断言 | 用例 cases 调整：三个硬错误族仍断言抛错且无半成品 |
-| RT-031-04-30 混泳道 sentinel（stream 边未接屏障） | **修复对齐（选项 1）**：产品补 ParallelJoinPlan/IrWorkflowAssembler 接线 | SIT 保持 FAIL 待产品修复后精确回归；测试侧已提供 IR 与断言取值方式（#754 评论） |
-
-- 结果：`StudioIrSdkContractTest` 13 条中 **12 PASS / 1 FAIL**（唯一 FAIL = 分歧 4，产品修复中）；测试仓 `main@c87ec99`。
-- 关联：openJiuwen/agent-solution #754（裁定原文与详查证据）、#306/#314/#271/#249（9 月修复史）、历史基线 `main@0f4aca5`（47 PASS 结论仅对该冻结基线成立）。
 ## 不覆盖
 
 - **§4 高码工程生成**（IR 拉取 → 代码生成 → 敏感剥离 → FEAT-002 接入 → 保真对齐）——本轮不测试，后续单独承接。

@@ -665,12 +665,10 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 适用 SUT：两自定义器 + 可记录 Rail/Tool 清理的 Agent
 - 测试层次：component + integration
 - Oracle 来源：L2 §1.3/§3.4；LESSON-031-01/02
-- Given：第一个自定义器成功注册 Rail 和 Tool，第二个自定义器抛错。两种清理语义分开验证：
-  - **per-task**：per-task acquire 中初始化失败 → 失败由**工厂 destroy** 兜底，已注册能力随 destroy/uninit 清理，占位释放；
-  - **singleton**：singleton 初始化失败 → 清理由**原所有者**释放（Runtime 不接管、不注销），失败对象不执行且不重试。
-- When：per-task——工厂创建 A 失败后再创建合法 B；singleton——启动失败后重新部署/再触发（不通过重复运行已销毁对象验证）。
-- Then：失败对象不执行；per-task 侧确认 destroy 调用一次且资源不残留；singleton 侧确认原所有者释放路径保持原样。
-- PASS：per-task——destroy 调用一次、Rail/Tool 归属不残留、后续对象 B 正常；singleton——原错误保留、原所有者释放路径未被 Runtime 改写。
+- Given：第一个自定义器成功注册 Rail 和 Tool，第二个自定义器抛错。
+- When：singleton 启动或 per-task acquire 失败，再创建后续合法对象。
+- Then：失败对象不执行；已注册的 Rail/Tool 跟随 destroy/uninit 清理，不污染后续对象。
+- PASS：原错误保留，部分注册的 callback/资源归属不残留。
 - FAIL：只断言“任务失败”，但自定义器先注册的能力仍影响后续实例。
 - INCONCLUSIVE：没有独立计数，无法区分注册成功与真正清理。
 - 配置生效/下游触达证据：注册/注销计数、ResourceMgr 归属、后续对象 canary、原异常。
@@ -717,14 +715,13 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 归因记录：候选解释 → 排除依据 → 未排除项。
 - 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerContractTest#concurrentFirstAcquireRejectsTheSameConversationAndAllowsAnother`。
 
-### FEAT-056-C30：真实 MOA 兼容性旁证（非门禁）
+### FEAT-056-C30：真实 MOA 0.1.1 外部锚
 
-- 可执行性/优先级：`runnable / 旁证（11-16 复审裁定：与 TestPlan 正文口径统一，不作为门禁）`
+- 可执行性/优先级：`runnable / P0 external-anchor`（用户 2026-10-12 确认 C30 为门禁；已用官方 MOA 0.1.1 源码 + 外部宿主自定义器跑通，见 `evidence/runs/feat056-c30-20261012-1527/c30-evidence.json`）
 - 验证形态：`execution`
-- 适用 SUT：MOA 普通库 JAR 形态（`agent-solution origin/common@286184389`，spring-boot repackage 同时产出普通库 JAR + exec 包；历史执行锚 `origin/0.1.1@b67d8a66`）
-- 执行状态：`0.1.1` 锚已执行 PASS（2026-10-12，`evidence/runs/feat056-c30-20261012-1527/`）；`common@286184389` 锚**待复跑**（11-13 锚点迁移后尚未获得新执行证据）
+- 适用 SUT：官方 `agent-solution origin/0.1.1`、`common/agents/moa-agent`
 - 测试层次：integration + E2E
-- Oracle 来源：开发/用户确认“通用能力”；MOA 源 revision：历史 `b67d8a66`（0.1.1，已执行）、现行 `286184389`（common，待复跑）
+- Oracle 来源：开发/用户确认“通用能力”；MOA 源 revision `b67d8a66`
 - Given：从官方 MOA 源构建零业务源码修改的薄 JAR，外部宿主增加 canary customizer/Rail。
 - When：通过真实 MOA Agent 的公开入口执行一次；Rail 在 `beforeInvoke` 发出唯一 canary 并完成请求。
 - Then：MOA 原源码无业务改动，外部 Rail 在真实 MOA 执行链中触发，公开响应/流事件可见 canary。
@@ -938,7 +935,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 
 ### FEAT-056-C45：请求期护栏安装失败不降级
 
-- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，同日实现并执行 PASS）
+- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，待执行）
 - 验证形态：`execution`
 - 适用 SUT：启用 Tool Guardrail 的 DeepAgent 宿主
 - 测试层次：component（请求期安装点传播链路；真实链路集成层扩展待环境具备）
@@ -957,7 +954,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 
 ### FEAT-056-C46：同一 Agent 新增同名 Tool 不替换原 Tool
 
-- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，同日实现并执行 PASS）
+- 可执行性/优先级：`runnable / P0`（2026-11-13 评审新增，待执行）
 - 验证形态：`execution`
 - 适用 SUT：带原 Tool 的 DeepAgent 宿主
 - 测试层次：component
@@ -974,26 +971,25 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 归因记录：候选解释 → 排除依据 → 未排除项。
 - 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerToolIdentityTest#sameNameToolDoesNotReplaceOriginalTool`（2026-11-13 实现并执行 PASS）。
 
-### FEAT-056-C47：同资源 ID——相同声明复用原处理器；显式声明冲突拒绝且原工具仍可用
+### FEAT-056-C47：同资源 ID 声明不一致注册失败且原工具仍可用
 
-- 可执行性/优先级：`runnable / P1`（2026-11-13 评审新增；11-16 复审按 Core `sameAbilityDeclaration` 精确化冲突判据后实现并执行 PASS）
+- 可执行性/优先级：`runnable / P1`（2026-11-13 评审新增，待执行）
 - 验证形态：`execution`
 - 适用 SUT：带原 Tool 的 DeepAgent 宿主
 - 测试层次：component
-- Oracle 来源：Core 资源身份/归属契约（`ResourceMgr.sameAbilityDeclaration`：声明 = id + name + description + 显式 inputParams/properties，处理器实例不参与判定）；设计评审意见 2026-11-13/11-16
-- 已有部分覆盖：`AgentInstanceCustomizerCoreOwnershipTest#privateAndSharedToolsFollowOwnershipAcrossInstanceRelease`（C14 用例内嵌断言，2026-10-15 轮已执行 PASS）已验证同 ID 冲突注册抛错、且原共享工具仍可解析执行；本用例将其升级为独立命名场景并按 11-16 复审精确化冲突判据。
-- Given：原 Tool 已以 `ToolCard.id=R`、声明 A（canary A）注册。
-- When/Then（两段）：
-  - **同 ID + 相同声明（仅处理器实例不同）**：注册复用原声明（不抛错），调用命中原处理器；
-  - **同 ID + 显式不同声明（inputParams schema 变化）**：注册 fail-fast（RESOURCE_ADD_ERROR 族），原工具仍按声明 A 解析执行。
-- PASS：复用不抛错且调用命中原处理器；冲突注册抛错可见且原工具 canary 不变。
-- FAIL：相同声明被拒，或显式冲突静默覆盖原声明/原工具失效。
+- Oracle 来源：Core 资源身份/归属契约（DFX-005 复用路径）；设计评审意见 2026-11-13
+- 已有部分覆盖：`AgentInstanceCustomizerCoreOwnershipTest#privateAndSharedToolsFollowOwnershipAcrossInstanceRelease`（C14 用例内嵌断言，2026-10-15 轮已执行 PASS）已验证同 ID 冲突注册抛错、且原共享工具仍可解析执行；本用例将其升级为独立命名场景并补注册失败可见性断言，实现阶段做精确回归。
+- Given：原 Tool 已以 `ToolCard.id=R`、声明 A 注册；自定义器尝试以同 ID `R`、不一致声明 B（不同处理器或签名）注册新 Tool。
+- When：执行该注册，并显式调用原工具。
+- Then：新注册失败且失败可观察；原工具仍按声明 A 解析和执行。
+- PASS：注册失败可见，原工具调用成功且计数正确。
+- FAIL：新注册静默覆盖声明 A，或原工具失效。
 - INCONCLUSIVE：无法区分「声明比较未发生」与「比较通过」时。
-- 配置生效/下游触达证据：注册异常、ResourceMgr 归属记录、原工具 canary、AbilityManager 名字表。
+- 配置生效/下游触达证据：注册失败日志/异常、ResourceMgr 归属记录、原工具 canary。
 - 调用增量与唯一数据：原工具唯一 canary；资源 ID 固定。
-- 不应断言：不承诺具体错误码字符串；不把处理器实例差异当作冲突依据（sameAbilityDeclaration 不比较处理器）。
+- 不应断言：不承诺声明比较的具体错误码；只验证失败可见与原工具可用。
 - 归因记录：候选解释 → 排除依据 → 未排除项。
-- 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerToolIdentityTest#conflictingResourceIdRegistrationFailsAndOriginalRemainsUsable`（2026-11-16 精确化后执行 PASS）。
+- 自动化落点：`com.huawei.ascend.sit.cases.component.feat056.AgentInstanceCustomizerToolIdentityTest#conflictingResourceIdRegistrationFailsAndOriginalRemainsUsable`（2026-11-13 实现并执行 PASS）。
 ## 7. Fixture、环境与执行状态
 
 | Fixture / 环境 | 用途 | 实现与执行状态 |
@@ -1006,7 +1002,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 
 ## 8. 自动化落点与执行结果
 
-- 测试仓：`agent-runtime-acceptance`，分支最终以 `main@0f4aca5` 为准（以下"47 PASS"结论仅对该冻结基线成立，不代表 10-16 之后的基线；基线迁移后的执行记录见 2026-11-13/11-16 各轮）。
+- 测试仓：`agent-runtime-acceptance`，分支最终以 `main@0f4aca5` 为准。
 - Fixture：`agent-solution` 的 `agentcore-instance-customizer-verify-demo`，PR #823 当前待合入。
 - `component`：Spring 装配、Hosted 生命周期、类型错误、destroy 双失败、并发初始化和 mutation 反证。
 - `integration`：真实 Runtime A2A、托管/非托管启停、Rail/Tool 隔离、打包来源、MOA 外部锚和官方示例。
@@ -1020,7 +1016,7 @@ FEAT-031 复盘的直接教训是：前置检查、配置存在、测试侧自�
 - 逐行结论：27 covered + 5 out-of-scope，无 degraded/unassigned。
 - 验收门禁：`coverage_blocking=0`，`closure_eligible=True`，特性测试状态 `closed`。
 - 退出标准已满足：范围内条目均有本轮真实 XML 与行为证据，原 C18/C22/C24 缺口均已关闭。
-- 2026-11-13 修订：评审新增 C45～C47（请求期护栏安装失败、同名 Tool 不替换、资源 ID 冲突注册）同日实现并执行 3/3 PASS（component 层，surefire XML 留证）；C47 先前由 C14 内嵌断言部分覆盖，随本修订升级为独立命名用例并精确回归。2026-11-16 复审：C47 冲突判据按 Core `sameAbilityDeclaration` 精确化（相同声明复用 + 显式 inputParams 冲突）并复跑 PASS；C30 调整为旁证非门禁（历史 0.1.1 锚执行记录保留，common@286184389 锚待复跑）；C27 按 singleton/per-task 拆分清理语义。收口状态由覆盖台账与测试报告统一更新，本节不改写 C01～C44 的既有结论。
+- 2026-11-13 修订：评审新增 C45～C47（请求期护栏安装失败、同名 Tool 不替换、资源 ID 冲突注册）同日实现并执行 3/3 PASS（component 层，surefire XML 留证）；C47 先前由 C14 内嵌断言部分覆盖，随本修订升级为独立命名用例并精确回归。收口状态由覆盖台账与测试报告统一更新，本节不改写 C01～C44 的既有结论。
 
 ## 10. 负结论归因记录
 

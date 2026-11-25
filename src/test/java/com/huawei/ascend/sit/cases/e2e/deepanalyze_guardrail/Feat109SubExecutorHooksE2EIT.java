@@ -249,6 +249,11 @@ class Feat109SubExecutorHooksE2EIT {
                 HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(h, b, body,
                         Duration.ofSeconds(300));
                 List<SseFrame> frames = new java.util.ArrayList<>();
+                // S9 前置步守卫（solution#849）：成员/插件路径悬挂自动取证——活动=SSE 帧数，
+                // 完成=帧转储文件出现；零判据变化
+                DaReflectionCostSupport.startStallWatchdog(gdStack, DaCompatGuardrailSupport.AGENT,
+                        session, Path.of("target", "f109-dump"), frames::size,
+                        () -> Files.exists(Path.of("target", "f109-dump", session + "-gd2.txt")));
                 DaCompatGuardrailSupport.readFramesInto(stream, frames::add, f -> false,
                         Duration.ofSeconds(300));
                 Path dir = Path.of("target", "f109-dump");
@@ -330,6 +335,11 @@ class Feat109SubExecutorHooksE2EIT {
         HttpResponse<InputStream> stream = DaCompatGuardrailSupport.openRunStream(http, base, body,
                 CALL_TIMEOUT);
         List<SseFrame> collected = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        // S9 前置步守卫（solution#849）：write_file ask-deny 路径悬挂自动取证——活动=SSE 帧数，
+        // 完成=done 帧到达；零判据变化
+        DaReflectionCostSupport.startStallWatchdog(stack, DaCompatGuardrailSupport.AGENT,
+                session, Path.of("target", "f109-dump"), collected::size,
+                () -> collected.stream().anyMatch(f -> "done".equals(f.event())));
         Thread reader = new Thread(() -> {
             try {
                 DaCompatGuardrailSupport.readFramesInto(stream, collected::add, f -> false,

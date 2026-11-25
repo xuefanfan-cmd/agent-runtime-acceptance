@@ -237,7 +237,11 @@ class Feat109McpRemountE2EIT {
         // 同步 /run（F111 全绿类既有模式：stub 多轮调用已在 run-01f 证明可用；
         // run-41b~41h 教训：SSE 流观察面在工具异常/长任务下出现收尾帧缺失，弃用流观察）
         stub.scriptToolArgs(List.of(new AbstractMap.SimpleEntry<>(TOOL_NAME, Map.of("query", "q"))));
-        startHangWatchdog(session);
+        // S9 前置步守卫（solution#849，11-25 迁移至共享实现——lsof 补 -a 修正）：turn-0 后
+        // 30s 未达 count=2 即取证（n≤3）；完成=stub count≥2
+        DaReflectionCostSupport.startStallWatchdog(stack, DaReflectionCostSupport.AGENT,
+                session, Path.of("target", "f109-17-dump"), stub.requests()::size,
+                () -> stub.requests().size() >= 2);
         HttpResponse<String> run = DaCompatGuardrailSupport.post(http, base, "/api/agents/run", body,
                 Duration.ofSeconds(240));
         dumpStubRequests(session, credential);
@@ -247,71 +251,6 @@ class Feat109McpRemountE2EIT {
         Allure.addAttachment("任务证据 " + session, "text/plain",
                 "credential=Bearer " + credential + " status=" + bodyJson.path("status").asText("")
                         + " stubRequests=" + stub.requests().size());
-    }
-
-    /**
-     * S9 前置步（solution#849 2026-11-25 评论请求）：turn-1 悬挂守卫——run 发起后台守视 stub
-     * 请求数：turn-0 到达后（count≥1）若 30s 内 count 未达 2（下一轮模型请求未到端点），对
-     * SUT 执行 {@code jcmd Thread.dump_to_file -format=json}（JDK 21 含虚拟线程）＋ lsof 连接
-     * 表快照，n≤3、间隔 30s（yaojun97 口径：挂端三轮稳定复挂，小 n 即充分）。零产品代码
-     * 改动；证据落 target/f109-17-dump/，悬挂不发生则守卫静默退出。
-     */
-    private static void startHangWatchdog(String session) {
-        Thread watchdog = new Thread(() -> {
-            try {
-                long pid = ((com.huawei.ascend.sit.lifecycle.ManagedSutInstance)
-                        stack.managedInstance(DaReflectionCostSupport.AGENT)).pid();
-                Path dumpDir = Path.of("target", "f109-17-dump");
-                Files.createDirectories(dumpDir);
-                boolean turn0Seen = false;
-                for (int i = 0; i < 24 && !turn0Seen; i++) {
-                    if (stub.requests().size() >= 1) {
-                        turn0Seen = true;
-                    } else {
-                        Thread.sleep(5000);
-                    }
-                }
-                if (!turn0Seen) {
-                    return; // turn-0 都没到＝任务没跑起来，非悬挂形态，守卫退出
-                }
-                for (int n = 1; n <= 3; n++) {
-                    Thread.sleep(30_000);
-                    if (stub.requests().size() >= 2) {
-                        return; // turn-1 已到端点——非悬挂，正常退出
-                    }
-                    captureHangEvidence(pid, dumpDir, session, n);
-                }
-                System.err.println("[f109-17-watchdog] turn-1 stall: 3 captures done for " + session);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                System.err.println("[f109-17-watchdog-failed] " + e);
-            }
-        }, "f109-17-hang-watchdog-" + session);
-        watchdog.setDaemon(true);
-        watchdog.start();
-    }
-
-    /** 一次取证：jcmd 全量线程栈（含虚拟线程）＋ lsof 连接表＋守卫日志一行。 */
-    private static void captureHangEvidence(long pid, Path dumpDir, String session, int n) {
-        try {
-            String dump = dumpDir.resolve(session + "-threaddump-" + n + ".json")
-                    .toAbsolutePath().toString();
-            new ProcessBuilder("jcmd", String.valueOf(pid), "Thread.dump_to_file",
-                    "-format=json", dump).redirectErrorStream(true)
-                    .start().waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
-            Path conn = dumpDir.resolve(session + "-connections-" + n + ".txt");
-            new ProcessBuilder("lsof", "-nP", "-p", String.valueOf(pid), "-i")
-                    .redirectOutput(conn.toFile()).redirectErrorStream(true)
-                    .start().waitFor(20, java.util.concurrent.TimeUnit.SECONDS);
-            Files.writeString(dumpDir.resolve(session + "-watchdog-log.txt"),
-                    "capture#" + n + " at=" + java.time.Instant.now()
-                            + " stubCount=" + stub.requests().size() + "\n",
-                    StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.APPEND);
-        } catch (Exception e) {
-            System.err.println("[f109-17-capture-failed] " + e);
-        }
     }
 
     /** stub 请求清单落盘（诊断辅助；截断超长体，凭据回显面双保险截断）。 */

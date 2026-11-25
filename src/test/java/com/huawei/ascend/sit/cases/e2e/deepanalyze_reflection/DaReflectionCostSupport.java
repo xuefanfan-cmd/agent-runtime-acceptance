@@ -257,6 +257,76 @@ public final class DaReflectionCostSupport {
         }
     }
 
+    /**
+     * S9 前置步通用守卫（solution#849 2026-11-25 请求）：任务在途期间活动计数停滞 30s 即对
+     * SUT 取证——{@code jcmd Thread.dump_to_file -format=json}（JDK 21 含虚拟线程）＋
+     * {@code lsof -nP -a -p <pid> -i} 连接表，n≤3、间隔 30s。活动计数由调用方给（stub
+     * 请求清单大小或 SSE 帧数），完成信号亦然（哨兵文件出现或帧面到达终态）。悬挂不发生
+     * 则静默退出；取证落 dumpDir（文件名含 session 与序号）。零产品代码改动、判据零变化。
+     *
+     * @param stack       SUT 栈（取 SUT pid）
+     * @param agentName   SUT agent 名
+     * @param session     本次任务会话 id（文件名隔离）
+     * @param dumpDir     取证目录
+     * @param activity    活动计数（两次采样不变＝停滞）
+     * @param done        任务完成信号（真即守卫退出）
+     */
+    public static void startStallWatchdog(SutStack stack, String agentName, String session,
+            java.nio.file.Path dumpDir, java.util.function.IntSupplier activity,
+            java.util.function.BooleanSupplier done) {
+        Thread watchdog = new Thread(() -> {
+            try {
+                long pid = ((com.huawei.ascend.sit.lifecycle.ManagedSutInstance)
+                        stack.managedInstance(agentName)).pid();
+                java.nio.file.Files.createDirectories(dumpDir);
+                int lastCount = activity.getAsInt();
+                for (int n = 1; n <= 3 && !done.getAsBoolean(); n++) {
+                    Thread.sleep(30_000);
+                    if (done.getAsBoolean()) {
+                        return;
+                    }
+                    int now = activity.getAsInt();
+                    if (now != lastCount) {
+                        lastCount = now;
+                        n--; // 活动恢复（合法间隔，非悬挂）——不计入取证次数，继续守视
+                        continue;
+                    }
+                    captureStallEvidence(pid, dumpDir, session, n, now);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                System.err.println("[stall-watchdog-failed] " + session + " " + e);
+            }
+        }, "stall-watchdog-" + session);
+        watchdog.setDaemon(true);
+        watchdog.start();
+    }
+
+    /** 一次停滞取证：jcmd 全量线程栈（含虚拟线程）＋ lsof 连接表（-a 收敛到单 pid）＋日志一行。 */
+    private static void captureStallEvidence(long pid, java.nio.file.Path dumpDir, String session,
+            int n, int activityCount) {
+        try {
+            String dump = dumpDir.resolve(session + "-threaddump-" + n + ".json")
+                    .toAbsolutePath().toString();
+            new ProcessBuilder("jcmd", String.valueOf(pid), "Thread.dump_to_file",
+                    "-format=json", dump).redirectErrorStream(true)
+                    .start().waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            java.nio.file.Path conn = dumpDir.resolve(session + "-connections-" + n + ".txt");
+            new ProcessBuilder("lsof", "-nP", "-a", "-p", String.valueOf(pid), "-i")
+                    .redirectOutput(conn.toFile()).redirectErrorStream(true)
+                    .start().waitFor(20, java.util.concurrent.TimeUnit.SECONDS);
+            java.nio.file.Files.writeString(dumpDir.resolve(session + "-watchdog-log.txt"),
+                    "capture#" + n + " at=" + java.time.Instant.now()
+                            + " activityCount=" + activityCount + "\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception e) {
+            System.err.println("[stall-capture-failed] " + session + " #" + n + " " + e);
+        }
+    }
+
     /** 有界轮询至判真（超时返回 false，不抛）。 */
     public static boolean await(Duration timeout, Duration interval, java.util.function.BooleanSupplier probe) {
         long deadline = System.currentTimeMillis() + timeout.toMillis();

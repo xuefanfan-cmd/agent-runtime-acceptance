@@ -26,9 +26,8 @@ public final class Feat112Coverage {
     /** Scenarios in the testplan with no executable SIT test. */
     public static final Map<String, String> UNCOVERED = Map.of(
             "FEAT-112-A1", "仓内除 DA 外没有装配降级门的可运行宿主（ext 无自动装配），SIT 无法构造；待特性设计确认 ext 单独装配是否另行验收",
-            "FEAT-112-E11", "租户校验前移到降级门之前（openJiuwen/agent-solution#853）后，公开面到不了“认领探针后、绑定任务前”的窗口：该窗口只有内存操作，"
-                    + "SIT 构造不出；由 agent-solution 组件测试 DaAdmissionFailureSettleTest#bindOwnerFailure_settlesAsInfraFact_releasesProbe 承接"
-                    + "（openJiuwen/agent-solution!1326，#854 关单前测试侧已独立复跑并做变异验证）",
+            "FEAT-112-E11", "FAIL + observable_missing（openJiuwen/agent-solution#991）：租户校验前移到降级门之前（#853）后，"
+                    + "认领探针后、绑定任务前的窗口只剩内存操作，公开面构造不出；开发侧组件测试不计入 SIT 验收",
             "FEAT-112-E17", "公开面造不出“无错误码、无类目、非 core”的任务失败，成员失败到任务失败的因果未建立；待特性设计确认",
             "FEAT-112-E18", "“护栏拦截导致任务失败”的确定路径尚未建立；待特性设计确认");
 

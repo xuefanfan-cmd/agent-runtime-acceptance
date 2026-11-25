@@ -40,6 +40,7 @@ class Feat112DataPlaneTest extends DeployedGateCase {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> ENTRIES = List.of("/api/agents/run", "/api/agents/run-stream");
     private static final Map<String, String> RESERVED_TENANT = Map.of("X-Da-Tenant-Id", "*");
+    private static final Map<String, String> NORMAL_TENANT = Map.of("X-Da-Tenant-Id", "feat112-tenant-normal");
 
     @Override
     protected DeploymentForm form() {
@@ -62,6 +63,37 @@ class Feat112DataPlaneTest extends DeployedGateCase {
         kinds.put("reservedTenant", session -> new Invalid(Map.of("sessionId", session, "input", "Reply with a short greeting"),
                 RESERVED_TENANT));
         verify(s, kinds, null);
+    }
+
+    /** The data plane re-applies the tenant rule as defence in depth; a normal tenant must pass both checks. */
+    @Test
+    @Covers(value = "FEAT-112-F4", layer = PUBLIC_SURFACE)
+    @DisplayName("[FEAT-112-F4] 数据面形态下正常租户头不被租户校验拒绝：CLOSED 正常完成计样本，OPEN 由降级门拒收")
+    void normalTenantPassesTenantValidation(Scenario s) throws Exception {
+        try (var d = deployment().driver(s)) {
+            d.prepareEmptyClosed();
+            d.reset();
+            JsonNode statsBefore = d.stats();
+            var closed = d.sut().post("/api/agents/run", Map.of("sessionId", d.session(), "input", "Reply with a short greeting"),
+                    NORMAL_TENANT);
+            s.activation("task outcome passed through the declared stub",
+                    GateDriver.count(d.stats(), "totalRequests") > GateDriver.count(statsBefore, "totalRequests"),
+                    EvidenceSource.STUB, closed.evidenceRef());
+            Expect.equal(s, s.id(), "normalTenant.closedCompletes", "§5.1.9/验收出口18", Category.EXTERNAL_CONTRACT,
+                    EvidenceSource.HTTP, closed.evidenceRef(), closed.status() + " " + closed.json().path("status").asText(),
+                    "200 completed");
+            var accounted = d.snapshot();
+            GateSnapshotChecks.of(s, s.id(), "normalTenant.accounted", accounted.gate(), accounted.evidenceRef())
+                    .state("CLOSED", "§5.1.3").samples(1, "§5.1.3").failures(0, "§5.1.3");
+            var open = d.openGate();
+            s.precondition("gate OPEN before the normal-tenant request", "OPEN".equals(open.state()) && open.retryAfterSeconds() >= 2,
+                    EvidenceSource.DIAGNOSTIC_SNAPSHOT, open.evidenceRef());
+            var refused = d.sut().post("/api/agents/run", Map.of("sessionId", d.session(), "input", "Reply with a short greeting"),
+                    NORMAL_TENANT);
+            Reply reply = Reply.of(refused.status(), parse(refused.body()));
+            Expect.equal(s, s.id(), "normalTenant.openReachesGate", "§3.1/验收出口18", Category.EXTERNAL_CONTRACT,
+                    EvidenceSource.HTTP, refused.evidenceRef(), reply.status() + " " + reply.code(), "503 ENGINE_DEGRADED");
+        }
     }
 
     @Test

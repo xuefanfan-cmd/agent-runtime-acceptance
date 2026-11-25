@@ -67,7 +67,7 @@ class Feat112CheckpointStoreTest {
             s.activation("the resumed task failed (was " + terminal + "; answer HTTP " + answer.status() + ")",
                     "failed".equals(terminal), EvidenceSource.HTTP, answer.evidenceRef());
             String fact = tail(log, offset).lines().filter(line -> line.contains("terminal fact taskId=" + taskId)).findFirst().orElse("");
-            boolean unexplained = Pattern.compile("class=INFRASTRUCTURE_FAILURE code=\\s*$").matcher(fact).find();
+            boolean unexplained = Pattern.compile("class=INFRASTRUCTURE_FAILURE code=(?=\\s|$)").matcher(fact).find();
             s.activation("terminal fact without a stable code (" + (fact.isEmpty() ? "no terminal-fact log line" : fact.strip()) + ")",
                     unexplained, EvidenceSource.LOG, log + " from byte " + offset);
             var after = d.snapshot();

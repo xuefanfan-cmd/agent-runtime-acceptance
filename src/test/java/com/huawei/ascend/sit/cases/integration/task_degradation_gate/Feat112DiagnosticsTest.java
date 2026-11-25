@@ -67,11 +67,14 @@ class Feat112DiagnosticsTest extends DeployedGateCase {
 
     @Test
     @Covers(value = "FEAT-112-G5-missing", layer = PUBLIC_SURFACE)
-    @DisplayName("[FEAT-112-G5-missing] 交付默认配置下诊断面不是匿名可读面")
+    @DisplayName("[FEAT-112-G5-missing] 交付默认配置下诊断面拒绝匿名访问（401）")
     void anonymousDiagnosticRejectedInDeliveredConfiguration(Scenario s) throws Exception {
         try (var d = deployment().driver(s)) {
-            s.precondition("service authentication left at the delivered default", !deployment().form().authenticated(),
-                    EvidenceSource.PROCESS, "form " + deployment().form().name());
+            // The launched process inherits this JVM's environment; DEEPANALYZE_AUTH_ENABLED would override the default.
+            s.precondition("authentication left at the delivered default: only the secret injected, no switch set or inherited",
+                    !deployment().form().declaresAuthentication() && deployment().secret() != null
+                            && System.getenv().keySet().stream().noneMatch(k -> k.equalsIgnoreCase("DEEPANALYZE_AUTH_ENABLED")),
+                    EvidenceSource.PROCESS, "form " + deployment().form().name() + " properties " + deployment().form().properties().keySet());
             var anonymous = deployment().client(null, "FEAT-112-G5-missing-anonymous").get("/v1/health/detail");
             s.accept(DiagnosticJudge.rejectsUnauthenticated(s.id(), s.context(), Observation.captured(
                     new DiagnosticJudge.AuthProbe(anonymous.status(), anonymous.body(), null, null),

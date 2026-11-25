@@ -11,6 +11,7 @@ import com.huawei.ascend.sit.lifecycle.ManagedSutInstance;
 import com.huawei.ascend.sit.lifecycle.SutStack;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,6 +25,8 @@ public final class GateDeployment implements AutoCloseable {
     /** Second YAML entry with the same coordinates, so two instances never share a launcher log or port lookup. */
     public static final String PEER_AGENT = "feat112-peer";
     private static final String MODEL_BASE_URL = "deepanalyze.model.backend.base_url";
+    private static final String ENGINE_SECRET = "deepanalyze.auth.engine-secret";
+    private static final String CHECKPOINTER = "openjiuwen.service.middleware.checkpointer.type";
 
     /** Model double running and stack described; not launched yet. */
     public static final class Prepared implements AutoCloseable {
@@ -155,7 +158,15 @@ public final class GateDeployment implements AutoCloseable {
                     throw new IllegalArgumentException("model wiring is owned by the deployment, not configurable: " + key);
                 }
             }
-            String secret = form.authenticated() ? "feat112-" + UUID.randomUUID() : null;
+            for (String key : List.of(ENGINE_SECRET, CHECKPOINTER)) {
+                if (yaml.containsKey(key) || form.properties().containsKey(key)) {
+                    throw new IllegalArgumentException("owned by the deployment, not configurable: " + key);
+                }
+            }
+            // The delivered configuration enables service authentication and fails startup without the secret.
+            String secret = "feat112-" + UUID.randomUUID();
+            // The delivered checkpointer is Redis; a form without a test-owned Redis keeps checkpoints in memory.
+            Map<String, String> store = form.needs(DeploymentForm.Infra.REDIS_CHECKPOINTER) ? Map.of() : Map.of(CHECKPOINTER, "in_memory");
             java.nio.file.Path workingDirectory = null;
             if (form.scenarioActrule() != null) {
                 workingDirectory = java.nio.file.Files.createTempDirectory("feat112-" + form.name() + "-");
@@ -168,11 +179,11 @@ public final class GateDeployment implements AutoCloseable {
                 if (cwd != null) a.workingDirectory(cwd);
                 a.readyMode(AgentConfig.ReadyMode.TCP);
                 form.properties().forEach(a::property);
+                store.forEach(a::property);
                 environmentProperties.forEach(a::property);
                 model.forEach(a::property);
                 processEnvironment.forEach(a::env);
-                a.env("DA_AUTH_ENABLED", Boolean.toString(form.authenticated()));
-                if (secret != null) a.env("DA_ENGINE_SECRET", secret);
+                a.env("DA_ENGINE_SECRET", secret);
             });
             return new Prepared(form, agent, artifacts, faultStub, correlated, secret, builder, environment);
         } catch (Exception | Error failure) {
@@ -244,7 +255,8 @@ public final class GateDeployment implements AutoCloseable {
         scenario.artifact(prepared.artifacts.identity());
         scenario.precondition("deployment form " + prepared.form.name() + " running", stack.isRunning(prepared.agent),
                 EvidenceSource.PROCESS, "agent=" + prepared.agent + " pid=" + pid() + " base=" + baseUrl()
-                        + " form=" + prepared.form.properties() + " authenticated=" + prepared.form.authenticated()
+                        + " form=" + prepared.form.properties() + " authentication="
+                        + (prepared.form.declaresAuthentication() ? "declared by the form" : "delivered default")
                         + " environment=" + prepared.environment.describe());
     }
 

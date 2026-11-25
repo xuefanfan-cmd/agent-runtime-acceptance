@@ -51,8 +51,9 @@ class Feat112ProcessConfigurationTest {
         }
     }
 
-    private static DaEvidenceClient awaitDiagnostic(Scenario s, IsolatedDefaultProcess process, int port, String caseId) throws Exception {
-        var client = new DaEvidenceClient("http://127.0.0.1:" + port, null, caseId);
+    private static DaEvidenceClient awaitDiagnostic(Scenario s, IsolatedDefaultProcess process, int port, String secret,
+                                                    String caseId) throws Exception {
+        var client = new DaEvidenceClient("http://127.0.0.1:" + port, secret, caseId);
         long deadline = System.nanoTime() + Duration.ofSeconds(120).toNanos();
         while (true) {
             if (!process.isAlive()) {
@@ -80,7 +81,7 @@ class Feat112ProcessConfigurationTest {
                 .noneMatch(k -> k.contains("degradation-gate")), EvidenceSource.PROCESS, properties.stringPropertyNames().toString());
         int port = freePort();
         try (var process = IsolatedDefaultProcess.launch(artifacts.jar(), properties, port)) {
-            var client = awaitDiagnostic(s, process, port, "FEAT-112-A2");
+            var client = awaitDiagnostic(s, process, port, IsolatedDefaultProcess.secret(properties), "FEAT-112-A2");
             var response = client.get("/v1/health/detail");
             var gate = response.json().path("degradationGate");
             GateSnapshotChecks.of(s, s.id(), "delivered", gate, response.evidenceRef())
@@ -120,8 +121,16 @@ class Feat112ProcessConfigurationTest {
             if (name.toLowerCase(Locale.ROOT).matches(".*(secret|password|token|api.?key).*")) secrets.add(secret);
         });
         String fullKey = "openjiuwen.service.degradation-gate." + key;
+        // The packaged (delivered) configuration is read here: its service authentication needs a secret, its model
+        // backend an API key (fail-fast when incomplete) and its checkpointer a Redis, so all three are satisfied and
+        // the gate key is the only illegal input.
+        String engineSecret = "feat112-" + UUID.randomUUID();
+        secrets.add(engineSecret);
         var result = SafeProcessCapture.run(List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                         "-jar", artifacts.jar().toAbsolutePath().toString(), "--server.port=0",
+                        "--deepanalyze.auth.engine-secret=" + engineSecret,
+                        "--deepanalyze.model.backend.api_key=feat112-test-stub-only",
+                        "--openjiuwen.service.middleware.checkpointer.type=in_memory",
                         "--" + fullKey + "=" + value),
                 directory, Duration.ofSeconds(120), secrets);
         s.activation(id + ": startup output captured completely", !result.truncated(), EvidenceSource.PROCESS, directory.toString());
@@ -149,7 +158,7 @@ class Feat112ProcessConfigurationTest {
             config.setProperty("deepanalyze.answer-gate.stream-buffering-enabled", "false");
             config.setProperty("logging.level.com.openjiuwen.da.compat.DaCompatController", "DEBUG");
             try (var process = IsolatedDefaultProcess.launch(artifacts.jar(), config, port)) {
-                var client = awaitDiagnostic(s, process, port, "FEAT-112-J4");
+                var client = awaitDiagnostic(s, process, port, IsolatedDefaultProcess.secret(config), "FEAT-112-J4");
                 var beforeResponse = client.get("/v1/health/detail");
                 var before = beforeResponse.json().path("degradationGate");
                 s.precondition("gate enabled, CLOSED and empty", before.path("enabled").asBoolean() && "CLOSED".equals(before.path("state").asText())
@@ -161,7 +170,7 @@ class Feat112ProcessConfigurationTest {
                         EvidenceSource.LOG, "process output (watched over the whole stream)");
                 String session = "feat112-pressure-" + UUID.randomUUID();
                 try (var slow = new SlowSseConsumer(URI.create("http://127.0.0.1:" + port + "/api/agents/run-stream"),
-                        "{\"sessionId\":\"" + session + "\",\"input\":\"produce sustained output\"}", null)) {
+                        "{\"sessionId\":\"" + session + "\",\"input\":\"produce sustained output\"}", IsolatedDefaultProcess.secret(config))) {
                     slow.consume(Duration.ofSeconds(10), Duration.ofMillis(200));
                     s.activation("sustained model frames produced", source.emittedFrames() >= 1024, EvidenceSource.STUB,
                             "frames=" + source.emittedFrames());

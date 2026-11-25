@@ -10,8 +10,9 @@ import java.util.Map;
 
 /**
  * A test-owned Redis the DA uses as its core checkpointer ({@code openjiuwen.service.middleware.checkpointer.type=redis}).
- * The carrier's own application.yml replaces the engine's, so the checkpointer and its Redis reference are wired
- * explicitly here. A scenario can stop the store while the DA keeps running.
+ * The delivered configuration already selects Redis but points at the deployment's {@code REDIS_HOST}; the
+ * checkpointer and its Redis reference are wired to this container explicitly. A scenario can stop the store while
+ * the DA keeps running.
  */
 public final class RedisCheckpointStore implements AutoCloseable {
     private static final String MIDDLEWARE = "openjiuwen.service.middleware.";

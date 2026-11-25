@@ -27,33 +27,40 @@ import java.util.UUID;
 
 import static com.huawei.ascend.sit.judge.AcceptanceLayer.PUBLIC_SURFACE;
 
-/** Deployment with service authentication configured: the diagnostic surface and entry ordering under it. */
+/**
+ * Deployment that declares service authentication explicitly ({@code deepanalyze.auth.enabled=true} plus the
+ * secret): the diagnostic surface and entry ordering under it. The delivered-default form is covered by
+ * {@link Feat112DiagnosticsTest}.
+ */
 class Feat112AuthenticatedTest extends DeployedGateCase {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> ENTRIES = List.of("/api/agents/run", "/api/agents/run-stream");
 
     @Override
     protected DeploymentForm form() {
-        return DeploymentForm.standard().named("authenticated").withServiceAuthentication();
+        return DeploymentForm.standard().named("authenticated").withExplicitServiceAuthentication();
     }
 
     @Test
-    @Covers(value = {"FEAT-112-G5-missing", "FEAT-112-G5-invalid"}, layer = PUBLIC_SURFACE)
-    @DisplayName("[FEAT-112-G5-missing/G5-invalid] 缺失或错误凭据访问诊断面，与既有服务间认证一样被拒")
+    @Covers(value = {"FEAT-112-G12", "FEAT-112-G5-invalid"}, layer = PUBLIC_SURFACE)
+    @DisplayName("[FEAT-112-G12/G5-invalid] 显式配置认证的部署上，缺失或错误凭据访问诊断面返回 401，与任务入口的拒绝相同")
     void unauthenticatedDiagnosticMatchesServiceAuthentication(Scenario s) throws Exception {
         try (var d = deployment().driver(s)) {
+            s.precondition("service authentication declared explicitly with a secret", deployment().form().declaresAuthentication()
+                    && deployment().secret() != null, EvidenceSource.PROCESS, "form " + deployment().form().name());
             String probeSession = "feat112-auth-" + UUID.randomUUID();
-            String protectedPath = "/api/agents/tasks/" + probeSession + "?sessionId=" + probeSession;
-            var trusted = deployment().client(deployment().secret(), "FEAT-112-G5-trusted").get(protectedPath);
+            var trusted = deployment().client(deployment().secret(), "FEAT-112-G12-trusted")
+                    .get("/api/agents/tasks/" + probeSession + "?sessionId=" + probeSession);
             s.precondition("configured credential is accepted by another protected endpoint", trusted.status() != 401 && trusted.status() != 403,
                     EvidenceSource.HTTP, trusted.evidenceRef());
             Map<String, String> credentials = new LinkedHashMap<>();
-            credentials.put("FEAT-112-G5-missing", null);
+            credentials.put("FEAT-112-G12", null);
             credentials.put("FEAT-112-G5-invalid", "invalid-" + UUID.randomUUID());
             for (var entry : credentials.entrySet()) {
                 DaEvidenceClient client = deployment().client(entry.getValue(), entry.getKey() + "-unauthenticated");
-                var baseline = client.get(protectedPath);
-                s.activation(entry.getKey() + ": the same credentials are refused by another protected endpoint",
+                var baseline = client.post("/api/agents/run", Map.of("sessionId", "feat112-auth-" + UUID.randomUUID(),
+                        "input", "Reply with a short greeting"));
+                s.activation(entry.getKey() + ": the same credentials are refused by the task entry",
                         baseline.status() == 401 || baseline.status() == 403, EvidenceSource.HTTP, baseline.evidenceRef());
                 var diagnostic = client.get("/v1/health/detail");
                 s.accept(entry.getKey(), DiagnosticJudge.rejectsUnauthenticated(entry.getKey(), s.context(), Observation.captured(

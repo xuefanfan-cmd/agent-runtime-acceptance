@@ -35,21 +35,29 @@ public final class IsolatedDefaultProcess implements AutoCloseable {
     }
     /**
      * The carrier's delivered configuration with every degradation-gate key absent: launched with
-     * {@code --spring.config.location} pointing only at these properties, the packaged demo configuration is not
-     * read, so the gate takes the DA host's own default.
+     * {@code --spring.config.location} pointing only at these properties, the packaged engine configuration is not
+     * read, so the gate takes the DA host's own default. Service authentication stays on (the delivered default), with
+     * a fresh secret per launch that the caller reads back with {@link #secret(Properties)}.
      */
     public static Properties deliveredWithoutGateKeys(String modelBaseUrl) {
         Properties properties = new Properties();
-        properties.setProperty("spring.application.name", "degradation-agent-runtime");
-        properties.setProperty("openjiuwen.service.agent-id", "degradation-agent");
+        properties.setProperty("spring.application.name", "deepanalyze-agent");
         properties.setProperty("deepanalyze.model.model.model", "deepanalyze-model");
         properties.setProperty("deepanalyze.model.backend.client_provider", "openai");
         properties.setProperty("deepanalyze.model.backend.base_url", modelBaseUrl);
         properties.setProperty("deepanalyze.model.backend.api_key", "feat112-test-stub-only");
-        properties.setProperty("deepanalyze.auth.enabled", "false");
+        properties.setProperty("deepanalyze.auth.enabled", "true");
+        properties.setProperty(ENGINE_SECRET, "feat112-" + UUID.randomUUID());
         validate(properties);
         return properties;
     }
+
+    /** The service-authentication secret a launch configuration carries. */
+    public static String secret(Properties properties) {
+        return properties.getProperty(ENGINE_SECRET);
+    }
+
+    private static final String ENGINE_SECRET = "deepanalyze.auth.engine-secret";
     public static Map<String,String> cleanEnvironment(Map<String,String> inherited) {
         Map<String,String> clean = new HashMap<>();
         inherited.forEach((key,value) -> {

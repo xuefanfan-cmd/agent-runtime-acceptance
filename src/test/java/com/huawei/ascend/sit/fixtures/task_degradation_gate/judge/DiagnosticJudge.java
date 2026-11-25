@@ -69,12 +69,12 @@ public final class DiagnosticJudge {
     public static List<Finding> rejectsUnauthenticated(String id, Context context, Observation<AuthProbe> probe) {
         List<Finding> results = new ArrayList<>();
         results.add(EvidenceChecks.check(rule(id, "rejected", "§3.2/验收出口16"), context, probe,
-                "rejected by service authentication (401/403)", p -> p != null && (p.status() == 401 || p.status() == 403)));
+                "rejected by service authentication (HTTP 401)", p -> p != null && p.status() == 401));
         results.add(EvidenceChecks.check(rule(id, "withheld", "§3.2/验收出口16"), context, probe,
                 "no diagnostic content", p -> p != null && (p.body() == null || !p.body().contains("degradationGate"))));
         if (probe.collected() && probe.value() != null && probe.value().protectedStatus() != null) {
             results.add(EvidenceChecks.check(rule(id, "sameAsProtected", "§3.2"), context, probe,
-                    "same rejection as another protected endpoint", p -> p.status() == p.protectedStatus()
+                    "same status and body as the task entry's rejection of the same request", p -> p.status() == p.protectedStatus()
                             && sameBody(p.body(), p.protectedBody())));
         }
         return List.copyOf(results);

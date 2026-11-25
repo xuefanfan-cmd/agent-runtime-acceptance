@@ -89,7 +89,7 @@ class Feat112ArchitectureTest {
     @Test
     void everyTestplanScenarioIsCoveredOrRegistered() throws Exception {
         List<String> testplan = Feat112Coverage.testplanIds();
-        assertEquals(84, testplan.size(), "testplan section 5 scenario count");
+        assertEquals(85, testplan.size(), "testplan section 5 scenario count");
         Set<String> covered = new HashSet<>();
         for (Path root : List.of(COMPONENT, INTEGRATION)) {
             testMethods(root).values().forEach(c -> covered.addAll(List.of(c.value())));

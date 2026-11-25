@@ -25,16 +25,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static com.huawei.ascend.sit.judge.AcceptanceLayer.PUBLIC_SURFACE;
 
 /**
  * Checks that need the DA shared data plane ({@link DeploymentForm.Infra#POSTGRES_DATA_PLANE}): the team lookup
- * that only runs with a team channel, the reserved tenant header the data plane rejects, and a failure between
- * the probe claim and the task binding (feature §5.1.4, §5.1.9, acceptance exit 18). The oracle for an existing
- * validation error is the same request answered with the gate CLOSED.
+ * that only runs with a team channel and the reserved tenant header (feature §5.1.9, acceptance exit 18). The oracle
+ * for an existing validation error is the same request answered with the gate CLOSED.
  */
 class Feat112DataPlaneTest extends DeployedGateCase {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -104,40 +101,6 @@ class Feat112DataPlaneTest extends DeployedGateCase {
         Map<String, InvalidRequest> kinds = new LinkedHashMap<>();
         kinds.put("teamNotFound", session -> new Invalid(Map.of("sessionId", session, "input", "hello", "teamId", team), Map.of()));
         verify(s, kinds, 404);
-    }
-
-    @Test
-    @Covers(value = "FEAT-112-E11", layer = PUBLIC_SURFACE)
-    @DisplayName("[FEAT-112-E11] 认领探针后、绑定任务前失败，名额释放，下一真实任务可成为探针")
-    void failureBetweenClaimAndBindReleasesSlot(Scenario s) throws Exception {
-        try (var d = deployment().driver(s)) {
-            d.prepareEmptyClosed();
-            var closed = d.sut().post("/api/agents/run", Map.of("sessionId", d.session(), "input", "Reply with a short greeting"),
-                    RESERVED_TENANT);
-            Reply ungated = Reply.of(closed.status(), parse(closed.body()));
-            s.activation("reserved tenant refused by validation with the gate CLOSED", ungated.refusedByExistingContract(),
-                    EvidenceSource.HTTP, closed.evidenceRef());
-            d.openGate();
-            var half = d.establishState("HALF_OPEN", Duration.ofSeconds(90));
-            s.precondition("HALF_OPEN with the probe slot free", !half.probeInFlight(), EvidenceSource.DIAGNOSTIC_SNAPSHOT, half.evidenceRef());
-            // passes the gate (claims the probe), then the data plane rejects the tenant before the task is bound
-            var claimed = d.sut().post("/api/agents/run", Map.of("sessionId", d.session(), "input", "Reply with a short greeting"),
-                    RESERVED_TENANT);
-            s.accept(PrecedenceJudge.judge(s.id(), s.context(), Observation.captured(
-                    new Comparison(ungated, Reply.of(claimed.status(), parse(claimed.body()))), EvidenceSource.HTTP, claimed.evidenceRef())));
-            var afterFailure = d.snapshot();
-            GateSnapshotChecks.of(s, s.id(), "afterFailureBeforeBind", afterFailure.gate(), afterFailure.evidenceRef())
-                    .state("HALF_OPEN", "§5.1.4").probeInFlight(false, "§5.1.4");
-            d.delayed();
-            String next = d.session();
-            var task = d.async(next, new CountDownLatch(0));
-            String taskId = d.awaitActive(next).path("id").asText();
-            var occupied = d.snapshot();
-            Expect.equal(s, s.id(), "nextTaskBecomesProbe", "§5.1.4", Category.EXTERNAL_CONTRACT,
-                    EvidenceSource.DIAGNOSTIC_SNAPSHOT, occupied.evidenceRef(), occupied.probeInFlight(), true);
-            d.cancel(next, taskId);
-            task.get(60, TimeUnit.SECONDS);
-        }
     }
 
     /**

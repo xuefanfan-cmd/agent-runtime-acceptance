@@ -3,6 +3,7 @@ package com.huawei.ascend.sit.cases.integration.task_degradation_gate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.huawei.ascend.sit.fixtures.task_degradation_gate.deploy.DeployedGateCase;
 import com.huawei.ascend.sit.fixtures.task_degradation_gate.deploy.DeploymentForm;
+import com.huawei.ascend.sit.fixtures.task_degradation_gate.deploy.GateEventLog;
 import com.huawei.ascend.sit.fixtures.task_degradation_gate.drive.GateDriver;
 import com.huawei.ascend.sit.fixtures.task_degradation_gate.judge.Expect;
 import com.huawei.ascend.sit.fixtures.task_degradation_gate.judge.GateSnapshotChecks;
@@ -13,6 +14,7 @@ import com.huawei.ascend.sit.judge.Scenario;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -64,9 +66,11 @@ class Feat112StateMachineTest extends DeployedGateCase {
 
     @Test
     @Covers(value = "FEAT-112-C4", layer = PUBLIC_SURFACE)
-    @DisplayName("[FEAT-112-C4] 半开探针系统失败后按真实失败返回，回 OPEN 并重算静默期")
+    @DisplayName("[FEAT-112-C4] 半开探针系统失败后按真实失败返回，回 OPEN、递增故障代际并重算静默期")
     void failedProbeReopensGate(Scenario s) throws Exception {
         try (var d = deployment().driver(s)) {
+            Path log = deployment().processLog();
+            long offset = GateEventLog.mark(log);
             var opened = d.openGate();
             var half = d.establishState("HALF_OPEN", Duration.ofSeconds(90));
             s.precondition("probe slot free", !half.probeInFlight(), EvidenceSource.DIAGNOSTIC_SNAPSHOT, half.evidenceRef());
@@ -83,7 +87,49 @@ class Feat112StateMachineTest extends DeployedGateCase {
             GateSnapshotChecks.of(s, s.id(), "afterProbe", reopened.gate(), reopened.evidenceRef())
                     .state("OPEN", "§5.1.7/验收出口11").instance(opened.instanceId(), "§5.1.8")
                     .probeInFlight(false, "§5.1.7").retryAfterPositive("验收出口11/§5.1.8");
+            var generations = generations(log, offset, opened.instanceId());
+            s.activation("transition into HALF_OPEN by quiet_elapsed logged on this instance", generations.halfOpen() != null,
+                    EvidenceSource.LOG, log + " from byte " + offset);
+            Expect.that(s, s.id(), "failureGenerationAdvances", "§5.1.7", Category.INTERNAL_STATE, EvidenceSource.LOG,
+                    log + " from byte " + offset, generations,
+                    "a HALF_OPEN->OPEN transition with reason=system_failure whose generation exceeds that of the quiet_elapsed entry",
+                    g -> g.halfOpen() != null && g.reopened() != null
+                            && g.reopened().number("generation") > g.halfOpen().number("generation")
+                            && g.halfOpen().number("generation") >= 0);
         }
+    }
+
+    /** The last entry into HALF_OPEN by quiet_elapsed and the first system_failure reopening after it. */
+    private record Generations(GateEventLog.Event halfOpen, GateEventLog.Event reopened) {
+        @Override
+        public String toString() {
+            return "halfOpen=" + (halfOpen == null ? "absent" : halfOpen.line())
+                    + " | reopened=" + (reopened == null ? "absent" : reopened.line());
+        }
+    }
+
+    private static Generations generations(Path log, long offset, String instanceId) throws Exception {
+        long until = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        Generations found;
+        do {
+            List<GateEventLog.Event> transitions = GateEventLog.since(log, offset, "degradation_gate_transition").stream()
+                    .filter(e -> instanceId.equals(e.key("instanceId"))).toList();
+            GateEventLog.Event halfOpen = null;
+            GateEventLog.Event reopened = null;
+            for (var event : transitions) {
+                if ("HALF_OPEN".equals(event.key("to")) && "quiet_elapsed".equals(event.key("reason"))) {
+                    halfOpen = event;
+                    reopened = null;
+                } else if (halfOpen != null && reopened == null && "HALF_OPEN".equals(event.key("from"))
+                        && "OPEN".equals(event.key("to")) && "system_failure".equals(event.key("reason"))) {
+                    reopened = event;
+                }
+            }
+            found = new Generations(halfOpen, reopened);
+            if (found.reopened() != null) return found;
+            Thread.sleep(100);
+        } while (System.nanoTime() < until);
+        return found;
     }
 
     private static String terminalOf(GateDriver d, String session) throws Exception {

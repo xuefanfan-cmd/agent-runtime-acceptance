@@ -110,7 +110,10 @@ class DiagnosticJudgeTest {
         var bespoke = auth(new AuthProbe(401, "{\"error\":\"diagnostic locked\"}", 401, "{\"error\":\"unauthorized\"}"));
         assertEquals(Outcome.FAIL, bespoke.stream().filter(f -> f.ruleId().endsWith("sameAsProtected")).findFirst().orElseThrow().outcome());
         var forbidden = auth(new AuthProbe(403, "", null, null));
-        assertTrue(forbidden.stream().allMatch(f -> f.outcome() == Outcome.PASS), "403 without a protected baseline is a rejection");
+        assertEquals(Outcome.FAIL, forbidden.stream().filter(f -> f.ruleId().endsWith("rejected")).findFirst().orElseThrow().outcome(),
+                "the service-authentication rejection is 401, not any refusal");
+        var differentStatus = auth(new AuthProbe(401, "{\"error\":\"unauthorized\"}", 403, "{\"error\":\"unauthorized\"}"));
+        assertEquals(Outcome.FAIL, differentStatus.stream().filter(f -> f.ruleId().endsWith("sameAsProtected")).findFirst().orElseThrow().outcome());
     }
 
     @Test

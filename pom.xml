@@ -55,20 +55,13 @@
              common@f9da5b54f 源码构建；版本号用批次专属串，**不复用** 0.1.3/0.1.4，
              以免同一坐标对应两份不同内容（0.1.4 是 common@b3155d440 构建的，属 FEAT-054 线基线）。
              构建配方见 Test_work/memory/ENV-本机SIT环境事实.md 的 ENV-3.5 ~ ENV-3.10。 -->
-        <!-- FEAT-068（2026-10-19 二次裁决）：模板库批次改测 post-085 新形态。
-             r2~r5 源=ce9019d86 → cf4571b30（!860）→ r4 cherry-pick → aa037142d（!896），
-             历代指纹见 01-Design_File/20261019-feat-068-team-template/evidence/20261019-build-feat068/。
-             r6（2026-11-24，!510 评审后实现轮）：源=baselines/agent-solution-r3-babb882b9（分支 sit-baseline-r3，
-             common@babb882b9 = 2026-11-16 r3 快照），指纹同目录 r6 段；tool-platform.engine.json 已由引擎
-             构建期从同仓 DeepAnalyze/openapi 拷入 classpath tools/openapi/（ab62e202b），运行期路径不变。
+        <!-- FEAT-068（2026-10-19 二次裁决）：模板库批次改测 post-085 新形态。源=openJiuwen/agent-solution
+             common@ce9019d86（detached worktree 构建，指纹见
+             01-Design_File/20261019-feat-068-team-template/evidence/20261019-build-feat068/ r2 段）。
+             与 0.1.3-feat065067-r3（16:00 重建版）同源 ce9019d86 的相邻状态，067 线既有用例在本版本面继续有效；
              067 线 yml SUT 条目仍钉其自身版本，不受本属性影响。 -->
-        <agent-core-ext-orchestration.version>0.1.3-feat068-r6</agent-core-ext-orchestration.version>
-        <deepanalyze-engine.version>0.1.3-feat068-r6</deepanalyze-engine.version>
-        <!-- FEAT-068 r6（2026-11-24）：engine 的传递 tool-guardrail 在本仓仲裁为旧版 0.1.3（缺
-             SecretArgsMasking，组件 run S08 NoClassDefFoundError 实证）——直接声明 r6 覆盖传递仲裁。
-             r6 引擎 DaWorkflowEvents.complete 引 guardrail 的 SecretArgsMasking（组件层跑
-             DaWorkflowRunner.run 必需）；exec jar 面不受影响（自带全量）。 -->
-        <agent-core-ext-tool-guardrail.version>0.1.3-feat068-r6</agent-core-ext-tool-guardrail.version>
+        <agent-core-ext-orchestration.version>0.1.3-feat068-r5</agent-core-ext-orchestration.version>
+        <deepanalyze-engine.version>0.1.3-feat068-r5</deepanalyze-engine.version>
         <!-- FEAT-065/066 静态合同用例（065-S21 / 066-S13）要读被测模块**源码**（设计明写"含注释"）。
              这里只留空默认值，**不在测试仓里硬编码本机路径**；执行时用
              -Dorchestration.source.root=<agent-core-ext-orchestration 的 src/main/java 绝对路径> 传入，
@@ -302,35 +295,41 @@
         <!-- FEAT-065/066：确定性编排层（蓝图调度 + 交叉验证装载期编译）。
              组件层直接消费其公开面：BlueprintLoader.load / BlueprintScheduler / BlueprintWorkflowCompiler /
              SubAgentExecutor。依据 FEAT-065 §3「成员绑定契约」与「执行入口」两个跨模块 API 契约。 -->
-        <!-- 2026-10-29 曾临时注释（FEAT-033 unblock，ECS ~/.m2 缺 artifact）；2026-11-24 FEAT-068 !510
-             实现轮在本检出恢复（工作区 m2repo 已有 r6 制品；10-29 的两条 testExcludes 同轮删除）。
-             每批在自己的检出各自恢复/重注释是既有惯例（rel068069、feat109-110-111 检出同此）。 -->
+        <!-- 2026-10-29 临时注释（FEAT-033 unblock）：ECS ~/.m2 下该 artifact 从未成功下载过（aliyun 公共仓没有），
+             Maven .lastUpdated 失败标记已打，force full resolve 时 FAIL。本次 FEAT-033 SIT 跑测本来就不需要
+             orchestration/deepanalyze；FEAT-065/066/067/068 相关测试通过 testExcludes 排除（见下方 compiler
+             plugin testExcludes 段 2026-10-29 新增两条）。队友上传 jar+pom 到 docsReview
+             agent-runtime-acceptance-m2-missing/ 后恢复本块 + 删 testExcludes 两条。 -->
+        <!-- 【deepanalyze 线测试点亮配方（2026-11-25 补记，来源=FEAT-068 r6 轮）】下列两条被注释的依赖是
+             FEAT-065~068 组件层/e2e 用例的编译期依赖；被测制品来自 openJiuwen/agent-solution 仓（在本仓构建
+             体系之外），从未发布到任何公共仓，因此在 main 上依赖必须保持注释态、对应 testExcludes 必须保持。
+             要在本机跑这些用例，四步（跑完不要提交 pom 改动）：
+             ① 从 agent-solution 按本批钉住的 commit 源码构建 orchestration + deepanalyze-engine，install 进
+                本机 maven 仓，版本串用批次专属（同坐标不同内容会互相架空基线）；
+             ② 在本检出解开下方两条依赖注释（版本属性与 ① 一致）；
+             ③ 在 testExcludes 删除 **/component/deepanalyze_template/** 与 **/e2e/deepanalyze/** 两条；
+             ④ 跑完按原样恢复本文件。 -->
+        <!--
         <dependency>
             <groupId>com.openjiuwen</groupId>
             <artifactId>agent-core-ext-orchestration</artifactId>
             <version>${agent-core-ext-orchestration.version}</version>
             <scope>test</scope>
         </dependency>
+        -->
         <!-- FEAT-067：DA 宿主的会话内工作流工具组（da.workflow 包六件）。
              六件工具的公开构造器依赖全部可注入（DaWorkflowRunner 收 memberFactory + parallelism，
              DelegateTaskTool 收 board + delegate 函数），故工具契约可在组件层验证，无需拉起宿主进程。 -->
-        <!-- 2026-10-29 曾临时注释（同 orchestration 原因）；2026-11-24 FEAT-068 !510 实现轮恢复：
-             本仓 e2e/deepanalyze 与 component/deepanalyze_template 经 TestConfig 读 application-openjiuwen.yml
-             的 deepanalyze-feat068 SUT 条目（version 属性即上面的 deepanalyze-engine.version），
-             pom declared 依赖保证制品解析与 classpath 资产（workflow-templates/*.yaml、tools/openapi）可用。 -->
+        <!-- 2026-10-29 临时注释（同 orchestration 原因）。本仓测试源码无直接 import deepanalyze-engine 的类，
+             仅为 pom declared 依赖，Maven force full resolve 时 FAIL；注释后 Maven 不要求本 artifact。 -->
+        <!--
         <dependency>
             <groupId>com.openjiuwen</groupId>
             <artifactId>deepanalyze-engine</artifactId>
             <version>${deepanalyze-engine.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- FEAT-068 r6（2026-11-24）：guardrail 直接声明见上方属性注释（传递仲裁压旧 0.1.3 的覆盖）。 -->
-        <dependency>
-            <groupId>com.openjiuwen</groupId>
-            <artifactId>agent-core-ext-tool-guardrail</artifactId>
-            <version>${agent-core-ext-tool-guardrail.version}</version>
-            <scope>test</scope>
-        </dependency>
+        -->
         <!-- ================================================================ -->
         <!-- FEAT-032 多模态 SUT 三件套（2026-10-23 整改：PR !404 已合入）     -->
         <!-- agent-core-java 0.1.17 必须从源码重打包（2026-10-23 前的发布制品    -->
@@ -434,18 +433,20 @@
                         <exclude>**/react_travel/RedisStandaloneBehaviorTest.java</exclude>
                         <exclude>**/e2e/reconnect/**</exclude>
                         <exclude>**/fixtures/reconnect/**</exclude>
-                        <!-- 2026-11-24 FEAT-068 !510 实现轮新增：feat-086 三文件为 109 批次 2026-11-21
-                             编译审计已登记的「他批既有伤」（featsupport 类未交库，非本批引入、非本批可修）。
-                             三条必须同时排除（引用闭包）：ProjectionBatch 缺同包支撑类；RemoteA2aResponseHook
-                             与 RemoteCaller 各有 1 处调用 ProjectionBatch 的静态方法——只排 ProjectionBatch 时
-                             javac 经 -sourcepath 对未列输入的同包文件做按需隐式编译，报错照旧。
+                        <!-- 2026-10-29 临时排除（FEAT-033 unblock）：下列两目录测试源码 import
+                             com.openjiuwen.agents.orchestration.* 包，依赖 agent-core-ext-orchestration
+                             artifact；该 artifact 在 ECS ~/.m2 下未成功下载过，本仓 pom 已临时注释
+                             orchestration + deepanalyze-engine 两条 dep（见上方 dependencies 段）。
+                             队友上传 jar+pom 后恢复 dep + 删本两条 exclude。 -->
+                        <exclude>**/component/deepanalyze_template/**</exclude>
+                        <exclude>**/e2e/deepanalyze/**</exclude>
+                        <!-- 2026-11-24：feat-086 三文件为本批编译时在案的既有断裂（同包支撑类未交库；
+                             RemoteA2aResponseHook/RemoteCaller 各有 1 处调用 ProjectionBatch 的静态方法，
+                             javac 经 -sourcepath 对未列入输入的同包文件按需隐式编译，故三条必须同时排除）。
                              恢复由 feat-086 线处置（交付支撑类后三条同删）。 -->
                         <exclude>**/react_travel/Feat086ProjectionBatchContractTest.java</exclude>
                         <exclude>**/react_travel/Feat086RemoteCallerContractTest.java</exclude>
                         <exclude>**/react_travel/Feat086RemoteA2aResponseHookReactAgentTest.java</exclude>
-                        <!-- 2026-10-29 临时排除（FEAT-033 unblock）的 deepanalyze 两目录已于 2026-11-24
-                             FEAT-068 !510 实现轮删除（依赖块已恢复）；若他批再需临时注释依赖，按惯例
-                             在其自己的检出排除，不动本检出。 -->
                     </testExcludes>
                 </configuration>
             </plugin>

@@ -5,6 +5,16 @@
 
 sut:
   # ------------------------------------------------------------------
+  # FEAT-136/137/138 agent-dev-workbench 控制面（本机验收部署）：
+  #   控制面端口为 P1_PORT（FEAT-136 执行报告整改项 2：设计文档默认 7310 是
+  #   远端形态 agent-host 端口）。本机启动：P1_PORT=4538 P1_ENVIRONMENT=dev
+  #   P1_AUTH_MODE=local P1_ADMIN_PASSWORD=<见 WORKBENCH_ADMIN_PASSWORD>。
+  workbench:
+    base-url: http://127.0.0.1:4538
+    username: admin
+    # 本地形态后端（P1_ISOLATION=local）：F138-03 无远端通道形态判定用
+    local-base-url: http://127.0.0.1:4541
+  # ------------------------------------------------------------------
   # FEAT-048 外部环境（已部署，全部用例可执行）：
   #   - Nacos 3.0.0 服务端：podman feat048-nacos（127.0.0.1:8848，standalone，
   #     内嵌存储，namespace tenant-A / tenant-B 已建，v1 OpenAPI 兼容）

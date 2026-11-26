@@ -351,6 +351,23 @@ PPT本轮不直接重写；将代码/报告证据链接回此表后，再更新D
 
 ## 8. 实现与运行登记
 
+### 8.00 截至 2026-11-26（Linux 服务器全量实跑，载体按 engine 交付配置运行，testplan !654）
+
+载体 2026-11-25 重建：core `origin/develop@105ce18c1`（0.1.18）+ solution `origin/common@d4d6ebc43`（revision 0.1.4），sha256 `6da81cdd…`；demo 不再自带 `application.yml`，DA 按 engine 交付配置运行（认证默认开启、checkpointer 为 Redis）。测试仓 `db510b3`，testplan pin `ef1feab1`。环境同 §8.0。
+
+85 个场景全部有判定：**81 PASS、4 FAIL**（逐场景判定 91 条，F4 等由两个用例分别承接）。
+
+| 结论 | 场景 | 说明 |
+|---|---|---|
+| FAIL / must_violation | A1 | `enabled` 键缺席、不读随包配置时诊断 `enabled=true`，第二个系统失败任务被 503 `ENGINE_DEGRADED` 拒收。装配层在键缺席时强制开启，与特性档 §3.3“ext 为 false”不符（DA L2 §1.4 已列为差距）。本机 Windows 同样复现 |
+| FAIL / must_violation | E4-formats | `context_length_exceeded` 码配无长度字样的文案时计入分子（`systemFailureCount=1`）。同 §8.0 之后的 core 缺陷（DeepAgent 丢弃结构化 failure），已提 openJiuwen/agent-core-java#322 |
+| FAIL / conditional_not_triggered | E4 | 同一 core 缺陷：任务失败未带结构化 181012，激活不成立 |
+| FAIL / conditional_not_triggered | E3 | 出厂配置下 `business_failure` 落默认 ask，探针先停待答（待特性设计确认，状态不变） |
+
+本轮转绿或首次通过：G5-missing（载体对齐交付配置后，交付默认匿名访问返回 401）、G12、G5-invalid（均 401 且与 `POST /api/agents/run` 同一请求的拒绝一致）、G13（缺密钥启动失败并指出 `deepanalyze.auth.engine-secret`）、C4（迁移事件 `generation` 由 `quiet_elapsed` 时的值递增到 `system_failure` 时的值）、E15（新激活证据：任务记录 error 为检查点读取失败、续跑后 stub 无新请求）、E17（成员被拒耗尽后无关失败计入分子）、E18（hook 每轮拒绝直到轮次耗尽：任务 failed、只计分母）、A2（随包交付配置 `enabled=true`）、E16。其余场景无退化。
+
+测试侧问题一项（已修，不计产品问题）：交付配置把 SSE 异步超时设为 61 分钟（原 demo 配置下为 Spring 默认 30 秒），任务停在待答时 `/run-stream` 不结束，E15 读响应体被阻塞；改为读到 `ask_user` 事件后由客户端断开（`DaEvidenceClient.postSseUntil`），被测物配置不变。
+
 ### 8.0 截至 2026-11-20（Linux 服务器全量实跑，新载体）
 
 载体 2026-11-18 重建：core `origin/develop@f777aa244` + solution `origin/common@96c23d4ea`（sha256 `cdb5c93e…`，运行时按构建清单核对）。环境：华为云 EulerOS ECS、JDK 21、Docker（镜像 `registry:8501/postgres:16`、`registry:8501/redis:7.4.9`）、libfaketime 0.9.10 现场编译；离线依赖库 + 空 Maven settings。轮次：`linux-rest-1`（14 个类 55 方法）、`linux-env-2`（E15、E11、F3、F4）、`linux-clock-3`（B6、B7×2、E9）、`linux-a2j4-2`（A2、J4 复跑）；更早轮次（linux-env-1、linux-b7*、linux-clock-2）被取代。结果包 `feat112/logs/results-all-20261120.tar.gz`（linux-a2j4-2 以回贴为据）。

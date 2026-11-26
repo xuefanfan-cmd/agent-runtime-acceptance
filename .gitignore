@@ -50,8 +50,8 @@ work-src/
 .codecheckcli
 
 # Test repo carries only test cases and case docs (rule 2026-11-23).
-# feat112/ is a local working directory (expectations are fetched from the docs repo by
-# scripts/fetch-expectations.sh at the commits pinned in scripts/expectation-sources.env).
+# feat112/ is a local working directory (the testplan is fetched from the docs repo by
+# scripts/fetch-expectations.sh: latest within a version cycle, archived commit after a release).
 feat112/
 # Dev-handoff jar bundles and notes stay local
 feat058-jars/

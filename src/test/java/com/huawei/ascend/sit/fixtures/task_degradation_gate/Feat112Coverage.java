@@ -17,8 +17,7 @@ import java.util.regex.Pattern;
 /**
  * FEAT-112 scope against the testplan: which scenarios have no executable test (and why), which tests carry only
  * part of a requirement, and the per-scenario report of a run. The repo stores no testplan copy: the text is
- * fetched from the docs repository at the pinned commit by {@code scripts/fetch-expectations.sh}
- * (pins in {@code scripts/expectation-sources.env}).
+ * fetched from the docs repository by {@code scripts/fetch-expectations.sh} (latest within a version cycle).
  */
 public final class Feat112Coverage {
     private Feat112Coverage() {}
@@ -54,14 +53,14 @@ public final class Feat112Coverage {
     }
 
     /**
-     * The testplan the tests implement, fetched from the docs repository at the pinned commit. The pinned commit
-     * fixes the text, so a changed expectation is always a reviewable pin change, never a silent drift.
+     * The testplan the tests implement, fetched from the docs repository by {@code scripts/fetch-expectations.sh}:
+     * the latest on the docs branch within a version cycle, an archived commit only for a released version. The
+     * commit actually used is recorded next to it in {@code PROVENANCE.txt}.
      */
     public static Path testplan() {
         Path fetched = repositoryRoot().resolve("target/expectations/FEAT-112-task-degradation-gate-testplan.md");
         if (!Files.isRegularFile(fetched)) {
-            throw new IllegalStateException("expectation documents not fetched: run scripts/fetch-expectations.sh"
-                    + " (pins: scripts/expectation-sources.env); expected " + fetched);
+            throw new IllegalStateException("expectation documents not fetched: run scripts/fetch-expectations.sh; expected " + fetched);
         }
         return fetched;
     }

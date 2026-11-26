@@ -18,7 +18,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 本次设计基线与 testplan §3 一致；以下设计快照固定于所列提交，不代表可变缓存工作树：
 - 特性档（docs 仓 `develop/02-features/FEAT-112-task-degradation-gate.md` @ `a166678c`，与上一基线 `05af9cc3` 相比只有出口 16 凭据口径；核对一律回 docs 仓看该提交）：§2 验收出口、§3.1 准入、§3.2 健康面、§3.3 配置面、§5 状态/窗口机制。用例判据的条款出处统一记为 `feature.md@a166678c`。
 - L2 设计（docs 仓 `develop/03-architecture/L2-Low-Level-Design/deepanalyze/FEAT-112-task-degradation-gate.md` @ `5497094b`；终态分类规格 `agent-runtime-ext/FEAT-112-task-terminal-classification-spec.md` @ `93ccf48e`）：观测形式、实现证据及明确列出的需求差距，不用于覆盖需求。
-- testplan：测试仓不存副本。执行文本按 [scripts/expectation-sources.env](../../scripts/expectation-sources.env) 的 pin 由 `scripts/fetch-expectations.sh` 取到 `target/expectations/`，`Feat112Coverage` 读取；pin 变更即预期变更，须随用例复核一起评审。按特性档修订的三轮 testplan（§5 共 84 行）经 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549) 合入；2026-11-25 按 agent-solution #852、#856 裁决的增量（G5-missing 收窄为交付默认、新增 G12、G5-invalid 明确 401、C4 按迁移事件断言代际、E15 激活证据与判定分离）经 [docs !628](https://gitcode.com/Technical-AF/docs/merge_requests/628) 合入，§5 共 85 行；2026-11-26 测试侧按模板收口的修订（基线重定、补条款引用、新增 G13、撤销 E11，A1/A2/E17/E18 改为可承接）经 [docs !654](https://gitcode.com/Technical-AF/docs/merge_requests/654) 合入，§5 仍为 85 行，当前 pin 为 main 提交 `ef1feab1`。每轮实跑前运行 `scripts/fetch-expectations.sh check-sync` 对照 docs main；发布测试报告时记 pin 的 commit，不以可变文件路径代替版本基线。
+- testplan：测试仓不存副本。同一版本周期内，用例一律对应 docs main 上最新的 testplan：运行前由 `scripts/fetch-expectations.sh` 取到 `target/expectations/`，实际取到的提交记在同目录 `PROVENANCE.txt`，`Feat112Coverage` 读取；docs main 上 testplan 一变而用例未跟进时，`Feat112ArchitectureTest` 的 ID 对账即失败。版本发布后才按版本归档 testplan 提交，复现该版本结论时以 `FEAT112_TESTPLAN_COMMIT` 指定。按特性档修订的三轮 testplan（§5 共 84 行）经 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549) 合入；2026-11-25 按 agent-solution #852、#856 裁决的增量（G5-missing 收窄为交付默认、新增 G12、G5-invalid 明确 401、C4 按迁移事件断言代际、E15 激活证据与判定分离）经 [docs !628](https://gitcode.com/Technical-AF/docs/merge_requests/628) 合入，§5 共 85 行；2026-11-26 测试侧按模板收口的修订（基线重定、补条款引用、新增 G13、撤销 E11，A1/A2/E17/E18 改为可承接）经 [docs !654](https://gitcode.com/Technical-AF/docs/merge_requests/654) 合入，§5 仍为 85 行。发布测试报告时记 `PROVENANCE.txt` 中的提交，不以可变文件路径代替版本基线。
 - 多维比对（不作预期来源）：DA L2（docs PR 538 刷新中）、ext L2 分类规格（docs PR 463）、代码。与特性档不一致之处逐条登记到差异清单与 PR 评论，不改写本文期望。
 - 被测物来源：agent-core-java `develop` 最新（当前 `e24bcb74d`）+ solution `common` 最新（当前 `1127a9ece7b`），由 `scripts/sut/build-carrier.sh` 在干净工作树中构建，构建清单 `feat112-build-manifest.json` 记录两边 commit、制品 sha256 与载体内捆绑 core 的一致性校验；运行时不一致即拒绝。
 - demo：solution 仓 `common/example/task-degradation-gate-acceptance-demo/`（测试侧自建，未入库）。2026-11-25 起 demo 不再自带 `application.yml`，载体运行时读 deepanalyze-engine 随包交付的配置（服务间认证默认开启、checkpointer 为 Redis），与 DA 交付形态一致；此前 demo 配置整份遮蔽了 engine 交付配置，载体上认证实为关闭。部署夹具在交付配置之上只叠加部署差异：门参数、模型地址、端口；全部形态注入 `DA_ENGINE_SECRET`、驱动侧携带 `X-Engine-Secret`，不注入认证开关；不托管 Redis 的形态把 checkpointer 设为 `in_memory`。
@@ -52,7 +52,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | F5 对照 | §3.1 列出 9 个在途控制面入口；“保持原契约”以门 CLOSED 时同一请求的响应为对照 | 由 5 个入口扩到 9 个，每个入口先在 CLOSED 取基线，OPEN 下比对状态码与错误码，不只验“不含 ENGINE_DEGRADED” |
 | 供监控的字段与日志 | 监控规则属部署验收；但提供给监控的字段与日志是被测物输出，SIT 应覆盖 | I1 增验新进程启动记录中的 `instanceId` 与诊断一致；启动记录的正式载体待开发确认（部分承接）。告警保留不在 SIT |
 | 组件级验收撤回 | 测试仓只做 SIT：对外契约观测不到时依次取进程日志、持久化数据；都不可观测则提特性不可观测 Issue，不以直接调用产品内部类、测试自造内部事实代替（用户 2026-11-16） | 撤掉 `Feat112MechanismTest`、`Feat112TerminalClassificationTest`。A1、B6、B7、C4、E15、E7、E8、E9、E11 改为 SIT 或登记未承接；不可观测项的简稿本地留档（后随 2026-11-20 处置：3/4 合并为增强提单 openJiuwen/agent-solution#856，5 经开发核查接受关闭） |
-| 期望文本漂移 | ID 对账发现不了“ID 不变、期望改了”（C7、E3 都曾如此） | 测试仓不存 testplan 副本，执行文本按 `scripts/expectation-sources.env` 的 pin 取自 docs 仓；pin 变更即期望变更，须随承接用例复核一起评审，每轮实跑前 `check-sync` 对照 docs main |
+| 期望文本漂移 | ID 对账发现不了“ID 不变、期望改了”（C7、E3 都曾如此） | 测试仓不存 testplan 副本，同一版本周期内取 docs main 最新文本；testplan 有修订时随承接用例一起复核，版本发布后按版本归档 testplan 提交 |
 
 ### 1.2 测试层级
 
@@ -353,7 +353,7 @@ PPT本轮不直接重写；将代码/报告证据链接回此表后，再更新D
 
 ### 8.00 截至 2026-11-26（Linux 服务器全量实跑，载体按 engine 交付配置运行，testplan !654）
 
-载体 2026-11-25 重建：core `origin/develop@105ce18c1`（0.1.18）+ solution `origin/common@d4d6ebc43`（revision 0.1.4），sha256 `6da81cdd…`；demo 不再自带 `application.yml`，DA 按 engine 交付配置运行（认证默认开启、checkpointer 为 Redis）。测试仓 `db510b3`，testplan pin `ef1feab1`。环境同 §8.0。
+载体 2026-11-25 重建：core `origin/develop@105ce18c1`（0.1.18）+ solution `origin/common@d4d6ebc43`（revision 0.1.4），sha256 `6da81cdd…`；demo 不再自带 `application.yml`，DA 按 engine 交付配置运行（认证默认开启、checkpointer 为 Redis）。测试仓 `db510b3`，testplan 取 docs main `ef1feab1`（!654 合入版）。环境同 §8.0。
 
 85 个场景全部有判定：**81 PASS、4 FAIL**（逐场景判定 91 条，F4 等由两个用例分别承接）。
 

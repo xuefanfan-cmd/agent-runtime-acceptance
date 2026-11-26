@@ -57,6 +57,21 @@ public final class IsolatedDefaultProcess implements AutoCloseable {
         return properties.getProperty(ENGINE_SECRET);
     }
 
+    /**
+     * Deployment overlay on top of the packaged (delivered) engine configuration, for {@link #launchPackaged}: only
+     * what a deployment must supply (model connection, service secret) and an in-memory checkpointer in place of the
+     * delivered Redis. The degradation-gate keys are left to the packaged configuration.
+     */
+    public static Properties packagedOverlay(String modelBaseUrl) {
+        Properties properties = new Properties();
+        properties.setProperty("deepanalyze.model.backend.base_url", modelBaseUrl);
+        properties.setProperty("deepanalyze.model.backend.api_key", "feat112-test-stub-only");
+        properties.setProperty(ENGINE_SECRET, "feat112-" + UUID.randomUUID());
+        properties.setProperty("openjiuwen.service.middleware.checkpointer.type", "in_memory");
+        validate(properties);
+        return properties;
+    }
+
     private static final String ENGINE_SECRET = "deepanalyze.auth.engine-secret";
     public static Map<String,String> cleanEnvironment(Map<String,String> inherited) {
         Map<String,String> clean = new HashMap<>();
@@ -70,6 +85,15 @@ public final class IsolatedDefaultProcess implements AutoCloseable {
         return clean;
     }
     public static IsolatedDefaultProcess launch(Path jar, Properties properties, int port) throws Exception {
+        return launch(jar, properties, port, "--spring.config.location=");
+    }
+
+    /** Launch reading the packaged configuration, with {@code overlay} layered over it (higher precedence). */
+    public static IsolatedDefaultProcess launchPackaged(Path jar, Properties overlay, int port) throws Exception {
+        return launch(jar, overlay, port, "--spring.config.additional-location=");
+    }
+
+    private static IsolatedDefaultProcess launch(Path jar, Properties properties, int port, String locationArgument) throws Exception {
         validate(properties);
         if (!Files.isRegularFile(jar)) throw new IllegalArgumentException("Executable jar missing");
         Path directory = Files.createTempDirectory("feat112-default-");
@@ -77,7 +101,7 @@ public final class IsolatedDefaultProcess implements AutoCloseable {
         try {
             try (Writer writer = Files.newBufferedWriter(config)) { properties.store(writer, "isolated test input"); }
             List<String> command = List.of(javaExecutable(), "-jar", jar.toAbsolutePath().toString(),
-                    "--spring.config.location=" + config.toUri(), "--server.address=127.0.0.1", "--server.port=" + port);
+                    locationArgument + config.toUri(), "--server.address=127.0.0.1", "--server.port=" + port);
             return new IsolatedDefaultProcess(command, directory, new ArrayList<>(properties.values().stream().map(Object::toString).toList()));
         } catch (Exception | Error failure) {
             try { deleteDirectory(directory); } catch (Exception cleanup) { failure.addSuppressed(cleanup); }

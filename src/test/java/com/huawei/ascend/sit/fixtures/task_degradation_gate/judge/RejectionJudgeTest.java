@@ -47,7 +47,7 @@ class RejectionJudgeTest {
         assertTrue(judge(503, headers("OPEN"), open, "OPEN").stream().allMatch(f -> f.outcome() == Outcome.PASS));
         assertTrue(judge(503, headers("HALF_OPEN"), body("HALF_OPEN"), "HALF_OPEN").stream().allMatch(f -> f.outcome() == Outcome.PASS));
         assertTrue(judge(503, headers("OPEN"), open, "OPEN").stream()
-                .allMatch(f -> f.rule().contractRef().startsWith("FEAT-112 feature.md@05af9cc3 ")));
+                .allMatch(f -> f.rule().contractRef().startsWith("FEAT-112 feature.md@a166678c ")));
     }
 
     @Test

@@ -15,8 +15,8 @@ import java.util.regex.Pattern;
 public final class Feat112Contract {
     private Feat112Contract() {}
 
-    public static final String DESIGN_COMMIT = "05af9cc3796ac953aee157e9c0b35621552232f4";
-    public static final String FEATURE = "FEAT-112 feature.md@05af9cc3";
+    public static final String DESIGN_COMMIT = "a166678c01b18de3d9512cdbfa4e4dade1ac4a17";
+    public static final String FEATURE = "FEAT-112 feature.md@a166678c";
     public static final String ID_PREFIX = "FEAT-112-";
 
     private static final Pattern CLAUSE = Pattern.compile("§\\d+(\\.\\d+)*|验收出口\\d+|能力表“[^”]+”|场景表“[^”]+”");

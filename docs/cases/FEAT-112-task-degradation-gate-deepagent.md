@@ -11,14 +11,14 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 
 # FEAT-112 cases：如何触发、取证与判定
 
-本文件承接 testplan §5 的全部 **85 个场景 ID**（2026-11-25 修订版，docs !628 新增 G12）。不是新的需求，不把实现现状变成验收标准。当前为完整设计，代码和实跑结果另在第 8 节登记；写出判据不等于判据自测通过，更不等于真实 demo 验收通过。
+本文件承接 testplan §5 的全部 **85 个场景 ID**（2026-11-26 修订版，docs !654：新增 G13、撤销 E11，A1/A2/E17/E18 改为可承接）。不是新的需求，不把实现现状变成验收标准。当前为完整设计，代码和实跑结果另在第 8 节登记；写出判据不等于判据自测通过，更不等于真实 demo 验收通过。
 
 ## 1. 基线、范围与端到端关系
 
-本次设计基线为已合入 PR 498 的提交 `05af9cc3796ac953aee157e9c0b35621552232f4`；以下设计快照固定于该提交，不代表可变缓存工作树：
-- 特性档（docs 仓 `develop/02-features/FEAT-112-task-degradation-gate.md` @ `05af9cc3`，核对一律回 docs 仓看该提交）：§2 验收出口、§3.1 准入、§3.2 健康面、§5 状态/窗口机制。
-- L2 设计（docs 仓 `develop/03-architecture/L2-Low-Level-Design/deepanalyze/FEAT-112-task-degradation-gate.md` @ `05af9cc3`）：实现证据及明确列出的需求差距，不用于覆盖需求。
-- testplan：测试仓不存副本。执行文本按 [scripts/expectation-sources.env](../../scripts/expectation-sources.env) 的 pin 由 `scripts/fetch-expectations.sh` 取到 `target/expectations/`，`Feat112Coverage` 读取；pin 变更即预期变更，须随用例复核一起评审。按特性档修订的三轮 testplan（§5 共 84 行）经 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549) 合入；2026-11-25 按 agent-solution #852、#856 裁决的增量（G5-missing 收窄为交付默认、新增 G12、G5-invalid 明确 401、C4 按迁移事件断言代际、E15 激活证据与判定分离）经 [docs !628](https://gitcode.com/Technical-AF/docs/merge_requests/628) 合入，§5 共 85 行，当前 pin 为 main 提交 `cfcd599b`。每轮实跑前运行 `scripts/fetch-expectations.sh check-sync` 对照 docs main；发布测试报告时记 pin 的 commit，不以可变文件路径代替版本基线。
+本次设计基线与 testplan §3 一致；以下设计快照固定于所列提交，不代表可变缓存工作树：
+- 特性档（docs 仓 `develop/02-features/FEAT-112-task-degradation-gate.md` @ `a166678c`，与上一基线 `05af9cc3` 相比只有出口 16 凭据口径；核对一律回 docs 仓看该提交）：§2 验收出口、§3.1 准入、§3.2 健康面、§3.3 配置面、§5 状态/窗口机制。用例判据的条款出处统一记为 `feature.md@a166678c`。
+- L2 设计（docs 仓 `develop/03-architecture/L2-Low-Level-Design/deepanalyze/FEAT-112-task-degradation-gate.md` @ `5497094b`；终态分类规格 `agent-runtime-ext/FEAT-112-task-terminal-classification-spec.md` @ `93ccf48e`）：观测形式、实现证据及明确列出的需求差距，不用于覆盖需求。
+- testplan：测试仓不存副本。执行文本按 [scripts/expectation-sources.env](../../scripts/expectation-sources.env) 的 pin 由 `scripts/fetch-expectations.sh` 取到 `target/expectations/`，`Feat112Coverage` 读取；pin 变更即预期变更，须随用例复核一起评审。按特性档修订的三轮 testplan（§5 共 84 行）经 [docs PR 549](https://gitcode.com/Technical-AF/docs/merge_requests/549) 合入；2026-11-25 按 agent-solution #852、#856 裁决的增量（G5-missing 收窄为交付默认、新增 G12、G5-invalid 明确 401、C4 按迁移事件断言代际、E15 激活证据与判定分离）经 [docs !628](https://gitcode.com/Technical-AF/docs/merge_requests/628) 合入，§5 共 85 行；2026-11-26 测试侧按模板收口的修订（基线重定、补条款引用、新增 G13、撤销 E11，A1/A2/E17/E18 改为可承接）经 [docs !654](https://gitcode.com/Technical-AF/docs/merge_requests/654) 合入，§5 仍为 85 行，当前 pin 为 main 提交 `ef1feab1`。每轮实跑前运行 `scripts/fetch-expectations.sh check-sync` 对照 docs main；发布测试报告时记 pin 的 commit，不以可变文件路径代替版本基线。
 - 多维比对（不作预期来源）：DA L2（docs PR 538 刷新中）、ext L2 分类规格（docs PR 463）、代码。与特性档不一致之处逐条登记到差异清单与 PR 评论，不改写本文期望。
 - 被测物来源：agent-core-java `develop` 最新（当前 `e24bcb74d`）+ solution `common` 最新（当前 `1127a9ece7b`），由 `scripts/sut/build-carrier.sh` 在干净工作树中构建，构建清单 `feat112-build-manifest.json` 记录两边 commit、制品 sha256 与载体内捆绑 core 的一致性校验；运行时不一致即拒绝。
 - demo：solution 仓 `common/example/task-degradation-gate-acceptance-demo/`（测试侧自建，未入库）。2026-11-25 起 demo 不再自带 `application.yml`，载体运行时读 deepanalyze-engine 随包交付的配置（服务间认证默认开启、checkpointer 为 Redis），与 DA 交付形态一致；此前 demo 配置整份遮蔽了 engine 交付配置，载体上认证实为关闭。部署夹具在交付配置之上只叠加部署差异：门参数、模型地址、端口；全部形态注入 `DA_ENGINE_SECRET`、驱动侧携带 `X-Engine-Secret`，不注入认证开关；不托管 Redis 的形态把 checkpointer 设为 `in_memory`。
@@ -114,8 +114,8 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 
 | ID | 前置与操作 | 证据 → 判据 | 层级 / 拟落点 / 限制 |
 |---|---|---|---|
-| A1 | ext 单独装配（不经 DA 装配层），不写 `enabled` 键，连续制造故障 | Q/H → 禁用、不因门拒收 | 未承接：仓内除 DA 外没有装配降级门的可运行宿主（ext 无自动装配），SIT 无法构造；需特性确认是否另行验收。DA 宿主键缺席见 A2（PR 538 合入后定稿） |
-| A2 | DA 中不写 `degradation-gate` 键，启动 | P/Q → enabled=true、CLOSED | SIT / `Feat112ProcessConfigurationTest`；键缺席时如何处理特性档未规定，待特性设计确认，结论只说明实现行为（部分承接） |
+| A1 | DA 宿主不读随包配置（`--spring.config.location` 只给部署必需项），`enabled` 键缺席、环境未继承覆盖变量；`min-sample-size: 1`，模型地址不可达，连发两个任务 | Q/H → 诊断 `enabled=false`、CLOSED、零计数；两个任务都以系统失败结束，第二个不被 503 `ENGINE_DEGRADED` 拒收 | SIT / `Feat112ProcessConfigurationTest`；按当前实现预计 FAIL：装配层在键缺席时强制开启（`DaCompatAutoConfiguration`，DA L2 §1.4 已列为差距） |
+| A2 | DA 读随包交付配置（engine `application.yml` 显式 `enabled: true`），部署只叠加模型连接、服务间密钥与 in_memory checkpointer，不设 `enabled` | P/Q → enabled=true、CLOSED、零计数 | SIT / `Feat112ProcessConfigurationTest`（`--spring.config.additional-location` 叠加，不替换随包配置） |
 | A3 | `window: 0s`，启动独立 DA 进程 | P → 非零退出，输出指出 `openjiuwen.service.degradation-gate.window` | 启动集成 / `Feat112ProcessConfigurationTest`；不静默替换默认值 |
 | A4 | `min-sample-size: 0`，启动 | P → 非零退出并指出完整键名 | 同 A3 |
 | A5-zero | `failure-rate-threshold: 0` | P → 非零退出并指出完整键名 | 同 A3 |
@@ -189,14 +189,14 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | E14 | 同 E13 先被拒，之后的模型调用持续 5xx 直到重试耗尽 | M/T/Q → 任务 failed，样本+1、异常+1；stub 错误响应数增加作激活证据 | SIT / `Feat112WindowAccountingTest` |
 | E15 | CLOSED 空窗口，部署使用 Redis checkpointer（测试托管 Redis 容器）；模型先 `write_file` 写工作区外被拒，再 `ask_user` 使任务停在 awaiting_answer（检查点写入 Redis）；停掉 Redis 后 `/answer` 续跑，续跑开始时恢复检查点失败 | T/M/Q → 判定取诊断面：样本+1、异常+1。激活证据与判定独立：公开任务记录的 `error` 表明检查点存储读取失败（`Failed to get key: …agent_state…`）；续跑前后 stub 请求数不变（排除模型调用与 core 错误通道） | SIT / `Feat112CheckpointStoreTest`；不再以 DEBUG 终态行作激活证据（该行不是 `event=` 契约）。不用“任务中途停 Redis”：checkpointer 只在运行开始、中断、结束时访问存储，FEAT-054 用例已观察到中途停 Redis 结局不确定 |
 | E16 | 成员工具的确认请求按 fail-closed 拒绝；模型发起成员调用，成员工具尝试全部被拒并以 error 结束；主任务随后给出最终回答 | M/T/Q → 任务 completed，样本+1、异常不变 | SIT / `Feat112MemberGuardrailTest`；交付 actrule 下成员工具全为 allow，部署另加场景级覆盖使 `read_file` 需确认（成员无确认链，按拒绝处理），成员轮次设为 2；激活证据：stub 服务次数、拒绝标记、成员以轮次耗尽结束 |
-| E17 | 同 E16，主任务随后以无错误码、无类目的方式失败 | → 计入分子；当前实现会归 GUARDRAIL_DENIED | 未承接：公开面造不出该失败；成员失败到任务失败的因果未建立（PR 538 评审） |
-| E18 | 存在“护栏拦截导致任务失败”的确定路径 | → 样本+1、异常不变；探针以此结束时门状态特性档未规定，不作期望 | 未承接：确定路径尚未建立 |
+| E17 | E16 的部署形态加测试托管 Redis checkpointer；模型脚本：主任务 `workflow_run` → 成员两轮 `read_file` 全被拒 → 成员总结轮 → 主任务 `ask_user` 停在待答；停 Redis 后 `/answer` 续跑，恢复检查点失败 | T/M/Q/S → 计分子：样本+1、异常+1。激活证据：成员拒绝标记与轮次耗尽、任务记录 `error` 为检查点读取失败、续跑后 stub 无新请求 | SIT / `Feat112GuardrailOutcomeTest`；需 Docker。若成员因果被任务级合并判为闭合，任务会归 GUARDRAIL_DENIED、只计分母，即违反特性档 §6（终态分类规格 §5 跨链否决作用域待裁） |
+| E18 | 部署 `deepanalyze.model.max-iterations: 2`、`deepanalyze.hooks.http-allowed-hosts: 127.0.0.1`；请求 `runtimeConfig.hooks` 带一个 http 型 PreToolUse hook（测试托管 `DenyingHook`，恒返回 `allowed=false`，matcher `write_file`）；模型每轮都要 `write_file` | T/M/Q → 任务 failed；样本+1、异常不变。激活证据：模型轮次 ≤ 上限且每轮的工具调用都到达 hook 被拒（hook 计数＝模型轮次）、目标文件未写出 | SIT / `Feat112GuardrailOutcomeTest`；不用“写工作区外路径”构造：那是权限检查拒绝，主链只在 hook 拒绝处登记因果证据（终态分类规格 §5） |
 | E6 | HALF_OPEN 探针触发真实待答 | T/S/Q → CLOSED、名额释放、清窗、不记样本 | SIT / Probe；需要真正待答事件，不是文本说等待 |
 | E7 | HALF_OPEN 真实在途探针，发取消，记录请求与最终落定，再发下一任务 | H/T/M/Q → 落定后释放、保持 HALF_OPEN，下一真实任务成为探针 | SIT / `Feat112ProbeTest`；取消请求到达瞬间的窗口在一次同步调用内，不可观测（Issue 4，含“实际落定”口径待确认）（部分承接） |
 | E8 | HALF_OPEN、`max-concurrent-tasks=1`；开门前让一个任务停在 awaiting_answer，HALF_OPEN 下经 `/answer` 续跑占住唯一执行线程，再发新任务 | H/Q → 既有 503 `ENGINE_BUSY`（too many running tasks）而非 `ENGINE_DEGRADED`；保持 HALF_OPEN、`probeInFlight=false`、样本不变；续跑结束后下一真实任务成为探针 | SIT / `Feat112OrderedControlTest`；续跑与首轮共用执行池（`submitContinuation`），执行池在认领之后检查 |
 | E9 | 同 B6 的时钟控制；HALF_OPEN 当前探针在途，回拨 90s 后让探针正常完成；下一任务成为探针后再以系统异常结束 | Q → 两次都不增样本、保持 HALF_OPEN、释放名额；过期健康结果不关门、过期失败不回 OPEN；中间下一真实任务成为探针 | SIT / `Feat112ClockTest`；已实现，尚未实跑（需 Linux + libfaketime；本机 Windows 记 infra_failure） |
 | E10 | HALF_OPEN，探针进入 awaiting_answer 并已关门（E6）；经 `/answer` 回答，续跑中模型持续失败；变体在回答前经 `/inject` 追加消息 | H/T/M/Q → 同一逻辑任务只记一次：样本+1、异常+1；回答与 inject 不各自新增样本，任务列表只有这一个任务 | SIT / `Feat112ProbeTest`；验收出口13 |
-| E11 | HALF_OPEN 探针认领后、任务绑定前被拒 | → 名额释放、保持 HALF_OPEN，下一真实任务成为探针 | testplan 修订（docs !654）撤销，由 E12 承接：入站校验前移到降级门之前（#853）后，该窗口内唯一可稳定构造的拒绝是待答任务数触顶，与 E12 前置、步骤、期望相同（媒体二次解析失败只能靠时序竞争）。注册之后属主绑定失败的 `prepare_failed` 路径（计分子并回 OPEN）是另一窗口，由开发侧组件测试锁定，不在本 testplan 场景中 |
+| E11 | （已撤销） | — | testplan（docs !654）撤销 E11、替代 E12：入站校验前移到降级门之前（#853）后，“认领后、绑定前”窗口内唯一可稳定构造的拒绝是待答任务数触顶，与 E12 前置、步骤、期望相同。注册之后属主绑定失败的 `prepare_failed` 路径（计分子并回 OPEN）是另一窗口，由开发侧组件测试锁定 |
 | E12 | HALF_OPEN；`deepanalyze.compat.max-awaiting-tasks: 1` 且已有一个任务停在 awaiting_answer；发起新任务 | H/Q → 既有 `ENGINE_BUSY` 拒绝而非 `ENGINE_DEGRADED`；保持 HALF_OPEN、`probeInFlight=false`；释放待答名额后下一个真实任务成为探针 | SIT / `Feat112OrderedControlTest`；验收出口18“认领后并发拒绝按无结论释放名额” |
 
 ### F 校验顺序与既有控制面（5）
@@ -211,7 +211,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | F4 | OPEN 与 HALF_OPEN，发带 `X-Da-Tenant-Id: *` 的 `/run`、`/run-stream`；数据面关闭（交付默认）与 PostgreSQL 数据面两种形态各验一次，另验正常租户头不被租户校验拒绝 | H/Q → 保留租户：与 CLOSED 时同一请求的既有校验错误相同（无数据面形态须为 400 `ENGINE_VALIDATION`），不是 `ENGINE_DEGRADED`，不占探针、无副作用；正常租户：CLOSED 下 200 completed 且计 1 个样本，OPEN 下由降级门 503 `ENGINE_DEGRADED` 拒收 | SIT / `Feat112ValidationPrecedenceTest`（数据面关闭）+ `Feat112DataPlaneTest`（PostgreSQL 数据面）；#853 已把租户校验前移到降级门之前 |
 | F5 | 先在门 CLOSED 时为 9 个入口取基线，再开门；`/status`、`/task`、`/tasks`、`/stream` 重连、`/cancel`、`/inject`、`/message` 用活跃任务，`/answer`、`/resume` 用 awaiting-input 任务（带 Idempotency-Key） | H/S/T → OPEN 下每个入口的状态码与错误码与 CLOSED 基线相同，且不含 ENGINE_DEGRADED/degraded=true | SIT / `Feat112OrderedControlTest`；控制面自身行为归 FEAT-001/008/110 |
 
-### G 健康诊断（11）
+### G 健康诊断（12）
 
 依据：特性档 §3.2、验收出口16；testplan §5.7。
 
@@ -224,6 +224,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | G5-missing | 交付默认配置：只注入 `DA_ENGINE_SECRET`，不设置 `deepanalyze.auth.enabled`，也不设置或继承 `DEEPANALYZE_AUTH_ENABLED`；诊断请求无 secret | H → 401，不返回诊断内容 | SIT / `Feat112DiagnosticsTest`（standard 形态即交付默认）；前置核对形态未声明认证开关、测试进程环境无该变量 |
 | G12 | 显式配置 `deepanalyze.auth.enabled=true` 与密钥；诊断请求无 secret | H → 401，不返回诊断内容；状态码与响应体和 `POST /api/agents/run` 同一匿名请求的拒绝相同 | SIT / `Feat112AuthenticatedTest` |
 | G5-invalid | 已配置认证，诊断请求带错误 secret | H → 401，不返回诊断内容；状态码与响应体和 `POST /api/agents/run` 同一错误凭据请求的拒绝相同 | SIT / `Feat112AuthenticatedTest` |
+| G13 | 直接启动制品读随包交付配置；不注入 `DA_ENGINE_SECRET`、不设密钥与认证开关，环境未继承覆盖变量；只补模型 key 与 in_memory checkpointer | P → 非零退出，输出指出 `deepanalyze.auth.engine-secret` | SIT / `Feat112ProcessConfigurationTest` |
 | G11 | 同实例正确secret | H/Q → 200、完整诊断 | SIT / Health；密钥不落盘 |
 | G8 | 模型 API key 为测试替身专用值；用户输入、stub 500 错误体、`write_file`（工作区外路径，被拒）参数各带独立哨兵；持续失败直至 OPEN | H/Q/哨兵 → 整段诊断响应不含任一哨兵、服务 secret 与错误堆栈 | SIT / `Feat112AuthenticatedTest`；不再依赖 business_failure |
 | G9 | 同实例其他健康条件固定，比较 CLOSED/OPEN 的 /health | H → 门状态变化不改变约定健康语义 | SIT / Health；不比较动态时间等无关字段 |

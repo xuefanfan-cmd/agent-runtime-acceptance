@@ -196,7 +196,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 | E8 | HALF_OPEN、`max-concurrent-tasks=1`；开门前让一个任务停在 awaiting_answer，HALF_OPEN 下经 `/answer` 续跑占住唯一执行线程，再发新任务 | H/Q → 既有 503 `ENGINE_BUSY`（too many running tasks）而非 `ENGINE_DEGRADED`；保持 HALF_OPEN、`probeInFlight=false`、样本不变；续跑结束后下一真实任务成为探针 | SIT / `Feat112OrderedControlTest`；续跑与首轮共用执行池（`submitContinuation`），执行池在认领之后检查 |
 | E9 | 同 B6 的时钟控制；HALF_OPEN 当前探针在途，回拨 90s 后让探针正常完成；下一任务成为探针后再以系统异常结束 | Q → 两次都不增样本、保持 HALF_OPEN、释放名额；过期健康结果不关门、过期失败不回 OPEN；中间下一真实任务成为探针 | SIT / `Feat112ClockTest`；已实现，尚未实跑（需 Linux + libfaketime；本机 Windows 记 infra_failure） |
 | E10 | HALF_OPEN，探针进入 awaiting_answer 并已关门（E6）；经 `/answer` 回答，续跑中模型持续失败；变体在回答前经 `/inject` 追加消息 | H/T/M/Q → 同一逻辑任务只记一次：样本+1、异常+1；回答与 inject 不各自新增样本，任务列表只有这一个任务 | SIT / `Feat112ProbeTest`；验收出口13 |
-| E11 | HALF_OPEN 探针认领后、任务绑定前发生意外异常 | → 名额不泄漏；按基础设施异常计分子并回 OPEN（DA L2 §1.4 `prepare_failed`） | 未承接，判 FAIL + `observable_missing`（openJiuwen/agent-solution#991）：租户校验前移到降级门之前（#853）后，该窗口只剩内存操作，公开面构造不出。开发侧组件测试 `DaAdmissionFailureSettleTest#bindOwnerFailure_settlesAsInfraFact_releasesProbe`（!1326）锁定了接线，测试侧已独立复跑并做变异验证，但按 testplan 模板不计入 SIT 验收 |
+| E11 | HALF_OPEN 探针认领后、任务绑定前被拒 | → 名额释放、保持 HALF_OPEN，下一真实任务成为探针 | testplan 修订（docs !654）撤销，由 E12 承接：入站校验前移到降级门之前（#853）后，该窗口内唯一可稳定构造的拒绝是待答任务数触顶，与 E12 前置、步骤、期望相同（媒体二次解析失败只能靠时序竞争）。注册之后属主绑定失败的 `prepare_failed` 路径（计分子并回 OPEN）是另一窗口，由开发侧组件测试锁定，不在本 testplan 场景中 |
 | E12 | HALF_OPEN；`deepanalyze.compat.max-awaiting-tasks: 1` 且已有一个任务停在 awaiting_answer；发起新任务 | H/Q → 既有 `ENGINE_BUSY` 拒绝而非 `ENGINE_DEGRADED`；保持 HALF_OPEN、`probeInFlight=false`；释放待答名额后下一个真实任务成为探针 | SIT / `Feat112OrderedControlTest`；验收出口18“认领后并发拒绝按无结论释放名额” |
 
 ### F 校验顺序与既有控制面（5）

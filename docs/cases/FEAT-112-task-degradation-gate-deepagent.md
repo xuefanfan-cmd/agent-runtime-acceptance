@@ -114,7 +114,7 @@ depends_on: [FEAT-054, FEAT-109, FEAT-110, FEAT-111, FEAT-001, FEAT-008, FEAT-06
 
 | ID | 前置与操作 | 证据 → 判据 | 层级 / 拟落点 / 限制 |
 |---|---|---|---|
-| A1 | DA 宿主不读随包配置（`--spring.config.location` 只给部署必需项），`enabled` 键缺席、环境未继承覆盖变量；`min-sample-size: 1`，模型地址不可达，连发两个任务 | Q/H → 诊断 `enabled=false`、CLOSED、零计数；两个任务都以系统失败结束，第二个不被 503 `ENGINE_DEGRADED` 拒收 | SIT / `Feat112ProcessConfigurationTest`；按当前实现预计 FAIL：装配层在键缺席时强制开启（`DaCompatAutoConfiguration`，DA L2 §1.4 已列为差距） |
+| A1 | DA 宿主不读随包配置（`--spring.config.location` 只给部署必需项），`enabled` 键缺席、环境未继承覆盖变量；`min-sample-size: 1`，模型地址不可达，连发两个任务 | Q/H → 诊断 `enabled=false`、CLOSED、零计数；两个任务都以系统失败结束，第二个不被 503 `ENGINE_DEGRADED` 拒收 | SIT / `Feat112ProcessConfigurationTest`；按当前实现预计 FAIL：装配层在键缺席时强制开启（`DaCompatAutoConfiguration`，DA L2 §1.4 已列为差距），已提 openJiuwen/agent-solution#1011 请求裁决 |
 | A2 | DA 读随包交付配置（engine `application.yml` 显式 `enabled: true`），部署只叠加模型连接、服务间密钥与 in_memory checkpointer，不设 `enabled` | P/Q → enabled=true、CLOSED、零计数 | SIT / `Feat112ProcessConfigurationTest`（`--spring.config.additional-location` 叠加，不替换随包配置） |
 | A3 | `window: 0s`，启动独立 DA 进程 | P → 非零退出，输出指出 `openjiuwen.service.degradation-gate.window` | 启动集成 / `Feat112ProcessConfigurationTest`；不静默替换默认值 |
 | A4 | `min-sample-size: 0`，启动 | P → 非零退出并指出完整键名 | 同 A3 |
@@ -359,7 +359,7 @@ PPT本轮不直接重写；将代码/报告证据链接回此表后，再更新D
 
 | 结论 | 场景 | 说明 |
 |---|---|---|
-| FAIL / must_violation | A1 | `enabled` 键缺席、不读随包配置时诊断 `enabled=true`，第二个系统失败任务被 503 `ENGINE_DEGRADED` 拒收。装配层在键缺席时强制开启，与特性档 §3.3“ext 为 false”不符（DA L2 §1.4 已列为差距）。本机 Windows 同样复现 |
+| FAIL / must_violation | A1 | `enabled` 键缺席、不读随包配置时诊断 `enabled=true`，第二个系统失败任务被 503 `ENGINE_DEGRADED` 拒收。装配层在键缺席时强制开启，与特性档 §3.3“ext 为 false”不符（DA L2 §1.4 已列为差距）。本机 Windows 同样复现。已提 openJiuwen/agent-solution#1011 请求裁决（实现整改或特性档修订） |
 | FAIL / must_violation | E4-formats | `context_length_exceeded` 码配无长度字样的文案时计入分子（`systemFailureCount=1`）。同 §8.0 之后的 core 缺陷（DeepAgent 丢弃结构化 failure），已提 openJiuwen/agent-core-java#322 |
 | FAIL / conditional_not_triggered | E4 | 同一 core 缺陷：任务失败未带结构化 181012，激活不成立 |
 | FAIL / conditional_not_triggered | E3 | 出厂配置下 `business_failure` 落默认 ask，探针先停待答（待特性设计确认，状态不变） |

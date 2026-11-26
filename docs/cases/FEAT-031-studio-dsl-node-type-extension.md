@@ -459,9 +459,9 @@ tags: [integration, studiodsl, feat-031]
 | RT-031-04-08 断连不再抛 IR_CONNECTION_BROKEN | 有意偏差（同上对齐） | 断言改为装配成功；缺模型映射仍须 IR_MODEL_MAPPING_MISSING（裁定不放宽），保留拒绝断言 |
 | RT-031-04-09 exception 节点 nodeConfigs identity-only | 有意偏差确认（Java=Python，identity-only 同口径） | 归一后比对：identity-only 类型期望置空 + name 注入对齐，装配投影实测为空 |
 | RT-031-04-14 装配失败原子性 | broken-connection 移出硬错误族；未知组件/缺 type/缺映射保留原子性断言 | 用例 cases 调整：三个硬错误族仍断言抛错且无半成品 |
-| RT-031-04-30 混泳道 sentinel（stream 边未接屏障） | **修复对齐（选项 1）**：产品补 ParallelJoinPlan/IrWorkflowAssembler 接线 | SIT 保持 FAIL 待产品修复后精确回归；测试侧已提供 IR 与断言取值方式（#754 评论） |
+| RT-031-04-30 无标记 Aggregation 汇合（stream 边未接屏障） | **裁定修正（2026-11-26，#754 评论）**：语料为两条独立泳道汇入 Aggregation，不适用 §3.2 mixed-lane 合同；现行合同＝并行 rewrite + Aggregation 汇合（#406：汇合目标禁止 stream 边），开发不改代码 | 断言改写：两条泳道 batch 边均断言 `_parallel_done__*` → Aggregation，streamEdges 不得承载屏障；2026-11-26 回归 `StudioIrSdkContractTest` 13/13 PASS |
 
-- 结果：`StudioIrSdkContractTest` 13 条中 **12 PASS / 1 FAIL**（唯一 FAIL = 分歧 4，产品修复中）；测试仓 `main@c87ec99`。
+- 结果：`StudioIrSdkContractTest` **13 条全 PASS**（2026-11-26 分歧 4 断言按 #754 裁定修正后，见上表）；登记基线 `main@c87ec99`（12P/1F）→ 修正提交见本仓 git log。
 - 关联：openJiuwen/agent-solution #754（裁定原文与详查证据）、#306/#314/#271/#249（9 月修复史）、历史基线 `main@0f4aca5`（47 PASS 结论仅对该冻结基线成立）。
 ## 不覆盖
 

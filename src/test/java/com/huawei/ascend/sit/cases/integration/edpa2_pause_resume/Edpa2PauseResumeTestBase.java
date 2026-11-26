@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,22 +50,22 @@ import java.util.function.Consumer;
 @Tag("integration")
 @Tag("feat-088")
 @Feature("FEAT-088: 任务执行中断与接管")
-public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
+public abstract class Edpa2PauseResumeTestBase extends BaseManagedStackTest {
 
     protected static final ObjectMapper JSON = new ObjectMapper();
     protected static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(4);
 
-    protected static final String MOA_MOCK = "moa-mock";
-    protected static final String MOA_L2 = "moa-l2";
-    protected static final String MOA_L1 = "moa-l1";
+    protected static final String EDPA2_MOCK = "moa-mock";
+    protected static final String EDPA2_L2 = "moa-l2";
+    protected static final String EDPA2_L1 = "moa-l1";
 
     @Override
     protected SutStack.Builder buildStack(com.huawei.ascend.sit.config.TestConfig config) {
         // Leaf-first declaration; SutStack injects downstream URLs automatically.
         return SutStack.builder(config)
-                .agent(MOA_MOCK)
-                .agent(MOA_L2, a -> a.downstream(MOA_MOCK))
-                .agent(MOA_L1, a -> a.downstream(MOA_L2));
+                .agent(EDPA2_MOCK)
+                .agent(EDPA2_L2, a -> a.downstream(EDPA2_MOCK))
+                .agent(EDPA2_L1, a -> a.downstream(EDPA2_L2));
     }
 
     // ── A2A helpers ───────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * with {@link A2aEventCollector} — same pattern as
      * {@code DeepAgentInteractiveInterruptAcceptanceTest.sendOutcome} but with
      * {@code sendMessageSync} instead of {@code sendMessageStreaming}, because
-     * MOA-L1's agent card does not advertise streaming and the SDK's streaming
+     * EDPA2.0-L1's agent card does not advertise streaming and the SDK's streaming
      * fallback produces 0 consumer events.</p>
      *
      * <p>The call blocks until the server returns (INPUT_REQUIRED, COMPLETED,
@@ -93,7 +93,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * returns, so the collector is fully populated when this returns.</p>
      */
     protected A2aRound sendA2a(String text, String contextId, String taskId) {
-        A2aServiceClient a2aClient = client(MOA_L1);
+        A2aServiceClient a2aClient = client(EDPA2_L1);
         String cid = contextId != null ? contextId : UUID.randomUUID().toString();
 
         Message.Builder builder = Message.builder()
@@ -156,21 +156,21 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * the task reaches a terminal or INPUT_REQUIRED state, then returns taskId + state.
      */
     protected A2aRound sendA2aSync(String text, String contextId) {
-        return sendA2aRaw(MOA_L1, text, contextId, null, false);
+        return sendA2aRaw(EDPA2_L1, text, contextId, null, false);
     }
 
     /**
      * Send an A2A message with a DataPart control (e.g. moa.control pause) and no text.
      */
     protected A2aRound sendControlDataPart(ObjectNode controlDataPart, String contextId, String taskId) {
-        return sendA2aControlRaw(MOA_L1, controlDataPart, contextId, taskId, true);
+        return sendA2aControlRaw(EDPA2_L1, controlDataPart, contextId, taskId, true);
     }
 
     /**
      * Send a text message to L2 directly (for testing L2 exclusion of pause control).
      */
     protected A2aRound sendA2aToL2(String text, String contextId, String taskId) {
-        return sendA2aRaw(MOA_L2, text, contextId, taskId, true);
+        return sendA2aRaw(EDPA2_L2, text, contextId, taskId, true);
     }
 
     /**
@@ -187,7 +187,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
         String id = UUID.randomUUID().toString();
         Map<String, Object> body = Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         return sendHttpPost(url, buildJsonString(body), "application/json");
     }
 
@@ -203,7 +203,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      *         for the final A2aRound
      */
     protected AsyncA2aRound sendA2aAsync(String text, String contextId) {
-        return sendA2aAsyncRaw(MOA_L1, text, contextId, null);
+        return sendA2aAsyncRaw(EDPA2_L1, text, contextId, null);
     }
 
     /**
@@ -222,7 +222,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
         String id = UUID.randomUUID().toString();
         Map<String, Object> body = Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendStreamingMessage", "params", Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         return sendHttpPost(url, buildJsonString(body),
                 "text/event-stream");
     }
@@ -258,7 +258,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
         String id = UUID.randomUUID().toString();
         Map<String, Object> body = Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         return sendHttpPost(url, buildJsonString(body), "application/json");
     }
 
@@ -283,7 +283,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
         String id = UUID.randomUUID().toString();
         Map<String, Object> body = Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         return sendHttpPost(url, buildJsonString(body), "application/json");
     }
 
@@ -300,7 +300,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
         String id = UUID.randomUUID().toString();
         Map<String, Object> body = Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         return sendHttpPost(url, buildJsonString(body), "application/json");
     }
 
@@ -308,14 +308,14 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * Send a text control message (e.g. "暂停") without waiting for full response.
      */
     protected HttpResponse<String> sendTextControlRaw(String text, String contextId, String taskId) {
-        return sendHttpPost(stack.baseUrl(MOA_L1) + "/a2a",
+        return sendHttpPost(stack.baseUrl(EDPA2_L1) + "/a2a",
                 buildA2aBody(text, contextId, taskId, null), "text/event-stream");
     }
 
     /**
      * Internal: async send that returns taskId early from the SSE stream.
      * Uses raw HTTP to read the SSE stream — the SDK's sendMessageStreaming
-     * produces 0 events for MOA-L1 (agent card doesn't advertise streaming).
+     * produces 0 events for EDPA2.0-L1 (agent card doesn't advertise streaming).
      */
     @SuppressWarnings("unchecked")
     private AsyncA2aRound sendA2aAsyncRaw(String agent, String text, String contextId, String taskId) {
@@ -426,7 +426,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
             //    not always as a statusUpdate in the SSE stream
             if (async.taskId() != null) {
                 try {
-                    org.a2aproject.sdk.spec.Task snapshot = client(MOA_L1).getTask(async.taskId());
+                    org.a2aproject.sdk.spec.Task snapshot = client(EDPA2_L1).getTask(async.taskId());
                     if (snapshot != null && snapshot.status() != null) {
                         TaskState snapState = snapshot.status().state();
                         System.out.println("[DEBUG waitForState] getTask state=" + snapState
@@ -642,7 +642,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * Per 1100.patch: POST /v1/{project_id}/agents/{agent_id}/conversations/{conversation_id}
      */
     protected String restConversationUrl(String conversationId) {
-        return stack.baseUrl(MOA_L1) + "/v1/" + REST_PROJECT_ID
+        return stack.baseUrl(EDPA2_L1) + "/v1/" + REST_PROJECT_ID
                 + "/agents/" + REST_AGENT_ID
                 + "/conversations/" + conversationId;
     }
@@ -665,7 +665,7 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      * Send a raw REST POST to any path on L1.
      */
     protected HttpResponse<String> sendRestRaw(String path, String jsonBody, String accept) {
-        return sendRestPost(stack.baseUrl(MOA_L1) + path, jsonBody,
+        return sendRestPost(stack.baseUrl(EDPA2_L1) + path, jsonBody,
                 accept != null ? accept : "application/json");
     }
 
@@ -704,8 +704,8 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      */
     protected static ObjectNode controlDataPart(String action) {
         ObjectNode root = JSON.createObjectNode();
-        ObjectNode moaControl = root.putObject("data");
-        moaControl.putObject("moa.control").put("action", action);
+        ObjectNode edpa2Control = root.putObject("data");
+        edpa2Control.putObject("moa.control").put("action", action);
         return root;
     }
 
@@ -715,8 +715,8 @@ public abstract class MoaPauseResumeTestBase extends BaseManagedStackTest {
      */
     protected static ObjectNode invalidControlDataPart(String action, String extraKey, int extraValue) {
         ObjectNode root = JSON.createObjectNode();
-        ObjectNode moaControl = root.putObject("data");
-        ObjectNode control = moaControl.putObject("moa.control");
+        ObjectNode edpa2Control = root.putObject("data");
+        ObjectNode control = edpa2Control.putObject("moa.control");
         control.put("action", action);
         control.put(extraKey, extraValue);
         return root;

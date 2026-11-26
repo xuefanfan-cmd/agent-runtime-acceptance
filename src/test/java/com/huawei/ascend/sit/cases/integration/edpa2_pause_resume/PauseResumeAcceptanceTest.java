@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </p>
  */
 @DisplayName("FEAT-088 暂停/恢复正常场景")
-class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
+class PauseResumeAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -82,7 +82,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 断言：原业务 Task 仍可通过 getTask 查询（Plan 已归档，Task 可查询）
-        org.a2aproject.sdk.spec.Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原业务 Task 应可通过 getTask 查询（暂停后 Plan 已归档）").isNotNull();
     }
 
@@ -124,7 +124,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 断言：原业务 Task 仍可通过 getTask 查询（Plan 已归档，Task 可查询）
-        org.a2aproject.sdk.spec.Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原业务 Task 应可通过 getTask 查询（暂停后 Plan 已归档）").isNotNull();
     }
 
@@ -161,7 +161,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 断言：原业务 Task 仍可通过 getTask 查询（Plan 已归档，Task 可查询）
-        org.a2aproject.sdk.spec.Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原业务 Task 应可通过 getTask 查询（暂停后 Plan 已归档）").isNotNull();
     }
 
@@ -220,7 +220,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 断言：暂停后原任务仍可查询（Plan 已归档）
-        org.a2aproject.sdk.spec.Task beforeResume = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task beforeResume = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(beforeResume).as("暂停后原业务 Task 应可查询（Plan 已归档）").isNotNull();
 
         sleep(SUSPEND_SETTLE_MS);
@@ -263,8 +263,8 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 断言：暂停后任务 A 仍可查询（Plan 已归档，Task 可结束）
-        // 文档 suspended-tasks.md L17: "原业务 Task 可以结束，MOA Plan 仍是 SUSPENDED；后续恢复使用归档，不复活旧 A2A Task"
-        org.a2aproject.sdk.spec.Task taskABeforeB = client(MOA_L1).getTask(taskAId);
+        // 文档 suspended-tasks.md L17: "原业务 Task 可以结束，EDPA2.0 Plan 仍是 SUSPENDED；后续恢复使用归档，不复活旧 A2A Task"
+        org.a2aproject.sdk.spec.Task taskABeforeB = client(EDPA2_L1).getTask(taskAId);
         assertThat(taskABeforeB).as("暂停后任务 A 应可查询（Plan 已归档）").isNotNull();
 
         sleep(SUSPEND_SETTLE_MS);
@@ -356,7 +356,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
         sleep(SUSPEND_SETTLE_MS);
 
         // 文档 L100: "原业务 Task 可用 GetTask 观察"
-        org.a2aproject.sdk.spec.Task queried = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task queried = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(queried).as("GetTask 应返回任务").isNotNull();
         assertThat(queried.id()).as("GetTask 返回的 taskId 应一致")
                 .isEqualTo(originalTaskId);
@@ -497,7 +497,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(taskAId);
 
         // 暂停后 A 仍可查询
-        org.a2aproject.sdk.spec.Task taskAPaused = client(MOA_L1).getTask(taskAId);
+        org.a2aproject.sdk.spec.Task taskAPaused = client(EDPA2_L1).getTask(taskAId);
         assertThat(taskAPaused).as("暂停后任务 A 应可查询").isNotNull();
 
         sleep(SUSPEND_SETTLE_MS);
@@ -545,10 +545,10 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
 
         // Step 3: 立即（不等 settle）检查原任务状态
         // 文档 L100: "受理后不会立即掐断所有输出"
-        // 文档 L100: "不保证包含 MOA 任务清单或 SUSPENDED 字段"
+        // 文档 L100: "不保证包含 EDPA2.0 任务清单或 SUSPENDED 字段"
         // A2A 协议无 SUSPENDED 状态 — Task state 应为 INPUT_REQUIRED 或 COMPLETED
-        // 文档 L17: "原业务 Task 可以结束，MOA Plan 仍是 SUSPENDED"
-        org.a2aproject.sdk.spec.Task taskAfterPause = client(MOA_L1).getTask(originalTaskId);
+        // 文档 L17: "原业务 Task 可以结束，EDPA2.0 Plan 仍是 SUSPENDED"
+        org.a2aproject.sdk.spec.Task taskAfterPause = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterPause).as("受理后原任务应立即可查询").isNotNull();
         assertThat(taskAfterPause.id()).as("taskId 应一致").isEqualTo(originalTaskId);
         // 坚定断言：A2A Task state 不应包含 "SUSPENDED"
@@ -645,7 +645,7 @@ class PauseResumeAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 受理后原任务仍可查询（不立即中断/回滚）
-        org.a2aproject.sdk.spec.Task taskAfterPause = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterPause = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterPause).as("受理后原任务应立即可查询").isNotNull();
         assertThat(taskAfterPause.id()).as("taskId 应一致").isEqualTo(originalTaskId);
         // A2A Task state 不应包含 SUSPENDED（安全边界后挂起，A2A 层无 SUSPENDED）

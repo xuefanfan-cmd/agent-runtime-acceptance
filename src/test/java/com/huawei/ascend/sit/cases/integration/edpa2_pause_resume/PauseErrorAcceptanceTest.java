@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.qameta.allure.Story;
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  */
 @DisplayName("FEAT-088 暂停/恢复错误与边界场景")
-class PauseErrorAcceptanceTest extends MoaPauseResumeTestBase {
+class PauseErrorAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -411,7 +411,7 @@ class PauseErrorAcceptanceTest extends MoaPauseResumeTestBase {
         String id = java.util.UUID.randomUUID().toString();
         java.util.Map<String, Object> body = java.util.Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", java.util.Map.of("message", message));
-        String url = stack.baseUrl(MOA_L1) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L1) + "/a2a";
         HttpResponse<String> resp = sendHttpPost(url, buildJsonString(body), "application/json");
         System.out.println("[DEBUG business-mixed] response statusCode=" + resp.statusCode()
                 + " body=" + resp.body());
@@ -457,7 +457,7 @@ class PauseErrorAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 完成结果不应被迟到回调修改
-        org.a2aproject.sdk.spec.Task taskAfterLatePause = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterLatePause = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterLatePause).as("迟到回调后原任务应仍可查询").isNotNull();
         assertThat(taskAfterLatePause.id()).as("taskId 应一致").isEqualTo(originalTaskId);
         assertThat(taskAfterLatePause.status().state())
@@ -492,7 +492,7 @@ class PauseErrorAcceptanceTest extends MoaPauseResumeTestBase {
                 .as("'停止'暂停回执 Task ID 应不同于原业务 Task ID")
                 .isNotEqualTo(originalTaskId);
         // 原任务仍可查询——暂停不等于取消，订单仍保留
-        org.a2aproject.sdk.spec.Task taskAfterStop = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterStop = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterStop).as("'停止'后原任务应仍可查询（不等于取消）").isNotNull();
         assertThat(taskAfterStop.id()).as("taskId 应一致").isEqualTo(originalTaskId);
     }

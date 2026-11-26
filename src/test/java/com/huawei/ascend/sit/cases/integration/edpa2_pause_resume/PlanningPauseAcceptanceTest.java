@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 而是重现原来的 INPUT_REQUIRED 问题。</p>
  */
 @DisplayName("FEAT-088 规划阶段暂停场景")
-class PlanningPauseAcceptanceTest extends MoaPauseResumeTestBase {
+class PlanningPauseAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -68,7 +68,7 @@ class PlanningPauseAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 原业务 Task 仍可通过 getTask 查询
-        org.a2aproject.sdk.spec.Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原业务 Task 应可通过 getTask 查询").isNotNull();
 
         sleep(SUSPEND_SETTLE_MS);
@@ -119,7 +119,7 @@ class PlanningPauseAcceptanceTest extends MoaPauseResumeTestBase {
         assertThat(receiptTaskId).as("回执 Task ID 应与原业务 Task ID 不同")
                 .isNotEqualTo(originalTaskId);
 
-        org.a2aproject.sdk.spec.Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原业务 Task 应可通过 getTask 查询").isNotNull();
 
         sleep(SUSPEND_SETTLE_MS);

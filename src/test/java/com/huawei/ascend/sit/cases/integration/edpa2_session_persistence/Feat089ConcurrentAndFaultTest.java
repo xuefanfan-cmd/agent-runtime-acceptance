@@ -2,14 +2,14 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence;
 
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaAgentHttpClient;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaAgentHttpClient.A2aResponse;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaDemoLauncher;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaSutHelper;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.OpenGaussProbe;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.SutLogTailer;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2AgentHttpClient;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2AgentHttpClient.A2aResponse;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2DemoLauncher;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2SutHelper;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.OpenGaussProbe;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.SutLogTailer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -48,35 +48,35 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_13_sameSessionRecoverySingle() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Establish session first
-                A2aResponse resp1 = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp1 = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp1.contextId();
 
                 // Two concurrent recovery requests with same contextId
                 ExecutorService pool = Executors.newFixedThreadPool(2);
                 try {
-                    Callable<A2aResponse> task = () -> client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
+                    Callable<A2aResponse> task = () -> client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
                     Future<A2aResponse> f1 = pool.submit(task);
                     Future<A2aResponse> f2 = pool.submit(task);
 
                     A2aResponse r1 = f1.get();
                     A2aResponse r2 = f2.get();
-                    MoaSutHelper.drainLogs();
+                    Edpa2SutHelper.drainLogs();
 
                     // Both should succeed — no crash, no data corruption
                     assertThat(r1.statusCode()).isEqualTo(200);
@@ -97,50 +97,50 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_14_sameSessionRecoveryCrossReplica() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1a = MoaSutHelper.buildL1(llm);
-                 MoaDemoLauncher l1b = MoaDemoLauncher.l1Agent()
-                         .envAll(MoaSutHelper.withBaseEnv(llm))
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1a = Edpa2SutHelper.buildL1(llm);
+                 Edpa2DemoLauncher l1b = Edpa2DemoLauncher.l1Agent()
+                         .envAll(Edpa2SutHelper.withBaseEnv(llm))
                          .port(18220)
                          .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                          .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
-                         .arg("--openjiuwen.service.middleware.opengauss.default.jdbc-url=" + MoaSutHelper.OG_JDBC_URL)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + MoaSutHelper.OG_USERNAME)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + MoaSutHelper.OG_PASSWORD)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + MoaSutHelper.OG_SCHEMA)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.jdbc-url=" + Edpa2SutHelper.OG_JDBC_URL)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + Edpa2SutHelper.OG_USERNAME)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + Edpa2SutHelper.OG_PASSWORD)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + Edpa2SutHelper.OG_SCHEMA)
                          .build()) {
                 mock.start(); l2.start(); l1a.start(); l1b.start();
 
                 // Establish session on l1a
-                MoaAgentHttpClient clientA = new MoaAgentHttpClient(l1a.baseUrl());
-                A2aResponse resp = clientA.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                Edpa2AgentHttpClient clientA = new Edpa2AgentHttpClient(l1a.baseUrl());
+                A2aResponse resp = clientA.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp.contextId();
 
                 // Concurrent recovery from both replicas
-                MoaAgentHttpClient clientB = new MoaAgentHttpClient(l1b.baseUrl());
+                Edpa2AgentHttpClient clientB = new Edpa2AgentHttpClient(l1b.baseUrl());
                 ExecutorService pool = Executors.newFixedThreadPool(2);
                 try {
-                    Future<A2aResponse> f1 = pool.submit(() -> clientA.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT));
-                    Future<A2aResponse> f2 = pool.submit(() -> clientB.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT));
+                    Future<A2aResponse> f1 = pool.submit(() -> clientA.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT));
+                    Future<A2aResponse> f2 = pool.submit(() -> clientB.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT));
 
                     A2aResponse r1 = f1.get();
                     A2aResponse r2 = f2.get();
-                    MoaSutHelper.drainLogs();
+                    Edpa2SutHelper.drainLogs();
 
                     // No data corruption — both should respond successfully
                     assertThat(r1.statusCode()).isEqualTo(200);
                     assertThat(r2.statusCode()).isEqualTo(200);
                     // DB should remain consistent
-                    assertThat(db.countTasksByContext(MoaSutHelper.L1_AGENT_ID, ctxId)).isGreaterThan(0);
+                    assertThat(db.countTasksByContext(Edpa2SutHelper.L1_AGENT_ID, ctxId)).isGreaterThan(0);
                 } finally {
                     pool.shutdownNow();
                 }
@@ -153,39 +153,39 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_15_multiSessionConcurrent() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Two sessions concurrently
                 ExecutorService pool = Executors.newFixedThreadPool(2);
                 try {
                     Future<A2aResponse> fA = pool.submit(() -> client.sendStreamingMessage(
-                            "你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT));
+                            "你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT));
                     Future<A2aResponse> fB = pool.submit(() -> client.sendStreamingMessage(
-                            "你好，请简单介绍一下上海", null, MoaSutHelper.INVOKE_TIMEOUT));
+                            "你好，请简单介绍一下上海", null, Edpa2SutHelper.INVOKE_TIMEOUT));
 
                     A2aResponse rA = fA.get();
                     A2aResponse rB = fB.get();
-                    MoaSutHelper.drainLogs();
+                    Edpa2SutHelper.drainLogs();
 
                     assertThat(rA.statusCode()).isEqualTo(200);
                     assertThat(rB.statusCode()).isEqualTo(200);
                     assertThat(rA.contextId()).isNotEqualTo(rB.contextId());
 
                     // DB should have separate records per contextId
-                    assertThat(db.countTasksByContext(MoaSutHelper.L1_AGENT_ID, rA.contextId())).isGreaterThan(0);
-                    assertThat(db.countTasksByContext(MoaSutHelper.L1_AGENT_ID, rB.contextId())).isGreaterThan(0);
+                    assertThat(db.countTasksByContext(Edpa2SutHelper.L1_AGENT_ID, rA.contextId())).isGreaterThan(0);
+                    assertThat(db.countTasksByContext(Edpa2SutHelper.L1_AGENT_ID, rB.contextId())).isGreaterThan(0);
                 } finally {
                     pool.shutdownNow();
                 }
@@ -198,35 +198,35 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_16_highFreqOverrideSave() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // First message establishes session
-                A2aResponse resp1 = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp1 = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp1.contextId();
-                int countAfterFirst = db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID);
+                int countAfterFirst = db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID);
                 // Count KV rows for this context (context snapshot store)
                 int kvAfterFirst = db.countKvByPrefix(ctxId);
 
                 // Send 4 more messages in the same session rapidly
                 for (int i = 0; i < 4; i++) {
-                    client.sendStreamingMessage("继续聊天 #" + i, ctxId, MoaSutHelper.INVOKE_TIMEOUT);
-                    MoaSutHelper.drainLogs();
+                    client.sendStreamingMessage("继续聊天 #" + i, ctxId, Edpa2SutHelper.INVOKE_TIMEOUT);
+                    Edpa2SutHelper.drainLogs();
                 }
 
-                int countAfterAll = db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID);
+                int countAfterAll = db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID);
                 // moa_a2a_task upserts by (agent_id, task_id), so each A2A request
                 // with a new task_id creates a new row. This is correct behavior.
                 // The override semantics are in moa_kv (context snapshot store).
@@ -244,36 +244,36 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_20_saveTimeout() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
             // Use openGauss with 1s socket timeout to simulate storage write timeout
-            String slowUrl = MoaSutHelper.OG_JDBC_URL + "?socketTimeout=1";
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaDemoLauncher.l1Agent()
-                         .envAll(MoaSutHelper.withBaseEnv(llm))
+            String slowUrl = Edpa2SutHelper.OG_JDBC_URL + "?socketTimeout=1";
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2DemoLauncher.l1Agent()
+                         .envAll(Edpa2SutHelper.withBaseEnv(llm))
                          .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                          .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
                          .arg("--openjiuwen.service.middleware.opengauss.default.jdbc-url=" + slowUrl)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + MoaSutHelper.OG_USERNAME)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + MoaSutHelper.OG_PASSWORD)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + MoaSutHelper.OG_SCHEMA)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + Edpa2SutHelper.OG_USERNAME)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + Edpa2SutHelper.OG_PASSWORD)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + Edpa2SutHelper.OG_SCHEMA)
                          .build()) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // With 1s socket timeout, write timeout should be handled gracefully
                 // — either the operation completes within 1s, or a timeout is surfaced
                 assertThat(resp.statusCode()).isEqualTo(200);
-                assertThat(db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID)).isGreaterThan(0);
+                assertThat(db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID)).isGreaterThan(0);
             }
         }
     }
@@ -283,24 +283,24 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_21_coreSerializationFail() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Send a message with very large payload (may trigger serialization issues)
                 String largePrompt = "你好，请简单介绍一下自己，详细信息如下：".repeat(500);
-                A2aResponse resp = client.sendStreamingMessage(largePrompt, null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp = client.sendStreamingMessage(largePrompt, null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // System should handle large payload successfully
                 assertThat(resp.statusCode()).isEqualTo(200);
@@ -316,31 +316,31 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_22_a2aTaskIdValidationFail() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp.contextId();
-                assertThat(db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID)).isGreaterThan(0);
+                assertThat(db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID)).isGreaterThan(0);
 
                 // Delete all task rows for this agent
-                db.deleteTasksByAgent(MoaSutHelper.L1_AGENT_ID);
+                db.deleteTasksByAgent(Edpa2SutHelper.L1_AGENT_ID);
 
                 // Attempt recovery — should handle missing task gracefully
-                A2aResponse recovery = client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse recovery = client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 assertThat(recovery.statusCode()).isEqualTo(200);
                 assertThat(recovery.finalTaskState()).isEqualTo("TASK_STATE_COMPLETED");
@@ -353,30 +353,30 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_23_a2aTaskEncodeFail() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp.contextId();
 
                 // Corrupt task_json to simulate encode/decode failure
-                MoaSutHelper.corruptTaskJson(MoaSutHelper.L1_AGENT_ID, ctxId);
+                Edpa2SutHelper.corruptTaskJson(Edpa2SutHelper.L1_AGENT_ID, ctxId);
 
                 // Attempt recovery — should encounter decode failure
-                A2aResponse recovery = client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse recovery = client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // Per L2 §2.3/§7.3: corrupted data must feed back recovery error, not silent normal recovery
                 boolean silentRecovery = recovery.statusCode() == 200
@@ -395,19 +395,19 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_24_recoveryAfterFailure() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
             // Phase 1: start with bad openGauss — expect failure
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm)) {
                 mock.start(); l2.start();
 
-                MoaDemoLauncher l1Bad = MoaSutHelper.buildL1WithCustomOg(llm,
+                Edpa2DemoLauncher l1Bad = Edpa2SutHelper.buildL1WithCustomOg(llm,
                         "jdbc:opengauss://127.0.0.1:59999/postgres");
                 try {
                     l1Bad.start();
@@ -418,18 +418,18 @@ final class Feat089ConcurrentAndFaultTest {
             }
 
             // Phase 2: start with good openGauss — should work
-            try (MoaDemoLauncher mock2 = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2_2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1_2 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock2 = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2_2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1_2 = Edpa2SutHelper.buildL1(llm)) {
                 mock2.start(); l2_2.start(); l1_2.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1_2.baseUrl());
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1_2.baseUrl());
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // After failure recovery, new save should work
                 assertThat(resp.statusCode()).isEqualTo(200);
-                assertThat(db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID)).isGreaterThan(0);
+                assertThat(db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID)).isGreaterThan(0);
             }
         }
     }
@@ -439,29 +439,29 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_25_midRetrievalFailure() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp.contextId();
 
                 // Corrupt data to simulate mid-retrieval failure
-                MoaSutHelper.corruptTaskJson(MoaSutHelper.L1_AGENT_ID, ctxId);
+                Edpa2SutHelper.corruptTaskJson(Edpa2SutHelper.L1_AGENT_ID, ctxId);
 
-                A2aResponse recovery = client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse recovery = client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // Per L2 §2.3: incomplete or illegal state must feed back recovery error, not return half context
                 boolean silentRecovery = recovery.statusCode() == 200
@@ -480,29 +480,29 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_26_slowSaveWaiting() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 long startMs = System.currentTimeMillis();
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
                 long elapsedMs = System.currentTimeMillis() - startMs;
-                MoaSutHelper.drainLogs();
+                Edpa2SutHelper.drainLogs();
 
                 // Save should complete before response returns (synchronous save)
                 assertThat(resp.statusCode()).isEqualTo(200);
                 // DB should have rows (save completed)
-                assertThat(db.countTasksByAgent(MoaSutHelper.L1_AGENT_ID)).isGreaterThan(0);
+                assertThat(db.countTasksByAgent(Edpa2SutHelper.L1_AGENT_ID)).isGreaterThan(0);
                 // Elapsed time includes save wait
                 assertThat(elapsedMs).isGreaterThan(0);
             }
@@ -514,19 +514,19 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_27_networkDisconnect() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm)) {
                 mock.start(); l2.start();
 
                 // L1 with unreachable openGauss port
-                MoaDemoLauncher l1Bad = MoaSutHelper.buildL1WithCustomOg(llm,
+                Edpa2DemoLauncher l1Bad = Edpa2SutHelper.buildL1WithCustomOg(llm,
                         "jdbc:opengauss://127.0.0.1:59999/postgres");
                 boolean startFailed = false;
                 try {
@@ -555,25 +555,25 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_28_sqlTimeout() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
             // Use openGauss with very short socket timeout to trigger SQL timeout
-            String timeoutUrl = MoaSutHelper.OG_JDBC_URL + "?socketTimeout=1";
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaDemoLauncher.l1Agent()
-                         .envAll(MoaSutHelper.withBaseEnv(llm))
+            String timeoutUrl = Edpa2SutHelper.OG_JDBC_URL + "?socketTimeout=1";
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2DemoLauncher.l1Agent()
+                         .envAll(Edpa2SutHelper.withBaseEnv(llm))
                          .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                          .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
                          .arg("--openjiuwen.service.middleware.opengauss.default.jdbc-url=" + timeoutUrl)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + MoaSutHelper.OG_USERNAME)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + MoaSutHelper.OG_PASSWORD)
-                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + MoaSutHelper.OG_SCHEMA)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.username=" + Edpa2SutHelper.OG_USERNAME)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.encrypted-password=" + Edpa2SutHelper.OG_PASSWORD)
+                         .arg("--openjiuwen.service.middleware.opengauss.default.schema=" + Edpa2SutHelper.OG_SCHEMA)
                          .startupTimeout(Duration.ofSeconds(30))
                          .build()) {
                 mock.start(); l2.start();
@@ -595,9 +595,9 @@ final class Feat089ConcurrentAndFaultTest {
                             .isTrue();
                 } else {
                     // If L1 started, verify it handles SQL timeout during operations
-                    MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
-                    A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                    MoaSutHelper.drainLogs();
+                    Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
+                    A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                    Edpa2SutHelper.drainLogs();
                     assertThat(resp.statusCode()).isEqualTo(200);
                 }
                 l1.close();
@@ -610,37 +610,37 @@ final class Feat089ConcurrentAndFaultTest {
      */
     @Test
     void f089_29_retryNotFixCorrupted() throws Exception {
-        MoaSutHelper.assumePrerequisites();
-        Map<String, String> llm = MoaSutHelper.requireLlmEnv();
+        Edpa2SutHelper.assumePrerequisites();
+        Map<String, String> llm = Edpa2SutHelper.requireLlmEnv();
 
-        try (OpenGaussProbe db = new OpenGaussProbe(MoaSutHelper.OG_JDBC_URL, MoaSutHelper.OG_USERNAME,
-                MoaSutHelper.OG_PASSWORD, MoaSutHelper.OG_SCHEMA).connect()) {
+        try (OpenGaussProbe db = new OpenGaussProbe(Edpa2SutHelper.OG_JDBC_URL, Edpa2SutHelper.OG_USERNAME,
+                Edpa2SutHelper.OG_PASSWORD, Edpa2SutHelper.OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = MoaSutHelper.buildMock(llm);
-                 MoaDemoLauncher l2 = MoaSutHelper.buildL2(llm);
-                 MoaDemoLauncher l1 = MoaSutHelper.buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = Edpa2SutHelper.buildMock(llm);
+                 Edpa2DemoLauncher l2 = Edpa2SutHelper.buildL2(llm);
+                 Edpa2DemoLauncher l1 = Edpa2SutHelper.buildL1(llm)) {
                 mock.start(); l2.start(); l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
-                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, MoaSutHelper.INVOKE_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse resp = client.sendStreamingMessage("你好，请简单介绍一下自己", null, Edpa2SutHelper.INVOKE_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
                 String ctxId = resp.contextId();
 
                 // Corrupt data
-                MoaSutHelper.corruptTaskJson(MoaSutHelper.L1_AGENT_ID, ctxId);
+                Edpa2SutHelper.corruptTaskJson(Edpa2SutHelper.L1_AGENT_ID, ctxId);
 
                 // First recovery attempt — should fail
-                A2aResponse attempt1 = client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse attempt1 = client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // Retry — should still fail (corrupted data not auto-fixed)
-                A2aResponse attempt2 = client.continueSession(ctxId, MoaSutHelper.RECOVERY_TIMEOUT);
-                MoaSutHelper.drainLogs();
+                A2aResponse attempt2 = client.continueSession(ctxId, Edpa2SutHelper.RECOVERY_TIMEOUT);
+                Edpa2SutHelper.drainLogs();
 
                 // Verify corrupted data still exists (not auto-cleaned)
-                String taskJson = db.getTaskJson(MoaSutHelper.L1_AGENT_ID, ctxId);
+                String taskJson = db.getTaskJson(Edpa2SutHelper.L1_AGENT_ID, ctxId);
                 if (taskJson != null) {
                     assertThat(taskJson).contains("CORRUPTED");
                 }

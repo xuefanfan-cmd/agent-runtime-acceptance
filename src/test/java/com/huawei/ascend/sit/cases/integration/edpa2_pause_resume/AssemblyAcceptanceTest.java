@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * accepts pause control, while L2 (no import) does not.</p>
  */
 @DisplayName("FEAT-088 装配兼容性场景")
-class AssemblyAcceptanceTest extends MoaPauseResumeTestBase {
+class AssemblyAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -99,7 +99,7 @@ class AssemblyAcceptanceTest extends MoaPauseResumeTestBase {
         String contextId = ctx("missing-dep");
 
         // 验证 L1 启动成功
-        assertThat(stack.baseUrl(MOA_L1)).as("L1 应在显式导入后成功启动").isNotNull();
+        assertThat(stack.baseUrl(EDPA2_L1)).as("L1 应在显式导入后成功启动").isNotNull();
 
         // 验证 L1 暂停入口正常工作（依赖满足后受理暂停）
         A2aRound business = sendA2a(BUSINESS_PROMPT, contextId, null);
@@ -144,7 +144,7 @@ class AssemblyAcceptanceTest extends MoaPauseResumeTestBase {
         String id = java.util.UUID.randomUUID().toString();
         java.util.Map<String, Object> body = java.util.Map.of("jsonrpc", "2.0", "id", id,
                 "method", "SendMessage", "params", java.util.Map.of("message", message));
-        String url = stack.baseUrl(MOA_L2) + "/a2a";
+        String url = stack.baseUrl(EDPA2_L2) + "/a2a";
         try {
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
                     .timeout(Duration.ofMinutes(4))

@@ -1,13 +1,13 @@
 ---
 feature_id: FEAT-089
-feature_title: 会话上下文持久化与长时间暂停恢复 — MOAagent 视角
+feature_title: 会话上下文持久化与长时间暂停恢复 — EDPA2agent 视角
 sut: moa-agent-demo（com.moaagent:moa-agent-demo:0.1.3，l1/l2/mock 三进程）+ agent-runtime-java（含 PR#252）+ agent-solution common（含 PR#1051）
 scope: Redis/openGauss 双承载 checkpointer、KVStore/TaskStore、长暂停恢复、隔离、故障、并发与部署边界
 status: designed
 status_note: 用例设计已落地，测试代码与环境供给尚未实现；当前仓库无 FEAT-089 用例
 owner: TBD
 priority: P0
-tags: [integration, e2e, concurrency, moaagent, feat-089, opengauss]
+tags: [integration, e2e, concurrency, edpa2agent, feat-089, opengauss]
 depends_on:
   - openGauss 7.0 LTS 实例可用，已按 L2 §5.6 预建 moa_kv / moa_a2a_task 两张表及 (agent_id, context_id) 索引
   - 运行账号具备两张表 SELECT/INSERT/UPDATE/DELETE 及冲突更新权限；启动检查探针可回滚
@@ -27,9 +27,9 @@ related_docs:
   - ../write-testcase.md（框架用例落地五步法）
 ---
 
-# FEAT-089 — 会话上下文持久化与长时间暂停恢复测试用例设计（MOAagent）
+# FEAT-089 — 会话上下文持久化与长时间暂停恢复测试用例设计（EDPA2agent）
 
-> **一句话**：以 `moa-agent-demo`（MOA Runtime 宿主）为 SUT，把 FEAT-089 的「openGauss 无 TTL 持久化 → 超 TTL 长暂停恢复 → 隔离 0 泄露 → 保存/恢复失败可见」映射为本仓可执行的黑盒验收用例，同时用 JDBC 探针做确定性断言，避免只看最终话术造成假阳性。
+> **一句话**：以 `moa-agent-demo`（EDPA2.0 Runtime 宿主）为 SUT，把 FEAT-089 的「openGauss 无 TTL 持久化 → 超 TTL 长暂停恢复 → 隔离 0 泄露 → 保存/恢复失败可见」映射为本仓可执行的黑盒验收用例，同时用 JDBC 探针做确定性断言，避免只看最终话术造成假阳性。
 
 > **仓库边界**：新增测试代码只写入 `agent-runtime-acceptance`；`moa-agent`/`moa-agent-demo`、`agent-runtime-java`、`agent-core-java` 均为只读被测对象。不加载产品私有类、不反射 checkpointer 内部状态、不新增 Agent HTTP/SPI 测试端点。
 
@@ -48,7 +48,7 @@ related_docs:
 | Solution 代码 | PR [agent-solution#1051](https://gitcode.com/openJiuwen/agent-solution/pull/1051)（已合入 `origin/common`，本仓 `6fd13012b`） |
 | Core 前置 | `agent-core-java#287`（修复未合入 `origin/develop` / `origin/930`，见 §9 阻塞项） |
 | 框架 | `agent-runtime-acceptance` main `3cce246`（2026-11-02） |
-| 现状 | 本仓无 FEAT-089 用例、无 openGauss fixture、`application-openjiuwen.yml` 无 MOA agent 声明 |
+| 现状 | 本仓无 FEAT-089 用例、无 openGauss fixture、`application-openjiuwen.yml` 无 EDPA2.0 agent 声明 |
 
 ### 1.2 范围
 
@@ -75,13 +75,13 @@ related_docs:
 
 | 产物 | 落点 |
 |---|---|
-| 本文（用例设计） | `docs/cases/FEAT-089-session-context-persistence-long-pause-recovery-moaagent.md` |
-| 黑盒恢复用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/moa_session_persistence/` |
-| 隔离/边界用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/moa_session_persistence/` |
-| openGauss 启动/驱动/配置用例 | `src/test/java/com/huawei/ascend/sit/cases/e2e/moa_session_persistence/` |
+| 本文（用例设计） | `docs/cases/FEAT-089-session-context-persistence-long-pause-recovery-edpa2agent.md` |
+| 黑盒恢复用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/edpa2_session_persistence/` |
+| 隔离/边界用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/edpa2_session_persistence/` |
+| openGauss 启动/驱动/配置用例 | `src/test/java/com/huawei/ascend/sit/cases/e2e/edpa2_session_persistence/` |
 | Store 契约（白盒，dependency-gated） | `src/test/java/com/huawei/ascend/sit/cases/component/moa_opengauss/` |
-| 并发用例 | `src/test/java/com/huawei/ascend/sit/cases/concurrency/moa_session_persistence/` |
-| 环境声明 | `src/test/resources/application-openjiuwen.yml` 新增 MOA agent 与 openGauss 外部环境块 |
+| 并发用例 | `src/test/java/com/huawei/ascend/sit/cases/concurrency/edpa2_session_persistence/` |
+| 环境声明 | `src/test/resources/application-openjiuwen.yml` 新增 EDPA2.0 agent 与 openGauss 外部环境块 |
 | 构建供给 | `scripts/sut/sut-sources.yml` 新增 `common/agents/moa-agent`、`common/agents/moa-agent-demo` 构建步骤 |
 | 新增探针 | `src/main/java/com/huawei/ascend/sit/utils/OpenGaussProbe.java`（只读 JDBC：表结构/记录/计数/前缀查询） |
 
@@ -99,8 +99,8 @@ related_docs:
 | 进程 | profile | 端口 | 用途 |
 |---|---|---|---|
 | `moa-mock` | `mock` | 3001 | 共享 Mock Agent，承接景点/酒店/预订等 Skill 下游调用，无需模型 |
-| `moa-l2` | `l2` | 18229 | 二级酒店 MOA，验证 Hosted/多 Agent 共享同一套表 |
-| `moa-l1` | `l1` | 18219 | 一级旅行 MOA，对外 A2A 入口，验收主对象 |
+| `moa-l2` | `l2` | 18229 | 二级酒店 EDPA2.0，验证 Hosted/多 Agent 共享同一套表 |
+| `moa-l1` | `l1` | 18219 | 一级旅行 EDPA2.0，对外 A2A 入口，验收主对象 |
 
 - 坐标：`com.moaagent:moa-agent-demo:0.1.3`，读取 `~/.m2`；`agent-solution-latest` 下构建产物亦可。
 - 启动顺序：mock → l2 → l1；`SutStack` 按依赖顺序拉起，端口以 `application-openjiuwen.yml` 声明为准。
@@ -140,9 +140,9 @@ openjiuwen:
 | 缺口 | 说明 | 落地建议 |
 |---|---|---|
 | openGauss 实例 | 当前框架无 openGauss 容器/fixture；L2 要求真实目标版本，H2/PostgreSQL 通过不能替代 | 以 `sut.external.opengauss` 外部块声明地址；testcontainers 不作为验收基线 |
-| 两张表与权限 | 需预建 `moa_kv` / `moa_a2a_task` 及索引，并授予运行账号冲突更新权限 | 建表/授权 SQL 取自 MOA 部署文档 `common/agents/moa-agent/docs/opengauss-storage.md` |
+| 两张表与权限 | 需预建 `moa_kv` / `moa_a2a_task` 及索引，并授予运行账号冲突更新权限 | 建表/授权 SQL 取自 EDPA2.0 部署文档 `common/agents/moa-agent/docs/opengauss-storage.md` |
 | JDBC 驱动 | 默认 exec 包不带驱动 | 驱动置于独立目录，启动参数 `-Dloader.path=<dir>` 或 `LOADER_PATH` |
-| 7 步长任务 Fixture Agent | 测试设计要求确定性 7 步任务，便于在第 3/5 步暂停并断言进度 | 在 `common/example` 新增 `feat089-seven-step-agent`（脚本工具 + 可控模型），不改 MOA 产品代码 |
+| 7 步长任务 Fixture Agent | 测试设计要求确定性 7 步任务，便于在第 3/5 步暂停并断言进度 | 在 `common/example` 新增 `feat089-seven-step-agent`（脚本工具 + 可控模型），不改 EDPA2.0 产品代码 |
 | TTL controller | 构造“超过 TTL”的暂停 | 短期回归用缩短 Redis TTL 的对照；真实 7 天保留用例单独 manual 执行 |
 | 故障注入 | 存储不可用/超时/网络断连/SQL 超时 | 复用 `ToxiproxyFaultLink`；DB 侧用连接串断开/账号回收/慢 SQL 包装，不修改产品类 |
 | Core 前置修复 | `#287` 未合入 develop/930 | 阻塞错误表面用例（§9） |
@@ -239,7 +239,7 @@ SUT：`moa-l1` + 7 步 Fixture Agent；承载：openGauss（除特别说明）�
 
 | 用例 ID | 优先级 | Given | When | Then |
 |---|---|---|---|---|
-| FEAT-089.opengauss.startup-check | P1 | 表结构/索引/权限就绪；探针 key 可回滚 | 启动 MOAagent，观察启动检查 | 校验表结构/主键/列类型/容量 + 运行账号读写与冲突更新权限；探针使用专用 key 且回滚/清理；不执行 CREATE/ALTER |
+| FEAT-089.opengauss.startup-check | P1 | 表结构/索引/权限就绪；探针 key 可回滚 | 启动 EDPA2agent，观察启动检查 | 校验表结构/主键/列类型/容量 + 运行账号读写与冲突更新权限；探针使用专用 key 且回滚/清理；不执行 CREATE/ALTER |
 | FEAT-089.opengauss.startup-check-fail | P1 | 表结构/索引/版本不符或权限不足 | 启动 | 初始化失败、不发布就绪；失败信息可定位到具体问题；不静默通过 |
 | FEAT-089.opengauss.driver-missing | P2 | exec 包默认不带驱动 | 不外置驱动直接启动 openGauss 承载 | 启动失败并提示驱动缺失；不降级到其他承载 |
 | FEAT-089.opengauss.driver-external | P2 | 驱动外置于 LOADER_PATH | `java -jar` 启动 | 驱动经 JDBC SPI 正确加载；包内依赖先于驱动目录；进入连接阶段 |
@@ -247,7 +247,7 @@ SUT：`moa-l1` + 7 步 Fixture Agent；承载：openGauss（除特别说明）�
 | FEAT-089.opengauss.provider-missing-duplicate | P1 | 配置 type 指定的 Provider 缺失或有多个匹配 | 启动 | 启动失败，指出 type 与组件类型；不泄露凭据 |
 | FEAT-089.opengauss.connection-ref-not-exist | P1 | `connection-ref` 指向不存在的数据源 | 启动 | 启动失败，指出配置路径与引用名 |
 | FEAT-089.opengauss.startup-fail-resource-reclaim | P2 | 初始化中部分组件已创建后失败 | 启动失败 | 只回收本组件拥有且创建成功的资源；借用 DataSource 不关闭 |
-| FEAT-089.opengauss.shutdown-order | P2 | openGauss 承载运行中 | 正常关闭 MOAagent | 停收新请求→收束运行→停止 sweeper/共享 Runner→关闭自有连接池；借用 DataSource 不关闭 |
+| FEAT-089.opengauss.shutdown-order | P2 | openGauss 承载运行中 | 正常关闭 EDPA2agent | 停收新请求→收束运行→停止 sweeper/共享 Runner→关闭自有连接池；借用 DataSource 不关闭 |
 | FEAT-089.l2.core-prerequisite-fix | P1 | 检查实际依赖是否含 Core #287 修复 | 跑非法检查点恢复 | 依赖含修复，恢复错误语义符合 L2 §2.3；当前为阻塞项（§9） |
 
 ### 6.6 `OpenGaussStoreContractTest`（component，white-box / dependency-gated）
@@ -372,7 +372,7 @@ SUT：`moa-l1` + 7 步 Fixture Agent；承载：openGauss（除特别说明）�
 |---|---|---|
 | Core #287 修复未合入（`origin/develop`、`origin/930` 均不含） | 错误表面用例无法判定为产品通过 | 阻塞 `l2.core-prerequisite-fix`、`error.half-record-illegal-struct`；需先确认依赖版本 |
 | 本地 agent-runtime-java 在 pr-247，不含 PR#252 | SUT 无 openGauss Provider 接线 | 测试供给切到含 #252 的 develop 构建；先安装 `agent-runtime-java` 相关模块 |
-| 仓库无 openGauss fixture / MOA agent 环境声明 | 全部用例当前 SKIPPED | 按 §4.1 补齐 `sut.external.opengauss`、MOA agent 坐标、sut-sources 构建步骤 |
+| 仓库无 openGauss fixture / EDPA2.0 agent 环境声明 | 全部用例当前 SKIPPED | 按 §4.1 补齐 `sut.external.opengauss`、EDPA2.0 agent 坐标、sut-sources 构建步骤 |
 | 7 步 Fixture Agent 未实现 | 进度断言无法落地 | 新增 example fixture，保持产品代码零改动 |
 | 真实 7 天保留无法在 CI 完成 | 核心要求只做短期对照会失真 | 单独 manual 环境执行，报告注明“缩短 TTL 对照不等价于真实 7 天保留” |
 | 跨副本/独立应用需多堆栈 | 资源开销大 | e2e + manual 分层执行，不并入默认回归 |
@@ -386,4 +386,4 @@ SUT：`moa-l1` + 7 步 Fixture Agent；承载：openGauss（除特别说明）�
 - [FEAT-003 agent task state cache](FEAT-003-agent-task-state-cache-deepagent.md)（checkpoint 隔离基线）
 - [FEAT-037 single-process multi-agent hosting](FEAT-037-single-process-multi-agent-hosting-deepagent.md)（Hosted 共享基线）
 - [write-testcase.md](../write-testcase.md)（用例落地五步法）
-- MOA openGauss 部署说明：`agent-solution/common/agents/moa-agent/docs/opengauss-storage.md`
+- EDPA2.0 openGauss 部署说明：`agent-solution/common/agents/moa-agent/docs/opengauss-storage.md`

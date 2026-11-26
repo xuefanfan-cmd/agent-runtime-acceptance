@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * The REST→A2A cross-protocol test is executable now.</p>
  */
 @DisplayName("FEAT-088 FEAT-089 联动场景")
-class Feat089LinkageAcceptanceTest extends MoaPauseResumeTestBase {
+class Feat089LinkageAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -62,7 +62,7 @@ class Feat089LinkageAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 原任务仍可查询——挂起记录未因恢复而丢失
-        org.a2aproject.sdk.spec.Task taskAfterResume = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterResume = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterResume).as("恢复后原任务应仍可查询").isNotNull();
         assertThat(taskAfterResume.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 
@@ -93,7 +93,7 @@ class Feat089LinkageAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // 原任务仍可查询——暂停不回滚
-        org.a2aproject.sdk.spec.Task task = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task task = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(task).as("暂停后原任务应可查询（不回滚）").isNotNull();
         assertThat(task.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 
@@ -140,7 +140,7 @@ class Feat089LinkageAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 原任务仍可查询——新指令不覆盖挂起记录
-        org.a2aproject.sdk.spec.Task task = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task task = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(task).as("新指令后原任务应仍可查询（挂起记录未覆盖）").isNotNull();
         assertThat(task.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 

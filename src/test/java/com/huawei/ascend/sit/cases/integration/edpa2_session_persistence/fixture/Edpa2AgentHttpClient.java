@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,7 +42,7 @@ import java.util.concurrent.TimeoutException;
  * <p>This client intentionally uses raw HTTP rather than the A2A SDK —
  * the test needs fine-grained control over contextId and message content.
  */
-public final class MoaAgentHttpClient {
+public final class Edpa2AgentHttpClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -52,7 +52,7 @@ public final class MoaAgentHttpClient {
 
     private final String baseUrl;
 
-    public MoaAgentHttpClient(String baseUrl) {
+    public Edpa2AgentHttpClient(String baseUrl) {
         this.baseUrl = stripTrailingSlash(Objects.requireNonNull(baseUrl, "baseUrl"));
     }
 

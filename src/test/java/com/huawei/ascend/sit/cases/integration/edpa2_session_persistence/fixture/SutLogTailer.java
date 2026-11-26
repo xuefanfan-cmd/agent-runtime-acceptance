@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture;
 
 import java.io.IOException;
 import java.nio.file.Files;

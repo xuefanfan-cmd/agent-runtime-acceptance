@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 这些用例验证暂停受理后系统不会崩溃，但不能从黑盒验证'不承诺'的具体行为。</p>
  */
 @DisplayName("FEAT-088 暂停/恢复边界场景")
-class PauseBoundaryAcceptanceTest extends MoaPauseResumeTestBase {
+class PauseBoundaryAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -50,8 +50,8 @@ class PauseBoundaryAcceptanceTest extends MoaPauseResumeTestBase {
 
         sleep(SUSPEND_SETTLE_MS);
 
-        // 文档 L100: "原业务 Task 可用 GetTask 观察，但其中不保证包含 MOA 任务清单或 SUSPENDED 字段"
-        org.a2aproject.sdk.spec.Task queried = client(MOA_L1).getTask(originalTaskId);
+        // 文档 L100: "原业务 Task 可用 GetTask 观察，但其中不保证包含 EDPA2.0 任务清单或 SUSPENDED 字段"
+        org.a2aproject.sdk.spec.Task queried = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(queried).as("GetTask 应返回任务").isNotNull();
         assertThat(queried.id()).as("GetTask 返回的 taskId 应一致")
                 .isEqualTo(originalTaskId);
@@ -194,15 +194,15 @@ class PauseBoundaryAcceptanceTest extends MoaPauseResumeTestBase {
     }
 
     @Test
-    @Story("hosted-moa-limit: Hosted MOA 不自动支持暂停控制（OUT 负面）")
-    @DisplayName("FEAT-088.boundary.hosted-moa-limit: OUT负面声明记录")
-    void hostedMoaDoesNotAutoSupportPause() {
-        // OUT 负面声明："不宣称已自动支持 hosted MOA 装配"
+    @Story("hosted-edpa2-limit: Hosted EDPA2.0 不自动支持暂停控制（OUT 负面）")
+    @DisplayName("FEAT-088.boundary.hosted-edpa2-limit: OUT负面声明记录")
+    void hostedEdpa2DoesNotAutoSupportPause() {
+        // OUT 负面声明："不宣称已自动支持 hosted EDPA2.0 装配"
         // L1 以显式导入方式运行（非 hosted 自动模式）
-        assertThat(stack.baseUrl(MOA_L1)).as("L1 应以显式导入方式运行").isNotNull();
+        assertThat(stack.baseUrl(EDPA2_L1)).as("L1 应以显式导入方式运行").isNotNull();
         HttpResponse<String> healthCheck = sendRestRaw("/", "", "application/json");
         assertThat(healthCheck.statusCode()).as("L1 应健康响应").isLessThan(500);
-        System.out.println("[OUT hosted-moa-limit] L1 显式导入运行中 — OUT负面声明：不自动支持 hosted MOA（黑盒无法验证 hosted 差异）");
+        System.out.println("[OUT hosted-edpa2-limit] L1 显式导入运行中 — OUT负面声明：不自动支持 hosted EDPA2.0（黑盒无法验证 hosted 差异）");
     }
 
     @Test
@@ -210,8 +210,8 @@ class PauseBoundaryAcceptanceTest extends MoaPauseResumeTestBase {
     @DisplayName("FEAT-088.boundary.process-restart: OUT负面声明记录")
     void processRestartDoesNotPromiseCrossProcessRecovery() {
         // OUT 负面声明："进程内控制记录不承担跨进程恢复"
-        assertThat(stack.baseUrl(MOA_L1)).as("单实例 L1 运行中").isNotNull();
-        assertThat(stack.baseUrl(MOA_L2)).as("单实例 L2 运行中").isNotNull();
+        assertThat(stack.baseUrl(EDPA2_L1)).as("单实例 L1 运行中").isNotNull();
+        assertThat(stack.baseUrl(EDPA2_L2)).as("单实例 L2 运行中").isNotNull();
         HttpResponse<String> healthCheck = sendRestRaw("/", "", "application/json");
         assertThat(healthCheck.statusCode()).as("L1 应健康响应").isLessThan(500);
         System.out.println("[OUT process-restart] 单实例运行中 — OUT负面声明：不承诺跨进程恢复（黑盒无法验证）");
@@ -225,7 +225,7 @@ class PauseBoundaryAcceptanceTest extends MoaPauseResumeTestBase {
     void gatewayPathNotInScope() {
         // FRS-088 明确不纳入本版本：客户端经网关发起的中断/暂停/恢复
         // 验证 L1 直接可达（非经网关），暂停入口正常工作
-        assertThat(stack.baseUrl(MOA_L1)).as("L1 应直接可达").isNotNull();
+        assertThat(stack.baseUrl(EDPA2_L1)).as("L1 应直接可达").isNotNull();
         HttpResponse<String> healthCheck = sendRestRaw("/", "", "application/json");
         assertThat(healthCheck.statusCode()).as("L1 应健康响应").isLessThan(500);
         System.out.println("[OUT gateway-path] L1 直接可达 — FRS明确网关路径不纳入本版本（OUT负面声明）");

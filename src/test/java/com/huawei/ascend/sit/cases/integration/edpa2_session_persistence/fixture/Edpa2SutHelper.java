@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture;
 
 import org.junit.jupiter.api.Assumptions;
 
@@ -26,7 +26,7 @@ import java.util.Map;
  *   <li>DB corruption helper</li>
  * </ul>
  */
-public final class MoaSutHelper {
+public final class Edpa2SutHelper {
 
     // openGauss connection constants
     public static final String OG_JDBC_URL = "jdbc:opengauss://localhost:7654/postgres";
@@ -40,7 +40,7 @@ public final class MoaSutHelper {
     public static final java.time.Duration INVOKE_TIMEOUT = java.time.Duration.ofSeconds(120);
     public static final java.time.Duration RECOVERY_TIMEOUT = java.time.Duration.ofSeconds(120);
 
-    private MoaSutHelper() {}
+    private Edpa2SutHelper() {}
 
     /**
      * Base environment variables required by all SUT processes.
@@ -57,7 +57,7 @@ public final class MoaSutHelper {
         String path = System.getenv("PATH");
         if (path != null) env.put("PATH", path);
         env.put("LANG", "en_US.UTF-8");
-        // MOA demo skill assets — required by LocalSkillDelegate at startup
+        // EDPA2.0 demo skill assets — required by LocalSkillDelegate at startup
         String assetRoot = System.getProperty("moa.demo.asset.root",
                 "D:/openjiuwen/agent-solution/common/agents/moa-agent-demo/assets/tourism/skills");
         env.put("MOA_DEMO_ASSET_ROOT", assetRoot);
@@ -76,12 +76,12 @@ public final class MoaSutHelper {
 
     // ---------- SUT builders ----------
 
-    public static MoaDemoLauncher buildMock(Map<String, String> llm) {
-        return MoaDemoLauncher.mockAgent().envAll(withBaseEnv(llm)).build();
+    public static Edpa2DemoLauncher buildMock(Map<String, String> llm) {
+        return Edpa2DemoLauncher.mockAgent().envAll(withBaseEnv(llm)).build();
     }
 
-    public static MoaDemoLauncher buildL2(Map<String, String> llm) {
-        return MoaDemoLauncher.l2Agent()
+    public static Edpa2DemoLauncher buildL2(Map<String, String> llm) {
+        return Edpa2DemoLauncher.l2Agent()
                 .envAll(withBaseEnv(llm))
                 .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                 .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
@@ -92,8 +92,8 @@ public final class MoaSutHelper {
                 .build();
     }
 
-    public static MoaDemoLauncher buildL1(Map<String, String> llm) {
-        return MoaDemoLauncher.l1Agent()
+    public static Edpa2DemoLauncher buildL1(Map<String, String> llm) {
+        return Edpa2DemoLauncher.l1Agent()
                 .envAll(withBaseEnv(llm))
                 .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                 .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
@@ -107,8 +107,8 @@ public final class MoaSutHelper {
     /**
      * Builds L1 with custom openGauss args (for fault injection scenarios).
      */
-    public static MoaDemoLauncher buildL1WithCustomOg(Map<String, String> llm, String ogUrl) {
-        return MoaDemoLauncher.l1Agent()
+    public static Edpa2DemoLauncher buildL1WithCustomOg(Map<String, String> llm, String ogUrl) {
+        return Edpa2DemoLauncher.l1Agent()
                 .envAll(withBaseEnv(llm))
                 .arg("--openjiuwen.service.middleware.checkpointer.type=opengauss")
                 .arg("--openjiuwen.service.middleware.checkpointer.connection-ref=default")
@@ -127,13 +127,13 @@ public final class MoaSutHelper {
     }
 
     public static void assumeDemoJarPresent() {
-        String override = System.getProperty(MoaDemoLauncher.DEMO_JAR_PROP);
+        String override = System.getProperty(Edpa2DemoLauncher.DEMO_JAR_PROP);
         Path jar = override != null && !override.isBlank()
                 ? Path.of(override)
-                : MoaDemoLauncher.DEFAULT_DEMO_JAR;
+                : Edpa2DemoLauncher.DEFAULT_DEMO_JAR;
         Assumptions.assumeTrue(Files.isRegularFile(jar),
                 "moa-agent-demo jar not found at " + jar
-                        + " — set -D" + MoaDemoLauncher.DEMO_JAR_PROP + " — INCONCLUSIVE");
+                        + " — set -D" + Edpa2DemoLauncher.DEMO_JAR_PROP + " — INCONCLUSIVE");
     }
 
     public static void assumeOpenGaussReachable() {

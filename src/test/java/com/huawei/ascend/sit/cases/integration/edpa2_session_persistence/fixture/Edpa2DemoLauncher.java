@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -25,8 +25,8 @@ import java.util.Objects;
  * <p>The demo jar is a single fat jar that runs three Spring profiles:
  * <ul>
  *   <li><b>mock</b> — port 3001, mock downstream A2A agent ({@code /a2a/mock})</li>
- *   <li><b>l2</b> — port 18229, L2 hotel MOA agent</li>
- *   <li><b>l1</b> — port 18219, L1 travel MOA agent (primary SUT)</li>
+ *   <li><b>l2</b> — port 18229, L2 hotel EDPA2.0 agent</li>
+ *   <li><b>l1</b> — port 18219, L1 travel EDPA2.0 agent (primary SUT)</li>
  * </ul>
  *
  * <p>Start order: mock → l2 → l1. Each process is a separate launcher instance
@@ -51,7 +51,7 @@ import java.util.Objects;
  * env map they want (LLM_*, OPENGAUSS_*, etc.). Pattern mirrored from
  * {@code run_budget_react.fixture.DemoFatJarLauncher} (FEAT-057).
  */
-public final class MoaDemoLauncher implements AutoCloseable {
+public final class Edpa2DemoLauncher implements AutoCloseable {
 
     public static final String DEMO_JAR_PROP = "feat089.demo-jar";
     public static final String OG_DRIVER_PROP = "feat089.opengauss-driver";
@@ -81,7 +81,7 @@ public final class MoaDemoLauncher implements AutoCloseable {
     private Path logFile;
     private Instant startedAt;
 
-    private MoaDemoLauncher(Builder b) {
+    private Edpa2DemoLauncher(Builder b) {
         this.name = Objects.requireNonNull(b.name, "name");
         this.jar = Objects.requireNonNull(b.jar, "jar");
         this.port = b.port;
@@ -106,7 +106,7 @@ public final class MoaDemoLauncher implements AutoCloseable {
     }
 
     /**
-     * Builder for the L2 hotel MOA agent (port 18229, profile=l2).
+     * Builder for the L2 hotel EDPA2.0 agent (port 18229, profile=l2).
      */
     public static Builder l2Agent() {
         return new Builder()
@@ -119,7 +119,7 @@ public final class MoaDemoLauncher implements AutoCloseable {
     }
 
     /**
-     * Builder for the L1 travel MOA agent (port 18219, profile=l1).
+     * Builder for the L1 travel EDPA2.0 agent (port 18219, profile=l1).
      */
     public static Builder l1Agent() {
         return new Builder()
@@ -193,7 +193,7 @@ public final class MoaDemoLauncher implements AutoCloseable {
         }
     }
 
-    public MoaDemoLauncher start() throws IOException {
+    public Edpa2DemoLauncher start() throws IOException {
         if (!Files.isRegularFile(jar)) {
             throw new IllegalStateException(name + " jar not found at " + jar
                     + " (override via -D" + DEMO_JAR_PROP + ")");
@@ -374,6 +374,6 @@ public final class MoaDemoLauncher implements AutoCloseable {
         public Builder startupTimeout(Duration d) { this.startupTimeout = d; return this; }
         public Builder readinessPath(String p) { this.readinessPath = p; return this; }
 
-        public MoaDemoLauncher build() { return new MoaDemoLauncher(this); }
+        public Edpa2DemoLauncher build() { return new Edpa2DemoLauncher(this); }
     }
 }

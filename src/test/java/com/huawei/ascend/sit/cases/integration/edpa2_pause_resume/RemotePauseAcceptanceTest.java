@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.TaskState;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * then pause is sent to L1. L2 has no Hook; pause control is not forwarded.
  */
 @DisplayName("FEAT-088 远端暂停/恢复场景")
-class RemotePauseAcceptanceTest extends MoaPauseResumeTestBase {
+class RemotePauseAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String HOTEL_PROMPT =
             "帮我查询杭州演示酒店，只查询不预订。入住退房日期、人数和间数稍后提供，请先询问。";
@@ -142,7 +142,7 @@ class RemotePauseAcceptanceTest extends MoaPauseResumeTestBase {
                 .as("远端恢复拒绝应返回有意义的响应（含 taskId 或 TASK_STATE），实际响应: %s", body)
                 .isTrue();
         // 恢复被拒后原任务仍可查询 — 挂起记录未因恢复请求丢失
-        org.a2aproject.sdk.spec.Task taskAfterRejectedResume = client(MOA_L1).getTask(business.taskId());
+        org.a2aproject.sdk.spec.Task taskAfterRejectedResume = client(EDPA2_L1).getTask(business.taskId());
         assertThat(taskAfterRejectedResume).as("恢复被拒后原任务应仍可查询（挂起记录未丢失）").isNotNull();
         assertThat(taskAfterRejectedResume.id()).as("taskId 应一致").isEqualTo(business.taskId());
     }
@@ -179,7 +179,7 @@ class RemotePauseAcceptanceTest extends MoaPauseResumeTestBase {
         System.out.println("[DEBUG resume-rejected-preserve] resume response body=" + resumeBody);
 
         // Step 4: 无论恢复是否被受理，原任务仍可查询 — 挂起记录不丢失
-        org.a2aproject.sdk.spec.Task taskAfterResume = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterResume = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterResume).as("恢复操作后原任务应仍可查询（挂起记录未丢失）").isNotNull();
         assertThat(taskAfterResume.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 
@@ -207,7 +207,7 @@ class RemotePauseAcceptanceTest extends MoaPauseResumeTestBase {
                 .as("任务应到达 COMPLETED 或 INPUT_REQUIRED，实际状态: %s", business.state())
                 .isTrue();
         // 无论 COMPLETED 还是 INPUT_REQUIRED，原任务都应可通过 getTask 查询（结果保留）
-        org.a2aproject.sdk.spec.Task queried = client(MOA_L1).getTask(business.taskId());
+        org.a2aproject.sdk.spec.Task queried = client(EDPA2_L1).getTask(business.taskId());
         assertThat(queried).as("GetTask 应返回任务（结果保留）").isNotNull();
         assertThat(queried.id()).as("GetTask 返回的 taskId 应一致")
                 .isEqualTo(business.taskId());

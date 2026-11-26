@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.Task;
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 6. 恢复后原 Plan revision 递增验证
  */
 @DisplayName("FEAT-088 探索性测试：恢复流程完整性")
-class ExploratoryResumeTest extends MoaPauseResumeTestBase {
+class ExploratoryResumeTest extends Edpa2PauseResumeTestBase {
 
     private static final String BUSINESS_PROMPT =
             "给我安排杭州3天旅行，只生成简单景点安排。出发日期和人数稍后告诉你，请先向我询问。";
@@ -214,13 +214,13 @@ class ExploratoryResumeTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // Step 3: getTask 查询原业务 Task — 应可查询（不回滚）
-        Task originalTask = client(MOA_L1).getTask(originalTaskId);
+        Task originalTask = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(originalTask).as("原任务应可查询").isNotNull();
         assertThat(originalTask.id()).as("原 taskId 应一致").isEqualTo(originalTaskId);
 
         // Step 4: getTask 查询回执 Task — 设计文档 L60: "独立回执 Task"
         // 回执 Task 是否可查？状态是什么？
-        Task receiptTask = client(MOA_L1).getTask(receiptTaskId);
+        Task receiptTask = client(EDPA2_L1).getTask(receiptTaskId);
         System.out.println("[DEBUG explore gettask-receipt] receiptTask=" + receiptTask);
         // 回执 Task 应该可查询（设计文档说它是独立 Task）
         // 如果返回 null，说明回执 Task 不是持久化的 — 可能是 bug

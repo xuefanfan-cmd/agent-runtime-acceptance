@@ -2,14 +2,14 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_session_persistence;
+package com.huawei.ascend.sit.cases.integration.edpa2_session_persistence;
 
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaAgentHttpClient;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaAgentHttpClient.A2aResponse;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaDemoLauncher;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.MoaSutHelper;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.OpenGaussProbe;
-import com.huawei.ascend.sit.cases.integration.moa_session_persistence.fixture.SutLogTailer;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2AgentHttpClient;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2AgentHttpClient.A2aResponse;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2DemoLauncher;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.Edpa2SutHelper;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.OpenGaussProbe;
+import com.huawei.ascend.sit.cases.integration.edpa2_session_persistence.fixture.SutLogTailer;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -85,14 +85,14 @@ final class Feat089PersistenceRecoveryTest {
         try (OpenGaussProbe db = new OpenGaussProbe(OG_JDBC_URL, OG_USERNAME, OG_PASSWORD, OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
                 // Step 1: establish session — use a simple prompt that doesn't trigger
                 // remote A2A calls (which can cause HITL interaction interrupts)
                 A2aResponse resp1 = client.sendStreamingMessage(
@@ -152,14 +152,14 @@ final class Feat089PersistenceRecoveryTest {
         try (OpenGaussProbe db = new OpenGaussProbe(OG_JDBC_URL, OG_USERNAME, OG_PASSWORD, OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // First interaction
                 A2aResponse resp1 = client.sendStreamingMessage(
@@ -211,16 +211,16 @@ final class Feat089PersistenceRecoveryTest {
             // Ensure ports are free from any previous test (Windows TIME_WAIT).
             // On Windows, TIME_WAIT can hold ports for ~120s even after the process
             // is killed and Socket.connect fails. Add a safety margin.
-            waitForPortRelease(MoaDemoLauncher.MOCK_PORT, Duration.ofSeconds(15));
-            waitForPortRelease(MoaDemoLauncher.L2_PORT, Duration.ofSeconds(15));
-            waitForPortRelease(MoaDemoLauncher.L1_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.MOCK_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.L2_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.L1_PORT, Duration.ofSeconds(15));
             Thread.sleep(3000); // Extra safety margin for Windows port release
 
             // Phase 1: start stack, establish session
             String contextId;
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
@@ -228,7 +228,7 @@ final class Feat089PersistenceRecoveryTest {
                 System.out.println("[F089-51] Phase 1: mock=" + mock.isAlive()
                         + " l2=" + l2.isAlive() + " l1=" + l1.isAlive());
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
                 A2aResponse resp1 = client.sendStreamingMessage(
                         "你好，请简单介绍一下你自己", null, INVOKE_TIMEOUT);
                 drainLogs();
@@ -246,14 +246,14 @@ final class Feat089PersistenceRecoveryTest {
 
             // Wait for ports to be released by the OS before restarting.
             // On Windows, TIME_WAIT can hold ports for ~30s; poll until free.
-            waitForPortRelease(MoaDemoLauncher.MOCK_PORT, Duration.ofSeconds(15));
-            waitForPortRelease(MoaDemoLauncher.L2_PORT, Duration.ofSeconds(15));
-            waitForPortRelease(MoaDemoLauncher.L1_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.MOCK_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.L2_PORT, Duration.ofSeconds(15));
+            waitForPortRelease(Edpa2DemoLauncher.L1_PORT, Duration.ofSeconds(15));
 
             // Phase 2: restart l1 (and dependencies) — fresh process, same DB
-            try (MoaDemoLauncher mock2 = buildMock(llm);
-                 MoaDemoLauncher l2_2 = buildL2(llm);
-                 MoaDemoLauncher l1_2 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock2 = buildMock(llm);
+                 Edpa2DemoLauncher l2_2 = buildL2(llm);
+                 Edpa2DemoLauncher l1_2 = buildL1(llm)) {
                 mock2.start();
                 l2_2.start();
                 l1_2.start();
@@ -261,7 +261,7 @@ final class Feat089PersistenceRecoveryTest {
                 System.out.println("[F089-51] Phase 2: mock=" + mock2.isAlive()
                         + " l2=" + l2_2.isAlive() + " l1=" + l1_2.isAlive());
 
-                MoaAgentHttpClient client2 = new MoaAgentHttpClient(l1_2.baseUrl());
+                Edpa2AgentHttpClient client2 = new Edpa2AgentHttpClient(l1_2.baseUrl());
 
                 // Send "继续" in the original context — should recover from DB
                 A2aResponse resp2 = client2.continueSession(contextId, RECOVERY_TIMEOUT);
@@ -307,13 +307,13 @@ final class Feat089PersistenceRecoveryTest {
         // Point openGauss config to an unreachable port
         // Start mock + l2 with good env (they don't need openGauss)
         // Then start l1 with bad openGauss config — expect startup failure
-        try (MoaDemoLauncher mock = buildMock(llm);
-             MoaDemoLauncher l2 = buildL2(llm)) {
+        try (Edpa2DemoLauncher mock = buildMock(llm);
+             Edpa2DemoLauncher l2 = buildL2(llm)) {
             mock.start();
             l2.start();
 
             // L1 with bad openGauss config — should fail readiness
-            MoaDemoLauncher l1Bad = MoaSutHelper.buildL1WithCustomOg(llm,
+            Edpa2DemoLauncher l1Bad = Edpa2SutHelper.buildL1WithCustomOg(llm,
                     "jdbc:opengauss://127.0.0.1:59999/postgres");
             boolean startFailed = false;
             try {
@@ -364,14 +364,14 @@ final class Feat089PersistenceRecoveryTest {
         try (OpenGaussProbe db = new OpenGaussProbe(OG_JDBC_URL, OG_USERNAME, OG_PASSWORD, OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Establish session
                 A2aResponse resp1 = client.sendStreamingMessage(
@@ -443,14 +443,14 @@ final class Feat089PersistenceRecoveryTest {
             db.truncateAll();
             assertThat(db.hasTaskRows()).isFalse();
 
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Send a message with a fabricated contextId — never persisted before
                 String fabricatedContextId = "never-existed-" + System.currentTimeMillis();
@@ -500,14 +500,14 @@ final class Feat089PersistenceRecoveryTest {
         try (OpenGaussProbe db = new OpenGaussProbe(OG_JDBC_URL, OG_USERNAME, OG_PASSWORD, OG_SCHEMA).connect()) {
             db.truncateAll();
 
-            try (MoaDemoLauncher mock = buildMock(llm);
-                 MoaDemoLauncher l2 = buildL2(llm);
-                 MoaDemoLauncher l1 = buildL1(llm)) {
+            try (Edpa2DemoLauncher mock = buildMock(llm);
+                 Edpa2DemoLauncher l2 = buildL2(llm);
+                 Edpa2DemoLauncher l1 = buildL1(llm)) {
                 mock.start();
                 l2.start();
                 l1.start();
 
-                MoaAgentHttpClient client = new MoaAgentHttpClient(l1.baseUrl());
+                Edpa2AgentHttpClient client = new Edpa2AgentHttpClient(l1.baseUrl());
 
                 // Session A
                 A2aResponse respA = client.sendStreamingMessage(
@@ -561,24 +561,24 @@ final class Feat089PersistenceRecoveryTest {
 
     // ---------- fixture helpers ----------
 
-    private MoaDemoLauncher buildMock(Map<String, String> llm) {
-        return MoaSutHelper.buildMock(llm);
+    private Edpa2DemoLauncher buildMock(Map<String, String> llm) {
+        return Edpa2SutHelper.buildMock(llm);
     }
 
-    private MoaDemoLauncher buildL2(Map<String, String> llm) {
-        return MoaSutHelper.buildL2(llm);
+    private Edpa2DemoLauncher buildL2(Map<String, String> llm) {
+        return Edpa2SutHelper.buildL2(llm);
     }
 
-    private MoaDemoLauncher buildL1(Map<String, String> llm) {
-        return MoaSutHelper.buildL1(llm);
+    private Edpa2DemoLauncher buildL1(Map<String, String> llm) {
+        return Edpa2SutHelper.buildL1(llm);
     }
 
     private static void corruptTaskJson(OpenGaussProbe db, String agentId, String contextId) throws Exception {
-        MoaSutHelper.corruptTaskJson(agentId, contextId);
+        Edpa2SutHelper.corruptTaskJson(agentId, contextId);
     }
 
     private void drainLogs() throws InterruptedException {
-        MoaSutHelper.drainLogs();
+        Edpa2SutHelper.drainLogs();
     }
 
     // ---------- prerequisite guards ----------
@@ -589,13 +589,13 @@ final class Feat089PersistenceRecoveryTest {
     }
 
     private static void assumeDemoJarPresent() {
-        String override = System.getProperty(MoaDemoLauncher.DEMO_JAR_PROP);
+        String override = System.getProperty(Edpa2DemoLauncher.DEMO_JAR_PROP);
         java.nio.file.Path jar = override != null && !override.isBlank()
                 ? java.nio.file.Path.of(override)
-                : MoaDemoLauncher.DEFAULT_DEMO_JAR;
+                : Edpa2DemoLauncher.DEFAULT_DEMO_JAR;
         Assumptions.assumeTrue(Files.isRegularFile(jar),
                 "moa-agent-demo jar not found at " + jar
-                        + " — set -D" + MoaDemoLauncher.DEMO_JAR_PROP + " — INCONCLUSIVE");
+                        + " — set -D" + Edpa2DemoLauncher.DEMO_JAR_PROP + " — INCONCLUSIVE");
     }
 
     private static void assumeOpenGaussReachable() {

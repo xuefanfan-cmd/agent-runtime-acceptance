@@ -2,7 +2,7 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
 
-package com.huawei.ascend.sit.cases.integration.moa_pause_resume;
+package com.huawei.ascend.sit.cases.integration.edpa2_pause_resume;
 
 import io.qameta.allure.Story;
 import org.a2aproject.sdk.spec.TaskState;
@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 暂停后原任务可查询（不回滚）、恢复后重现原问题（数据未丢失）、多轮暂停恢复 Task ID 递增。</p>
  */
 @DisplayName("FEAT-088 暂停/恢复容错场景")
-class PauseFaultAcceptanceTest extends MoaPauseResumeTestBase {
+class PauseFaultAcceptanceTest extends Edpa2PauseResumeTestBase {
 
     private static final String RESERVATION_PROMPT = "帮我预留容量";
     private static final String BUSINESS_PROMPT =
@@ -113,7 +113,7 @@ class PauseFaultAcceptanceTest extends MoaPauseResumeTestBase {
         assertThat(hasAcceptedReceipt(pauseResp.body())).as("暂停应被受理").isTrue();
 
         // 暂停后原任务仍可查询 — 数据不回滚
-        org.a2aproject.sdk.spec.Task taskAfterPause = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterPause = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterPause).as("暂停后原任务应可查询（数据未回滚）").isNotNull();
         assertThat(taskAfterPause.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 
@@ -150,7 +150,7 @@ class PauseFaultAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // 原任务仍可查询 — 暂停不回滚
-        org.a2aproject.sdk.spec.Task task = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task task = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(task).as("暂停后原任务应可查询（不回滚）").isNotNull();
         assertThat(task.id()).as("taskId 应一致").isEqualTo(originalTaskId);
     }
@@ -175,7 +175,7 @@ class PauseFaultAcceptanceTest extends MoaPauseResumeTestBase {
                 .isTrue();
 
         // Step 3: 原任务仍可查询 — 数据不丢失
-        org.a2aproject.sdk.spec.Task taskAfterPause = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskAfterPause = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskAfterPause).as("暂停后原任务应可查询（数据不丢失）").isNotNull();
         assertThat(taskAfterPause.id()).as("taskId 应一致").isEqualTo(originalTaskId);
 
@@ -187,7 +187,7 @@ class PauseFaultAcceptanceTest extends MoaPauseResumeTestBase {
                 .isNotEqualTo(originalTaskId);
 
         // Step 5: 原任务 A 仍可查询 — B 未覆盖 A 的现场
-        org.a2aproject.sdk.spec.Task taskACheck = client(MOA_L1).getTask(originalTaskId);
+        org.a2aproject.sdk.spec.Task taskACheck = client(EDPA2_L1).getTask(originalTaskId);
         assertThat(taskACheck).as("新任务 B 执行后原任务 A 仍应可查询（未覆盖唯一现场）").isNotNull();
         assertThat(taskACheck.id()).as("原任务 A 的 taskId 应不变").isEqualTo(originalTaskId);
     }

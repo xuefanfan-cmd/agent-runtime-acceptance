@@ -1,13 +1,13 @@
 ---
 feature_id: FEAT-088
-feature_title: 任务执行中断与接管 — MOAagent 语义暂停与恢复
+feature_title: 任务执行中断与接管 — EDPA2agent 语义暂停与恢复
 sut: moa-agent-demo（com.moaagent:moa-agent-demo:0.1.3，l1/l2/mock 三进程）+ agent-runtime-java（含 PR!257，develop 分支）+ agent-solution common（含 PR!1077 + MR!1101）
 scope: 语义级暂停、程序级暂停（A2A DataPart / Custom REST）、安全边界挂起、恢复确认、接管、远端暂停、装配兼容、故障容错、边界与已知问题
 status: designed
-status_note: 用例设计已落地（69 场景），测试代码与环境供给尚未实现；当前仓库无 FEAT-088 用例、application-openjiuwen.yml 无 MOA agent 声明
+status_note: 用例设计已落地（69 场景），测试代码与环境供给尚未实现；当前仓库无 FEAT-088 用例、application-openjiuwen.yml 无 EDPA2.0 agent 声明
 owner: TBD
 priority: P0
-tags: [integration, e2e, moaagent, feat-088, pause-resume, semantic-control, datapart, rest]
+tags: [integration, e2e, edpa2agent, feat-088, pause-resume, semantic-control, datapart, rest]
 depends_on:
   - agent-runtime-java develop 含 PR!257（feat(a2a): 支持入口 Hook 与 Task 串行后续输入）
   - agent-solution common 含 PR!1077（feat(moa): 会话暂停、本地规划恢复与 Demo 演示）+ MR!1101（程序级入口补充文档）
@@ -21,20 +21,20 @@ related_docs:
   - develop/03-architecture/L2-Low-Level-Design/moa-agent/Feat-Func-088-task-execution-interrupt-and-takeover.md（L2，MR!464+!489，2026-11-10）
   - develop/02-features/FEAT-088-task-execution-interrupt-and-takeover.md（Feature，2026-10-29）
   - develop/01-scenarios/FRS-088-任务中断、暂停与恢复.md（FRS）
-  - FEAT-089-session-context-persistence-long-pause-recovery-moaagent.md（联动特性）
+  - FEAT-089-session-context-persistence-long-pause-recovery-edpa2agent.md（联动特性）
   - ../write-testcase.md（框架用例落地五步法）
   - agent-solution common/agents/moa-agent/README.md
   - agent-solution common/agents/moa-agent/docs/suspended-tasks.md
   - agent-solution common/agents/moa-agent-demo/README.md
 ---
 
-# FEAT-088 — 任务执行中断与接管测试用例设计（MOAagent）
+# FEAT-088 — 任务执行中断与接管测试用例设计（EDPA2agent）
 
-> **一句话**：以 `moa-agent-demo`（MOA Runtime 宿主，L1/L2/mock 三进程）为 SUT，把 FEAT-088 的「语义暂停 → 安全边界挂起 → 新任务接管 → 恢复确认 → 远端暂停 → 装配兼容 → 故障容错」映射为本仓可执行的黑盒验收用例，共 69 个场景，覆盖 L2 §1.1–§7.4 全部可外部验证行为约束。
+> **一句话**：以 `moa-agent-demo`（EDPA2.0 Runtime 宿主，L1/L2/mock 三进程）为 SUT，把 FEAT-088 的「语义暂停 → 安全边界挂起 → 新任务接管 → 恢复确认 → 远端暂停 → 装配兼容 → 故障容错」映射为本仓可执行的黑盒验收用例，共 69 个场景，覆盖 L2 §1.1–§7.4 全部可外部验证行为约束。
 
 > **仓库边界**：新增测试代码只写入 `agent-runtime-acceptance`；`moa-agent`/`moa-agent-demo`、`agent-runtime-java`、`agent-core-java` 均为只读被测对象。不加载产品私有类、不反射内部状态、不新增 Agent HTTP/SPI 测试端点。
 
-> **与产品侧 UT/IT 的分工**：开发侧 MOA 全模块测试 1023 项、Custom REST 86 项、Demo Surefire 5 项均通过；本仓只做**外部可观测**的验收与契约复核，不把产品 UT 通过计为验收通过。
+> **与产品侧 UT/IT 的分工**：开发侧 EDPA2.0 全模块测试 1023 项、Custom REST 86 项、Demo Surefire 5 项均通过；本仓只做**外部可观测**的验收与契约复核，不把产品 UT 通过计为验收通过。
 
 ## 1. 设计依据与输入快照
 
@@ -48,13 +48,13 @@ related_docs:
 | Runtime 代码 | PR [agent-runtime-java!257](https://gitcode.com/openJiuwen/agent-runtime-java/merge_requests/257)（已合入 `origin/develop`） |
 | Solution 代码 | PR [agent-solution!1077](https://gitcode.com/openJiuwen/agent-solution/pull/1077)（已合入 `origin/common`）+ MR [!1101](https://gitcode.com/openJiuwen/agent-solution/merge_requests/1101)（程序级入口补充文档） |
 | 框架 | `agent-runtime-acceptance` main（2026-11-12，含 feat033 同步） |
-| 现状 | 本仓无 FEAT-088 用例、`application-openjiuwen.yml` 无 MOA agent 声明 |
+| 现状 | 本仓无 FEAT-088 用例、`application-openjiuwen.yml` 无 EDPA2.0 agent 声明 |
 
 ### 1.2 转测验证证据（开发侧）
 
 | 验证项 | 结果 | 说明 |
 |---|---|---|
-| MOA 全模块测试 | 1023 项，0 失败/0 错误/6 跳过 | 2 项发布隔离 + 4 项 OPENGAUSS_TEST_URL 未配置 |
+| EDPA2.0 全模块测试 | 1023 项，0 失败/0 错误/6 跳过 | 2 项发布隔离 + 4 项 OPENGAUSS_TEST_URL 未配置 |
 | Custom REST 测试 | 86 项通过 | |
 | Demo Surefire | 5 项通过 | Demo 默认 package 不执行 JUnit |
 | 真实模型手工验收 | 通过 | 杭州 A 补问→暂停→北京 B 完成→恢复 A→确认→原问题重现→补充日期人数→杭州完成 |
@@ -84,7 +84,7 @@ related_docs:
 - 异常（无活动 Plan、重复暂停、非法控制、终结后迟到回调、并发登记等）
 - 故障（挂起保存失败/超限、恢复版本过期、队列清理等）
 - 装配（显式导入才启用，默认不装配含恢复确认工具不注册）
-- 边界（GetTask 限制、REST success 语义、进程重启、Hosted MOA 限制等）
+- 边界（GetTask 限制、REST success 语义、进程重启、Hosted EDPA2.0 限制等）
 - 已知问题（Issue #612 恢复确认展示 RUNNING 状态）
 - 联动（与 FEAT-089 超 TTL 恢复联动、REST 暂停→A2A 恢复跨协议）
 
@@ -101,11 +101,11 @@ related_docs:
 
 | 产物 | 落点 |
 |---|---|
-| 本文（用例设计） | `docs/cases/FEAT-088-task-execution-interrupt-and-takeover-moaagent.md` |
-| 正常/远端/异常/规划用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/moa_pause_resume/` |
-| 故障/边界/装配用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/moa_pause_resume/` |
-| 联动用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/moa_pause_resume/` |
-| 环境声明 | `src/test/resources/application-openjiuwen.yml` 新增 MOA agent 声明 |
+| 本文（用例设计） | `docs/cases/FEAT-088-task-execution-interrupt-and-takeover-edpa2agent.md` |
+| 正常/远端/异常/规划用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/edpa2_pause_resume/` |
+| 故障/边界/装配用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/edpa2_pause_resume/` |
+| 联动用例 | `src/test/java/com/huawei/ascend/sit/cases/integration/edpa2_pause_resume/` |
+| 环境声明 | `src/test/resources/application-openjiuwen.yml` 新增 EDPA2.0 agent 声明 |
 | 构建供给 | `scripts/sut/sut-sources.yml` 新增 `common/agents/moa-agent`、`common/agents/moa-agent-demo` 构建步骤 |
 
 标签约定：
@@ -122,8 +122,8 @@ related_docs:
 | 进程 | profile | 端口 | 用途 |
 |---|---|---|---|
 | `moa-mock` | `mock` | 3001 | 共享 Mock Agent，承接景点/酒店/预订等 Skill 下游调用，无需模型 |
-| `moa-l2` | `l2` | 18229 | 二级酒店 MOA，不安装 Hook；验证远端暂停/handoff/正常完成 |
-| `moa-l1` | `l1` | 18219 | 一级旅行 MOA，显式导入 MoaPauseIngressConfiguration，验收主对象 |
+| `moa-l2` | `l2` | 18229 | 二级酒店 EDPA2.0，不安装 Hook；验证远端暂停/handoff/正常完成 |
+| `moa-l1` | `l1` | 18219 | 一级旅行 EDPA2.0，显式导入 MoaPauseIngressConfiguration，验收主对象 |
 
 - 坐标：`com.moaagent:moa-agent-demo:0.1.3`，读取 `~/.m2`；`agent-solution-latest` 下构建产物亦可。
 - 启动顺序：mock → l2 → l1；`SutStack` 按依赖顺序拉起，端口以 `application-openjiuwen.yml` 声明为准。
@@ -170,9 +170,9 @@ sut:
 |---|---|---|
 | moa-agent-demo 制品 | 需从 agent-solution common 源码构建安装到 ~/.m2 | `cd agent-solution-latest/common/agents/moa-agent && mvn install -DskipTests` → `cd ../moa-agent-demo && mvn install -DskipTests` |
 | Runtime 制品 | 需含 PR!257 的 develop 构建 | `cd agent-runtime-java && mvn install -DskipTests` |
-| 长任务 Test Agent | 测试设计要求确定性多 Todo + ask_user 等待的长任务 | 在 `common/example` 新增 fixture agent（脚本工具 + 可控模型），不改 MOA 产品代码 |
+| 长任务 Test Agent | 测试设计要求确定性多 Todo + ask_user 等待的长任务 | 在 `common/example` 新增 fixture agent（脚本工具 + 可控模型），不改 EDPA2.0 产品代码 |
 | 故障注入 | 存储不可用/超时/归档超限 | 复用 `ToxiproxyFaultLink`；DB 侧用连接串断开/账号回收 |
-| application-openjiuwen.yml | 无 MOA agent 声明 | 按 §4.2 新增 `moa-l1`/`moa-l2`/`moa-mock` 三进程声明 |
+| application-openjiuwen.yml | 无 EDPA2.0 agent 声明 | 按 §4.2 新增 `moa-l1`/`moa-l2`/`moa-mock` 三进程声明 |
 
 ### 5.2 共享约定
 
@@ -284,12 +284,12 @@ SUT：`moa-l1` + `moa-l2`。
 | FEAT-088.boundary.no-output-gate | P2 | 任务执行中，当前 Todo 正在输出 | 发起暂停 | 确认受理后当前 Todo 进度/结果仍可能输出；生效后停止推进（OUT 负面） |
 | FEAT-088.boundary.gettask-limit | P2 | 任务已暂停挂起 | 调用 GetTask 查询；查询挂起任务列表 | GetTask 不保证包含 `SUSPENDED` 字段；挂起查询可只返回任务描述（OUT 负面） |
 | FEAT-088.boundary.rest-success-semantics | P2 | 任务执行中，REST 控制受理后 | 观察 REST 响应 `success:true` | `success:true` 仅表示请求处理成功，不代表暂停已生效（OUT 负面） |
-| FEAT-088.boundary.gateway-path | P2 | 客户端经网关连接 MOAagent | 经网关发起暂停 | FRS-088 明确不纳入本版本（OUT 负面） |
+| FEAT-088.boundary.gateway-path | P2 | 客户端经网关连接 EDPA2agent | 经网关发起暂停 | FRS-088 明确不纳入本版本（OUT 负面） |
 | FEAT-088.boundary.workflow-task | P2 | 编排图/工作流类任务执行中 | 发起暂停 | FRS-088 明确不在本版本（OUT 负面） |
 | FEAT-088.boundary.hitl-confusion | P2 | 任务挂起等待用户输入 | 观察是否误触发暂停逻辑 | 确认两种机制不混淆（OUT 负面） |
 | FEAT-088.boundary.process-restart | P2 | 暂停已受理但未生效 | 进程重启或打断请求路由到另一实例 | 不假报受理/生效；进程内控制记录不承担跨进程恢复（OUT 负面） |
 | FEAT-088.boundary.no-queue-promise | P2 | 暂停已受理，当前 Todo 未完成 | 同会话立即发送新指令 B | 不提供"暂停尚未生效时无损排队"承诺（OUT 负面） |
-| FEAT-088.boundary.hosted-moa-limit | P2 | 多 Agent hosted 部署环境 | 观察 hosted MOA 是否自动支持暂停控制 | 不宣称已自动支持 hosted MOA 装配（OUT 负面） |
+| FEAT-088.boundary.hosted-edpa2-limit | P2 | 多 Agent hosted 部署环境 | 观察 hosted EDPA2.0 是否自动支持暂停控制 | 不宣称已自动支持 hosted EDPA2.0 装配（OUT 负面） |
 | FEAT-088.boundary.issue-612-resume-display | P1 | 任务 A 暂停已挂起，归档快照中包含 RUNNING 状态的 Todo | 发送"继续"触发恢复确认，检查确认文案中展示的 Todo 状态 | 确认文案展示的 Todo 状态应准确反映归档快照时的状态，但须包含上下文标识表明为暂停时刻快照而非当前执行状态；当前 Issue #612 未修复——直接展示 RUNNING 状态，可能使用户误解为已开始执行；测试时记录实际行为作为已知问题证据 |
 
 ### 7.7 `AssemblyAcceptanceTest`（integration / e2e，env-gated）
@@ -319,7 +319,7 @@ SUT：`moa-l1` + `moa-l2`。
 - **Smoke**（每次改动必跑）：`FEAT-088.normal.semantic-pause`、`FEAT-088.normal.resume`。
 - **P0**（必须通过）：`semantic-pause`、`datapart-pause`、`rest-pause`、`local-wait-pause`、`takeover`、`resume`、`remote.l2-wait-pause`、`remote.program-pause-normal-answer`（共 8 条）。
 - **P1**：可观测、快照完整、非流式暂停、回执 delivery 字段、标点修剪、Task ID 不改变暂停目标、REST 非控制请求走原路径、远端恢复拒绝、远端正常完成、L2 不冒充业务结果、无活动 Plan、全部 Todo 已完成后暂停（NO_ACTIVE_PLAN）、重复暂停、非法控制、终结后迟到回调、并发登记、跨租户隔离、多循环、候选选择暂停、高风险确认暂停、保存失败容错、恢复版本过期、暂停生效+保存失败联动、中断生产者未释放、延迟边界、恢复确认展示准确性（Issue #612）、装配（默认不装配/显式导入/L2 隔离）、联动场景（共 33 条）。
-- **P2**：业务混合、跨目标、过期结构化控制、多目标时不猜测投递、多份挂起记录不自动跳过、REST 请求体不可指定其他用户、REST 控制+业务输入混合拒绝、语义排除、"停止"≠取消订单、CONTROL_LIMIT_REACHED、超限、长期等待积累、取消执行中 Task 队列清理、Task 正常终结时队列清理、容量拒绝回置重试、OUT 负面用例（任意点即时、输出不截断、GetTask/挂起查询限制、REST success:true 语义、网关、编排图、HITL 混淆、进程重启、无损排队、Hosted MOA 装配限制）、缺少依赖启动失败（共 26 条）。
+- **P2**：业务混合、跨目标、过期结构化控制、多目标时不猜测投递、多份挂起记录不自动跳过、REST 请求体不可指定其他用户、REST 控制+业务输入混合拒绝、语义排除、"停止"≠取消订单、CONTROL_LIMIT_REACHED、超限、长期等待积累、取消执行中 Task 队列清理、Task 正常终结时队列清理、容量拒绝回置重试、OUT 负面用例（任意点即时、输出不截断、GetTask/挂起查询限制、REST success:true 语义、网关、编排图、HITL 混淆、进程重启、无损排队、Hosted EDPA2.0 装配限制）、缺少依赖启动失败（共 26 条）。
 - **manual**：真实模型 Demo、故障注入类。
 
 ### 8.2 命令
@@ -335,7 +335,7 @@ SUT：`moa-l1` + `moa-l2`。
 ./mvnw -Dtest.env=openjiuwen -Dtest='PauseResumeAcceptanceTest#feat088NormalSemanticPause+feat088NormalResume' test
 ```
 
-- MOA agent 制品未就绪时，类级 `Assumptions.abort` 整类 SKIPPED，不计 PASS。
+- EDPA2.0 agent 制品未就绪时，类级 `Assumptions.abort` 整类 SKIPPED，不计 PASS。
 - 失败必须区分：产品缺陷（红）/ 环境缺失（跳过）/ 用例缺陷（修正）；不允许把跳过当通过写入验收结论。
 
 ### 8.3 断言门禁
@@ -365,7 +365,7 @@ SUT：`moa-l1` + `moa-l2`。
 | moa-agent-demo 制品未构建安装 | 全部用例 SKIPPED | 先 `mvn install` moa-agent lib + moa-agent-demo |
 | Runtime develop 不含 PR!257 | SUT 无暂停入口 Hook | 确认 develop 分支已含 PR!257，否则切到含 #257 的构建 |
 | 长任务 Fixture Agent 未实现 | 进度断言无法落地 | 新增 example fixture，保持产品代码零改动 |
-| application-openjiuwen.yml 无 MOA agent 声明 | SUT 无法启动 | 按 §4.2 新增三进程声明 |
+| application-openjiuwen.yml 无 EDPA2.0 agent 声明 | SUT 无法启动 | 按 §4.2 新增三进程声明 |
 | Issue #612 未修复 | 恢复确认展示 RUNNING 状态 | 记录实际行为作为已知问题证据，不阻断 |
 | FEAT-089 fixture 未就绪 | 联动场景无法执行 | blocked，待 FEAT-089 用例落地 |
 | 真实模型 Demo 无法在 CI 完成 | 端到端验证缺失 | 单独 manual 环境执行 |
@@ -374,8 +374,8 @@ SUT：`moa-l1` + `moa-l2`。
 
 - FEAT-088 测试设计：`D:\docs\docs\develop\04-testplan\FEAT-088-task-execution-interrupt-and-takeover-testplan.md`
 - L2 设计（MR!464+!489）：`D:\docs\docs\develop\03-architecture\L2-Low-Level-Design\moa-agent\Feat-Func-088-task-execution-interrupt-and-takeover.md`
-- [FEAT-089 联动特性](FEAT-089-session-context-persistence-long-pause-recovery-moaagent.md)
+- [FEAT-089 联动特性](FEAT-089-session-context-persistence-long-pause-recovery-edpa2agent.md)
 - [write-testcase.md](../write-testcase.md)（用例落地五步法）
-- MOA 接入说明：`agent-solution common/agents/moa-agent/README.md`
+- EDPA2.0 接入说明：`agent-solution common/agents/moa-agent/README.md`
 - 挂起任务说明：`agent-solution common/agents/moa-agent/docs/suspended-tasks.md`
 - Demo 说明：`agent-solution common/agents/moa-agent-demo/README.md`

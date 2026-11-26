@@ -869,17 +869,20 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
                 .workflow();
         WorkflowAssemblyProbe.Snapshot snapshot = WorkflowAssemblyProbe.inspect(workflow);
 
-        String streamBarrier = snapshot.streamEdges().getOrDefault(streamLane, List.of()).stream()
+        // #754 裁定（2026-11-26）：本语料为无标记 Aggregation 的两条独立泳道，不适用 §3.2 mixed-lane
+        // 合同；判据出处改为"并行 rewrite + Aggregation 汇合（#406：汇合目标禁止 stream 边）"——
+        // 各泳道终点（含流式 LLM）均以 batch 边接 _parallel_done__* 屏障，stream 边不得承载屏障。
+        String streamLaneBarrier = snapshot.edges().getOrDefault(streamLane, List.of()).stream()
                 .filter(id -> id.startsWith("_parallel_done__"))
                 .findFirst()
                 .orElse(null);
-        assertThat(streamBarrier)
-                .as("流式泳道终点必须以 stream 边进入并行汇合屏障")
+        assertThat(streamLaneBarrier)
+                .as("流式泳道终点以 batch 边进入并行汇合屏障（#754/#406）")
                 .isNotNull();
-        assertThat(snapshot.javaTypes().get(streamBarrier))
+        assertThat(snapshot.javaTypes().get(streamLaneBarrier))
                 .as("并行汇合屏障的装配目标类型")
                 .isEqualTo("com.openjiuwen.studio.dsl.ir.ParallelLaneDoneComponent");
-        assertThat(snapshot.edges().getOrDefault(streamBarrier, List.of()))
+        assertThat(snapshot.edges().getOrDefault(streamLaneBarrier, List.of()))
                 .as("流式泳道的屏障 → 汇聚节点")
                 .contains(aggregation);
 
@@ -888,13 +891,16 @@ class StudioIrSdkContractTest extends StudioDslContractTestBase {
                 .findFirst()
                 .orElse(null);
         assertThat(batchBarrier)
-                .as("非流式泳道终点必须以普通边进入并行汇合屏障")
+                .as("非流式泳道终点以 batch 边进入并行汇合屏障")
                 .isNotNull();
-        assertThat(batchBarrier).as("两条泳道各有独立屏障").isNotEqualTo(streamBarrier);
+        assertThat(batchBarrier).as("两条泳道各有独立屏障").isNotEqualTo(streamLaneBarrier);
         assertThat(snapshot.edges().getOrDefault(batchBarrier, List.of()))
                 .as("非流式泳道的屏障 → 汇聚节点")
                 .contains(aggregation);
 
+        assertThat(snapshot.streamEdges().getOrDefault(streamLane, List.of()))
+                .as("Aggregation 汇合禁止 stream 边：流式泳道出边不得承载 _parallel_done__* 屏障（#406/#754）")
+                .noneMatch(id -> id.startsWith("_parallel_done__"));
         assertThat(snapshot.edges().getOrDefault(streamLane, List.of()))
                 .as("流式泳道不得绕过屏障直连汇聚节点")
                 .doesNotContain(aggregation);

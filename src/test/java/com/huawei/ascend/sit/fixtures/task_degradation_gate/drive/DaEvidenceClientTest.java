@@ -12,6 +12,35 @@ import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DaEvidenceClientTest {
+    @Test void sseUntilStopsAtTheQuestionWhileTheServerKeepsTheStreamOpen() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var release = new CountDownLatch(1);
+        server.createContext("/parked", e -> {
+            e.getResponseHeaders().add("Content-Type", "text/event-stream");
+            e.sendResponseHeaders(200, 0);
+            var out = e.getResponseBody();
+            out.write(("id: 1\nevent: start\ndata: {}\n\nid: 2\nevent: ask_user\ndata: {\"question\":\"q\"}\n\n: keepalive\n\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            try { release.await(30, TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            e.close();
+        });
+        server.setExecutor(Executors.newFixedThreadPool(2));
+        server.start();
+        try {
+            var client = new DaEvidenceClient("http://127.0.0.1:" + server.getAddress().getPort(), null, "collector-sse-until-selftest");
+            long began = System.nanoTime();
+            var exchange = client.postSseUntil("/parked", Map.of("sessionId", "s"), "ask_user", java.time.Duration.ofSeconds(20));
+            assertTrue(System.nanoTime() - began < TimeUnit.SECONDS.toNanos(10), "returned without waiting for the server to close");
+            assertEquals(200, exchange.status());
+            assertTrue(exchange.body().contains("event: ask_user") && exchange.body().contains("\"question\":\"q\""));
+            assertTrue(Files.readString(Path.of(exchange.evidenceRef())).contains("observer disconnected after event ask_user"));
+        } finally {
+            release.countDown();
+            server.stop(0);
+        }
+    }
+
     @Test void sseDistinguishesObservedStartFromPrematureEof() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/start", e -> {

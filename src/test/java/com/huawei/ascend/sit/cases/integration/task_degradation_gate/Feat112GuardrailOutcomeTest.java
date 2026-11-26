@@ -104,8 +104,8 @@ class Feat112GuardrailOutcomeTest {
                     Map.of("questions", List.of(Map.of("question", "Choose a harmless greeting?")))));
             d.script(script, "member denied until exhausted, then a real question from the main agent");
             String session = d.session();
-            var stream = d.sut().post("/api/agents/run-stream", Map.of("sessionId", session,
-                    "input", "Summarize the readme with a workflow"));
+            var stream = d.sut().postSseUntil("/api/agents/run-stream", Map.of("sessionId", session,
+                    "input", "Summarize the readme with a workflow"), "ask_user", Duration.ofSeconds(180));
             String body = stream.body();
             long denials = body.split("PERMISSION_DENIED", -1).length - 1;
             s.activation("the workflow member ran and every read_file attempt was denied (denials=" + denials + ")",

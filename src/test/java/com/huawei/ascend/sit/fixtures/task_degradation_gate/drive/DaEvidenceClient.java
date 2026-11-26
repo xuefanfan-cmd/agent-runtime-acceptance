@@ -50,6 +50,68 @@ public final class DaEvidenceClient {
         return send("POST", path, JSON.writeValueAsString(body), headers);
     }
 
+    /**
+     * POST to an SSE endpoint and stop reading once {@code stopEvent} (or the stream's own {@code done}/{@code error})
+     * has been delivered with its data, or at {@code limit}. A task parked on a question keeps its stream open until
+     * the server's async timeout (delivered configuration: 61 minutes); the observer disconnects instead, which is a
+     * client disconnect and does not change the task.
+     */
+    public Exchange postSseUntil(String path, Object body, String stopEvent, Duration limit) throws Exception {
+        if (!path.startsWith("/") || path.startsWith("//")) throw new IllegalArgumentException("absolute path required");
+        URI uri = base.resolve(path);
+        if (!base.getAuthority().equals(uri.getAuthority())) throw new IllegalArgumentException("origin changed");
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30))
+                .header("Accept", "text/event-stream").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
+        if (secret != null && !secret.isBlank()) builder.header("X-Engine-Secret", secret);
+        Path file = output.resolve(String.format("%03d.json", sequence.incrementAndGet()));
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("method", "POST");
+        evidence.put("path", path);
+        evidence.put("startedAt", Instant.now().toString());
+        Exception primary = null;
+        StringBuilder text = new StringBuilder();
+        String ending = "deadline " + limit;
+        try {
+            HttpResponse<java.util.stream.Stream<String>> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofLines());
+            long deadline = System.nanoTime() + limit.toNanos();
+            String event = null;
+            try (var lines = response.body()) {
+                var iterator = lines.iterator();
+                while (iterator.hasNext()) {
+                    String line = iterator.next();
+                    text.append(line).append('\n');
+                    if (line.startsWith("event:")) event = line.substring("event:".length()).trim();
+                    boolean last = event != null && (event.equals(stopEvent) || event.equals("done") || event.equals("error"));
+                    if (line.isEmpty() && last) {
+                        ending = "observer disconnected after event " + event;
+                        break;
+                    }
+                    if (line.isEmpty()) event = null;
+                    if (System.nanoTime() > deadline) break;
+                }
+            }
+            evidence.put("status", response.statusCode());
+            evidence.put("contentType", response.headers().firstValue("Content-Type").orElse(""));
+            evidence.put("body", redact(text.toString()));
+            evidence.put("collection", ending);
+            return new Exchange(response.statusCode(), response.headers().map(), text.toString(), file.toString());
+        } catch (Exception failure) {
+            primary = failure;
+            evidence.put("collection", "failed");
+            evidence.put("failureType", failure.getClass().getName());
+            throw failure;
+        } finally {
+            evidence.put("endedAt", Instant.now().toString());
+            try {
+                Files.writeString(file, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(evidence), StandardCharsets.UTF_8);
+            } catch (Exception persistenceFailure) {
+                if (primary != null) primary.addSuppressed(persistenceFailure);
+                else throw persistenceFailure;
+            }
+        }
+    }
+
     private Exchange send(String method, String path, String body, Map<String, String> headers) throws Exception {
         if (!path.startsWith("/") || path.startsWith("//")) throw new IllegalArgumentException("absolute path required");
         URI uri = base.resolve(path);

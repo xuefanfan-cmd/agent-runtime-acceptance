@@ -47,7 +47,8 @@ class Feat112CheckpointStoreTest {
                             Map.of("questions", List.of(Map.of("question", "Choose a harmless greeting?"))))),
                     "a denied write, then a real question");
             String session = d.session();
-            var stream = d.sut().post("/api/agents/run-stream", Map.of("sessionId", session, "input", "Write a note"));
+            var stream = d.sut().postSseUntil("/api/agents/run-stream", Map.of("sessionId", session, "input", "Write a note"),
+                    "ask_user", Duration.ofSeconds(120));
             s.activation("the write was denied by the guardrail and reported to the model",
                     stream.status() == 200 && stream.body().contains("denied"), EvidenceSource.SSE, stream.evidenceRef());
             s.activation("the outside path was not written", !Files.exists(outside), EvidenceSource.PROCESS, outside.toString());

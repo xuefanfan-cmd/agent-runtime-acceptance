@@ -675,6 +675,7 @@ public final class DaReflectionCostSupport {
                 byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             } else {
                 String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
                         + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
@@ -683,6 +684,7 @@ public final class DaReflectionCostSupport {
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             }
         }
 
@@ -721,6 +723,7 @@ public final class DaReflectionCostSupport {
                 byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             } else {
                 String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
                         + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
@@ -729,6 +732,7 @@ public final class DaReflectionCostSupport {
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             }
         }
 
@@ -765,6 +769,7 @@ public final class DaReflectionCostSupport {
                 byte[] bytes = sse.toString().getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             } else {
                 String full = "{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{"
                         + "\"index\":0,\"message\":" + firstDelta + ",\"finish_reason\":\"tool_calls\"}],"
@@ -773,6 +778,7 @@ public final class DaReflectionCostSupport {
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
+                exchange.close(); // #849 根因修复：响应写毕显式关闭（维护者 A/B 实证：不关闭→下一轮 stream() 卡死）
             }
         }
 

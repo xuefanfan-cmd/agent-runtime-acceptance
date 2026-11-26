@@ -430,7 +430,15 @@
                              orchestration + deepanalyze-engine 两条 dep（见上方 dependencies 段）。
                              队友上传 jar+pom 后恢复 dep + 删本两条 exclude。 -->
                         <exclude>**/component/deepanalyze_template/**</exclude>
-                        <exclude>**/e2e/deepanalyze/**</exclude>
+                        <!-- 2026-11-26 收窄（FEAT-054 用例翻转轮）：包级排除 **&#47;e2e&#47;deepanalyze&#47;**
+                             改为仅排除 orchestration 依赖四件（DaTemplateE2EBase 及其三个子类——
+                             grep 实证包内其余 29 文件零 orchestration import）；FEAT-054 线
+                             DaSharedPgReadE2EIT 翻转（FEAT-069 修订口径）需要该包恢复编译。
+                             恢复 orchestration dep 后应把本条收窄一并还原。 -->
+                        <exclude>**/e2e/deepanalyze/DaTemplateE2EBase.java</exclude>
+                        <exclude>**/e2e/deepanalyze/DaTemplateCouncilE2EIT.java</exclude>
+                        <exclude>**/e2e/deepanalyze/DaTemplateParallelRetrievalE2EIT.java</exclude>
+                        <exclude>**/e2e/deepanalyze/DaTemplateSessionChannelE2EIT.java</exclude>
                     </testExcludes>
                 </configuration>
             </plugin>

@@ -237,6 +237,11 @@ class Feat109McpRemountE2EIT {
         // 同步 /run（F111 全绿类既有模式：stub 多轮调用已在 run-01f 证明可用；
         // run-41b~41h 教训：SSE 流观察面在工具异常/长任务下出现收尾帧缺失，弃用流观察）
         stub.scriptToolArgs(List.of(new AbstractMap.SimpleEntry<>(TOOL_NAME, Map.of("query", "q"))));
+        // S9 前置步守卫（solution#849，11-25 迁移至共享实现——lsof 补 -a 修正）：turn-0 后
+        // 30s 未达 count=2 即取证（n≤3）；完成=stub count≥2
+        DaReflectionCostSupport.startStallWatchdog(stack, DaReflectionCostSupport.AGENT,
+                session, Path.of("target", "f109-17-dump"), stub.requests()::size,
+                () -> stub.requests().size() >= 2);
         HttpResponse<String> run = DaCompatGuardrailSupport.post(http, base, "/api/agents/run", body,
                 Duration.ofSeconds(240));
         dumpStubRequests(session, credential);

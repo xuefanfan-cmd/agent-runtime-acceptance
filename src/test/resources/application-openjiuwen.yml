@@ -128,6 +128,161 @@ sut:
           deepanalyze.compat.enabled: "true"
           deepanalyze.compat.max-events-per-task: "5000"
           deepanalyze.auth.enabled: "false"
+    # FEAT-065/066/067（2026-10-16 新增）：编排层转测批次的 DA 宿主 SUT。
+    # **不改动上面 FEAT-054 线的 `deepanalyze:` 条目**（它钉 0.1.4，属另一特性的基线），
+    # 而是新增一个独立 agent 名，避免跨特性互相影响。
+    # 制品（2026-10-28 18:29 起为 **r8**）：openJiuwen/agent-solution common@**e6e84cd71**（!956，2026-10-28）
+    # 源码构建的 0.1.3-feat065067-r9（exec classifier，139 MB；指纹见 01-Design_File/20261015-feat-065-067-orchestration/
+    # evidence/20261028-build-r8/artifact-fingerprints-r8.txt）。
+    # 🔴 **core 与 runtime 本轮再次重建**：core = 0.1.17@**becb5a7b**（相对 r7 的 f132c038 跨 **20** 个提交，80 文件 +5172/−202）、
+    # runtime = 0.1.4@**f7b763e7**（!243，相对 r7 的 b1c3d5df 跨 **7** 个提交，12 文件 +553/−25）。
+    # solution 侧 r7→r8 跨 **39** 个提交（deepanalyze-java/engine 被 **11** 个触碰：85 文件 +4910/−340，其中主源码只有 5 个文件；
+    # **agent-core-ext-orchestration 零改动** ⇒ FEAT-065/066 的调度面代码未变）。docs 侧 = main@**bd6ac83f**（!383），
+    # `bb5be1a3..bd6ac83f` 改了 7 个文件，其中**涉本批 3 个需求的有 6 个**（FEAT-065/066/067 与其三份 L2）⇒ 判据出处**已变**，
+    # 本轮按 skill 先做增量审视再刷新哈希（不得为让门禁转绿先改哈希）。
+    # ⚠️ **坐标未变但内容已变**（core 仍叫 0.1.17、runtime 仍叫 0.1.4）⇒ r8 继续用**隔离 m2repo** `04-Environment/m2repo-r8`
+    # （APFS `cp -c` 克隆自共享 m2repo），新 core/runtime 以原生坐标装进克隆仓 ⇒ 无需改上游 pom。
+    # ⇒ **跑 r8 必须三个口径同时指向 m2repo-r8**：环境变量 `SUT_M2_REPO`、`-Dmaven.repo.local`、`-Dsut-m2-repo`。
+    # r8 相对 r7 新含的关键改动（本轮要验的）：
+    #   `!959`（f6855aa0d，10-28 17:40，Closes #522）——samplingInt/samplingDouble 接受可解析为有限数值的 CharSequence，
+    #     非法/不支持的非空值保留 fallback 并打 WARN（带 key、原值、运行时类型、effective fallback）⇒ **#522 待实测回归**。
+    #   `!954`（c5e6db30c，10-28 11:57）——🔴 `DaProperties.Workflow.isEnabled` 缺省 **false → true**（"默认开启 DA 编排工具"，
+    #     同步改了两版部署手册与 parity golden），**但权威设计文档六处仍写"默认关"**（FEAT-067:44 MUST「六件统一门控默认关」、
+    #     :61 配置面「默认 false」、:74 场景「门控关闭|默认部署」、L2-067:43「门控默认关+护栏放行 MUST ✅已有」、
+    #     :171 示例 `enabled: false # 默认关`、:178 配置表默认值 false）⇒ **Oracle 冲突**：本批 067-S11
+    #     （DaWorkflowGatingToolSetTest，断言缺省 false）与 067-S23（默认装配 no-op 实测）按文档写判据，在 r8 上**预期会 FAIL**。
+    #     处置：**不为了让门禁转绿先改判据**，按"设计与实现偏差"取证并另行上报，等设计侧裁定权威口径后再改。
+    #   `!943`（9c5842e66）——DA 内置技能 22 件迁移 + 启动期安装（DaEngineConfiguration.prepareBuiltinSkills / DaBuiltinSkillInstaller +198）；
+    #   `!952`（1fa40578b）——远端 sandbox 缺省关闭；`!961`/`!958`/`!950`（skillhub #523/#521/#506，他批范围）；
+    #   `905522261` 修 issue501~505（SDK 面，他批范围）。
+    # 仍未修（10-28 18:30 逐落点复核 @e6e84cd71）：`#474`（D11）——`DaToolResultJsonRail.java` 在 a9c631b8b..e6e84cd71 区间
+    #   **一次都没被触碰**（本区间 engine 主源码只改了 DaEngineConfiguration/DaProperties/DaAgentSkillStore/DaBuiltinSkillInstaller/DaWorkflowRunner 五个文件）；
+    #   `#461` D6 成员链路——`DaWorkflowRunner:415` 仍是 legacy `.timeout(getMemberTimeoutSeconds())`，未接 `deepanalyze.model.timeout.*` 分层键。
+    # 历史基线：r7 = `a9c631b8b`（core f132c038 / runtime b1c3d5df）；r6 = `027c73f41`（core 0b58282c / runtime 765f133d）；r5 = PR !880 head `7b76b482`（仅组件层）；
+    #          r4 = `cf4571b30`；r3 = `ce9019d86`；r2 = `f9da5b54f`。
+    # ⚠️（历史记录，r4 时点）**r3 → r4 之间 agent-solution 跨 131 个提交**（orchestration 模块 1 个、deepanalyze-java/engine **72 个**，
+    #    60 文件 +6151/−128 行，其中含 DaToolContextRail +73 行＝D1/D2 依赖的 owner 作用域机制、
+    #    DaEmbeddedTools +71 行＝#465 的当事类、application.yml 19 行）
+    #    ⇒ 本轮性质是**回归验证**（含"开发是否引入了新问题"），不是只验 #462 的修复；
+    #    **r3 的全部证据保留作"改动前对照面"，逐用例对差**（r3 PASS→r4 FAIL 即为这 131 个提交引入的回归）。
+    #    历史：r2 = common@f9da5b54f、r3 = common@ce9019d86。
+    # 门控：FEAT-067 §2:44 仍写「六件统一门控默认关」（:61 配置面「默认 false」），但 r8 制品的 `DaProperties.Workflow.isEnabled`
+    # 缺省已翻转为 **true**（`!954`）⇒ 此处显式置 true 与缺省同值（端到端面行为不变）；「默认关」这条 Oracle 与实现的冲突按偏差取证，不改判据。
+    deepanalyze-feat065067:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat065067-r9
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.prompt-assembly.compression.enabled: "false"
+          deepanalyze.prompt-assembly.system-prompt.enabled: "false"
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          deepanalyze.workflow.enabled: "true"
+          deepanalyze.workflow.parallelism: "4"
+          # 【2026-10-21 撤销绕行①：checkpointer 不再降级为 in_memory，走宿主自带的默认 redis】
+          # 原绕行针对产品缺陷 D4：fat jar 下 core 的 CheckpointerFactory 静态块用**线程上下文类加载器**做
+          # ServiceLoader.load(CheckpointerProvider.class)，而该静态块跑在 CompletableFuture$AsyncSupply →
+          # ForkJoinPool 公共池线程上（TCCL=系统类加载器），在 Spring Boot fat jar 里看不到
+          # BOOT-INF/lib/agent-core-java-0.1.17.jar 内的 META-INF/services/…CheckpointerProvider
+          # ⇒ REGISTRY 只剩硬编码兜底的 in_memory/persistence ⇒ 宿主按自带默认配置(redis)起不来。
+          # 责任人于 docs#33 答复（comment 194890365）：D4 **已修**——SPI 发现改用**类自身类加载器**
+          # （与触发线程解耦），带 TCCL 盲视模拟的红绿对证回归测试，随 agent-core-java **!400** 合入 develop
+          # （合并点 `14516e4e8`，2026-10-16）。
+          # 🔒 测试侧**独立核实**（不靠对方口径）：`git merge-base --is-ancestor 14516e4e8 f7b76133` → **真**
+          # （`14516e4e` = !400 merge feat/058-realdev；本批 core 基线 `f7b76133` = !402，2026-10-19）
+          # ⇒ 修复确在本批 r3 制品内。按对方建议"撤前用一个不带降级变量的容器实证一次"，本键删除。
+          # 实证结果见批次记录 §7AV 与 evidence/20261021-run-53/。
+          #
+          # 【2026-10-21 撤销绕行②：不再设 deepanalyze.model.timeout.stream-idle-seconds】
+          # 原值 1800 一直是**死键**（§7AN 实测：成员侧生效值为 stream_idle_seconds=600）。
+          # docs#32 答复（comment 194890340）明确：FEAT-058 **solution 侧接线后**，显式配置字段越界
+          # （connect ∉[5,15] / stream-idle ∉[300,900]）会抛 **IllegalArgumentException**（启动/首次调用即拒）；
+          # 只有**系统属性兜底路径**的非法值才回落默认+WARN。责任人点名要求本 fixture"改为 ≤900 或移除
+          # （600 默认对长流式已足够——它是相邻两段间空闲上限，不是整请求上限）"。
+          # ⇒ **移除**，回到产品默认，拆掉"D5/D6（agent-solution#461）落地即炸宿主启动"这颗定时炸弹。
+          #
+          # 【仍保留的偏差（唯一一项）】max-iterations 15 → 4：每个成员是裸 ReActAgent，15 轮上限意味着
+          # 单成员可能十几次模型调用；7 成员图纸因此极易撞网关超时。本族用例的判据全部是**结构性**的
+          # （steps 条数、每步 member、skipped、final_output 来源、L1/L3 结构对照），不依赖成员的推理深度
+          # 或输出质量 ⇒ 降低迭代上限不削弱判据。代价（不得忽略）：本轮结果**不代表** max-iterations=15
+          # 的生产默认下也能跑完；D5/D6（#461）落地后应撤回本项并重跑。
+          # 【2026-10-21 更新】§7BE.2 已核实 **D5 早在 2026-10-15 `0f9d51173` 就修了**（成员超时 60→300 s 且可配
+          # deepanalyze.workflow.member-timeout-seconds），r3/r4 制品都含该修复；D6（model.timeout.* 死键）在 r4 仍
+          # 零消费方、未修。⇒ 本项撤回的前置条件**只满足一半**，且撤回后单成员可能十几次模型调用、7 成员图纸更易撞
+          # 上限；故本轮**暂保留 max-iterations=4**，撤回与否连同"代表性声明"一并交用户裁决（批次记录 §7BE.3/§7BF.7）。
+          deepanalyze.model.max-iterations: "4"
+          # 【2026-10-26 撤销该键】原为绕 600 s 上限而加，**已实验证伪无效**（见下方原始记录）；
+          # 且 r6 起它**反过来有害**：#476 修复引入的 DaRunTimeout 会按「模型收尾 1920 s ＜ 帧间隔上限 ≤ SSE 上限」
+          # 校验层级不变量，而本键把 core 的 stream frame timeout 压到 1800000ms ⇒ 宿主启动即告警
+          # `core stream frame timeout 1800000ms is shorter than run timeout 1920s (… or
+          # -Dopenjiuwen.timeout.blocking-queue-ms set too small)`（run-74 两次 SUT 启动均实测到）。
+          # 该告警明示本键是可能成因之一，且 run-74 的 066-S16 出现成员产物为空 ⇒ **摘除后重跑以排除我方 fixture 干扰**。
+          # 600 s 上限本身已由 #476 正式修复（deepanalyze.task-loop.run-timeout-seconds，默认 1800 s）。
+          #
+          # ---- 以下为 2026-10-21 的原始记录（保留留痕，该键已撤销）----
+          # 【2026-10-21 新增装置层放宽③：core 同步等待上限 600 s → 1800 s】
+          # run-65 实测：066-S16（7 步 multi-perspective-council + 真实模型成员）在 **600.2 s** 处被服务端强制
+          # 收尾——响应 status="completed"、output=""、toolCalls[0].status="running"；SUT 日志同一瞬间
+          # DaAgentFactory destroying DeepAgent + core TaskScheduler.stop():634 "Cancelled task"。
+          # 600 秒唯一吻合的来源＝core TimeoutConstants.DEFAULT_BLOCKING_QUEUE_MS = 600_000L（生效值
+          # BLOCKING_QUEUE_MS，**可由系统属性 openjiuwen.timeout.blocking-queue-ms 覆盖**；消费方
+          # TaskManager.asCompleted:249、StreamProcessor:113/277/323）。
+          # ⚠️ 未能直接坐实是哪一处 poll：asCompleted 到期会打 Loggers.PERFORMANCE.warning，而实测 PERFORMANCE
+          # 日志器**不进 SUT stdout**（全日志 grep -c performance → 0）⇒ 按纪律不以推演当结论（批次记录 §7BF.5(3)）。
+          # 定性：本键解的是**取证装置上限不够**（与 D3/D5 同族：默认时限 < 真模型编排实际耗时），测试侧可自行解；
+          # 而"超时/取消后把未完成任务报成 completed + 空 output"是**独立的产品缺陷 D12**，不因本键放宽而消失。
+    # FEAT-068（2026-10-19）：团队模板库批次的 e2e SUT。制品 0.1.3-feat068-r2（源=common@ce9019d86，
+    # post-085 形态；指纹见 01-Design_File/20261019-feat-068-team-template/evidence/20261019-build-feat068/ r2 段）。
+    # system-properties 与上面 deepanalyze-feat065067 条目逐键一致（含已登记偏差：checkpointer in_memory 绕行、
+    # DEFAULT_TOOL_CALL_TIMEOUT=1800 / stream-idle=1800 / max-iterations=4——D3 同族，判据均为结构性）。
+    # 独立条目的理由：068 批次证据须绑定自己的制品指纹，不共用 067 线的 SUT 钉子。
+    deepanalyze-feat068:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat068-r2
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.prompt-assembly.compression.enabled: "false"
+          deepanalyze.prompt-assembly.system-prompt.enabled: "false"
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          deepanalyze.workflow.enabled: "true"
+          deepanalyze.workflow.parallelism: "4"
+          openjiuwen.service.middleware.checkpointer.type: "in_memory"
+          deepanalyze.model.timeout.stream-idle-seconds: "1800"
+          deepanalyze.model.max-iterations: "4"
+    # FEAT-067 067-S23（2026-10-19 新增，经用户授权的 fixture 变更；2026-11-24 按 docs#43 裁决反转口径）：
+    # **显式关闭**对照组。与上面 deepanalyze-feat065067 **逐键相同**，且显式带
+    # `deepanalyze.workflow.enabled: "false"`——门控反转后（缺省开启），no-op 支点由「默认部署」改为
+    # 「显式关闭」：FEAT-067 对显式关闭的部署是 no-op，这是排除 26 个 FEAT-054 宿主装配面回归用例的支点
+    # （docs#43 裁决原文与 TestPlan !509 §2 F 组：S23 改「显式关闭时少六件」）。
+    # 判据取宿主日志里主 Agent 的 event=react_model_call_started … tool_count=N 的**最大值**：
+    #   开态（r9 基线实测值见测试类常量注记）⇒ 显式关闭必须 = 开态 − 6（六件编排工具）。
+    # 之所以不靠"日志里没有六件"来判：tool=<name> 只在**调用时**打印，关闭装配下没人调用 ⇒
+    # 那种写法是"以无证据当证据"。tool_count 是**注册期**导出量，与模型是否调用无关。
+    deepanalyze-feat065067-wfoff:
+      group: com.openjiuwen
+      artifact: deepanalyze-engine
+      version: 0.1.3-feat065067-r9
+      classifier: exec
+      java:
+        system-properties:
+          deepanalyze.prompt-assembly.compression.enabled: "false"
+          deepanalyze.prompt-assembly.system-prompt.enabled: "false"
+          deepanalyze.compat.enabled: "true"
+          deepanalyze.compat.max-events-per-task: "5000"
+          deepanalyze.auth.enabled: "false"
+          # 【docs#43 反转】本条目的唯一变量：显式关闭六件编排工具的装配（其余键与
+          # deepanalyze-feat065067 条目逐键一致，含 D4 已修后走产品默认 redis 的检查点）。
+          deepanalyze.workflow.enabled: "false"
+          deepanalyze.model.max-iterations: "4"
+          # 【2026-10-21】与上面 deepanalyze-feat065067 条目同步带本键，以维持"逐键相同、只差门控键"的
+          # 既有不变量（067-S23 只用 8.6 s，本键对它无行为影响，纯为不变量）。
     # FEAT-038/039 candidate-bound SIT fixtures. The matrix runner currently selects
     # the openjiuwen profile for all managed black-box test groups.
     tool-scripts-edpa:

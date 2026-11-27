@@ -1,0 +1,242 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.huawei.ascend.sit.cases.component.orchestration;
+
+import com.openjiuwen.agents.orchestration.RunTranscripts;
+import com.openjiuwen.da.workflow.DaTaskBoard;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 067-S17：任务板的**容量边界**（横切层扩审新增场景，见 `06-横切层MUST逐条判定-20261016.md` 第 5 条）。
+ *
+ * <p>Oracle 来源：`L0-Top-Level-Design/constraints.md:35`「工具调用受治理 | 工具/技能调用**必须**经过
+ * 授权、**容量**、幂等、审计和可观测性边界」；L2-067 §2.3 自陈「审计森林与任务板**终态无界累积，
+ * 重启即清**——长跑服务需容量治理」。
+ *
+ * <p><b>本类的性质是"特征化取证"（characterization），不是判 PASS/FAIL 的能力验证</b>：
+ * L0 要求有容量边界，而实现自陈没有。按门禁「不得由测试侧自行补写产品规则」，
+ * 我们**不**把"必须有淘汰策略"写成断言去判产品 FAIL（那需要先由设计裁决容量口径），
+ * 而是把**现状量化固定下来**作为证据，由覆盖台账把该 REQ 记为 `degraded` + gap，
+ * 并由 ISSUE 草稿承载缺陷主张。这样既不留空白、也不越权判定。
+ *
+ * <p>两条断言：① 500 个已完成任务全部留存、无一淘汰（量化"无界"）；
+ * ② {@code DaTaskBoard} 的公开面**只有并发度一个入参**，不存在任何留存上限/淘汰/TTL 的配置入口
+ * （证明"无界"不是配置没调，而是**没有这个旋钮**）。
+ */
+@Tag("component")
+@Tag("feat-067")
+@Feature("FEAT-067: 编排承接——会话内工作流工具组")
+class DaTaskBoardCapacityTest {
+
+    private static final int TASK_COUNT = 500;
+
+    @Test
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
+    // 【2026-10-21 按 docs#33 comment 194890365 的裁决改写定性，**断言一字未改**】
+    // 裁决：「轨迹面已落地（RunTranscripts 按 owner 分区并设每 owner 留存上限）；DaTaskBoard/消息收件箱的
+    // 容量治理（上限/淘汰/可配）**当期不承诺**，挂后续版本（1130 容量治理候选项）；Feature-067 §5.2 已补该边界行。
+    // L0-constraints:35 的**当期满足面 = 轨迹有界 + 重启即清的明示边界**，REQ-047 可按此口径写判据。」
+    // ⇒ 本方法原本把"500 个任务无一淘汰"当**疑似缺陷**取证；现改为**特征化证据**：
+    //    它证明的正是"任务板当期不设上限"这条**已被文档明示的边界**，不是缺陷。断言保持原样（事实未变）。
+    @Story("067-S17: 容量口径（L0-constraints:35 容量子项）——2026-10-21 按 docs#33 裁决改写定性")
+    @DisplayName("067-S17① 任务板：500 个已完成任务全部留存、无一淘汰 —— **符合 Feature-067 §5.2:125 已明示的当期边界**（不再判为疑似缺陷）")
+    void completedTasksAreRetainedWithoutEviction() throws Exception {
+        final List<String> taskIds = new ArrayList<>();
+        try (DaTaskBoard board = new DaTaskBoard(4)) {
+            for (int i = 0; i < TASK_COUNT; i++) {
+                final int idx = i;
+                taskIds.add(board.submit(() -> "OUT-" + idx));
+            }
+            final long deadline = System.currentTimeMillis() + 60_000L;
+            while (System.currentTimeMillis() < deadline && board.listAll().size() < TASK_COUNT) {
+                Thread.sleep(20L);
+            }
+            // ① 全部留存，无一淘汰
+            assertThat(board.listAll()).as("提交 %s 个任务后任务板应仍持有全部 %s 个（无淘汰即\"无界累积\"的量化证据）",
+                    TASK_COUNT, TASK_COUNT).hasSize(TASK_COUNT);
+            assertThat(board.listAll()).as("任务标识应互不相同").doesNotHaveDuplicates();
+            // 全部进入终态且产物可读 ⇒ 终态也被完整保留（不是只留 id）
+            int completed = 0;
+            for (String taskId : taskIds) {
+                final Map<String, Object> status = board.statusOf(taskId).orElseThrow();
+                if ("completed".equals(status.get("status"))) {
+                    completed++;
+                }
+                assertThat(status.get("output")).as("终态任务 %s 的产物应仍可读", taskId).isNotNull();
+            }
+            assertThat(completed).as("%s 个任务应全部完成", TASK_COUNT).isEqualTo(TASK_COUNT);
+            System.out.println("[067-S17] 提交 " + TASK_COUNT + " 个已完成任务后 listAll().size()="
+                    + board.listAll().size() + "（无淘汰）");
+        }
+    }
+
+    @Test
+    @Story("067-S17: 容量口径（L0-constraints:35 容量子项）——2026-10-21 按 docs#33 裁决改写定性")
+    @DisplayName("067-S17② 任务板公开面只有并发度一个入参，无留存上限/淘汰/TTL 配置入口 —— 与「当期不承诺、挂后续版本」的裁决一致")
+    void publicSurfaceExposesNoCapacityKnob() {
+        final Constructor<?>[] constructors = DaTaskBoard.class.getConstructors();
+        assertThat(constructors).as("应只有公开构造器可供核对").isNotEmpty();
+        for (Constructor<?> c : constructors) {
+            assertThat(c.getParameterTypes()).as("构造器入参应只有并发度一项（int），"
+                            + "即**没有**留存上限/淘汰策略/TTL 的构造期入口；实收=%s",
+                    Arrays.toString(c.getParameterTypes()))
+                    .containsExactly(int.class);
+        }
+        final List<String> capacityKnobs = Arrays.stream(DaTaskBoard.class.getMethods())
+                .map(Method::getName)
+                .filter(n -> {
+                    final String lower = n.toLowerCase();
+                    return lower.contains("capacity") || lower.contains("evict")
+                            || lower.contains("ttl") || lower.contains("purge")
+                            || lower.contains("maxsize") || lower.contains("limit")
+                            || lower.contains("clear") || lower.contains("remove");
+                })
+                .toList();
+        assertThat(capacityKnobs).as("公开方法里不应存在任何容量治理入口（淘汰/上限/TTL/清理/移除）；"
+                + "实收=%s ⇒ \"无界累积\"不是配置未调，而是**没有这个旋钮**", capacityKnobs).isEmpty();
+        // 反向自检：确实扫到了公开面（否则上面的空集合没有意义）
+        final List<String> all = Arrays.stream(DaTaskBoard.class.getMethods())
+                .map(Method::getName).distinct().toList();
+        assertThat(all).as("扫描自检：应能扫到已知的公开方法").contains("submit", "statusOf", "listAll", "close");
+    }
+
+    // ==================================================================================
+    // 067-S17③④⑤：**轨迹面有界**（裁决认定的"当期满足面"另一半）
+    //
+    // Oracle：docs#33 comment `194890365` 裁决四.1「`RunTranscripts` 已按 owner 分区并设**每 owner 留存上限**
+    // （留痕面容量有界）」；Feature-067 §5.2:125（`docs@b4f45c06`）「运行轨迹已由 RunTranscripts 按会话(owner)
+    // 分区并设每 owner 留存上限——其余容量面挂后续版本」。
+    // 源码（`agent-core-ext-orchestration`，基线 ce9019d86）：`RunTranscripts:30`
+    // `public static final int MAX_RUNS_PER_OWNER = 50`；`:45` `begin()` 内
+    // `runs.add(run); while (runs.size() > MAX_RUNS_PER_OWNER) { runs.remove(0); }`（逐出**最旧**）；
+    // `:23` 类注释「Each owner keeps its most recent MAX_RUNS_PER_OWNER runs」。
+    //
+    // **明确不断言**：留存上限的**具体数值 50 是否为对外承诺**——文档只写"设每 owner 留存上限"、未给数字，
+    // 故本用例断"上限存在且生效、逐出最旧、按 owner 分区"，**50 只作为观测值打印**，不写成硬承诺；
+    // 若设计后续把 50 写成承诺值，再补数值断言（否则就是测试侧自行加码）。
+    // 也**不断言** DaTaskBoard / 消息收件箱的上限——裁决明写"当期不承诺"，断它即与文档相反。
+    // ==================================================================================
+
+    @Test
+    @Story("067-S17: 容量口径——轨迹面有界（RunTranscripts 每 owner 留存上限）")
+    @DisplayName("067-S17③ 轨迹面**有界**：同一 owner 超过留存上限后**最旧的运行被逐出**、最近的仍在（留痕面容量不无界累积）")
+    void trajectoryRetentionIsBoundedAndEvictsOldestRun() {
+        final RunTranscripts transcripts = new RunTranscripts();
+        final String owner = "sess-067-s17-" + RUN;
+        final int limit = RunTranscripts.MAX_RUNS_PER_OWNER;
+        assertThat(limit).as("留存上限应为正整数（`RunTranscripts:30`，观测值=%d）", limit).isPositive();
+
+        final String firstWorkflowId = "wf-067-s17-first-" + RUN;
+        transcripts.begin(owner, firstWorkflowId, "Q-067-S17-first-" + RUN);
+        // 再多登记 limit 个 ⇒ 共 limit+1 个，应触发逐出
+        for (int i = 2; i <= limit + 1; i++) {
+            transcripts.begin(owner, "wf-067-s17-" + i + "-" + RUN, "Q-067-S17-" + i + "-" + RUN);
+        }
+
+        assertThat(transcripts.runsOf(owner))
+                .as("登记 %d 个运行后，留存数应恰为上限 %d（超出即逐出，不无界累积）", limit + 1, limit)
+                .hasSize(limit);
+        assertThat(transcripts.find(owner, firstWorkflowId))
+                .as("**最旧**的那个运行应已被逐出（`runs.remove(0)`），find 返回 empty")
+                .isEmpty();
+        assertThat(transcripts.runsOf(owner).get(limit - 1).workflowId())
+                .as("最近登记的运行应仍在（逐出的是最旧、不是最新）")
+                .isEqualTo("wf-067-s17-" + (limit + 1) + "-" + RUN);
+        assertThat(transcripts.runsOf(owner).get(0).prefix())
+                .as("逐出后队首应是 r2（r1 已被逐出）；实收=%s", transcripts.runsOf(owner).get(0).prefix())
+                .isEqualTo("r2");
+        System.out.println("[067-S17③] MAX_RUNS_PER_OWNER=" + limit + " 登记 " + (limit + 1)
+                + " 个后留存=" + transcripts.runsOf(owner).size()
+                + " 队首前缀=" + transcripts.runsOf(owner).get(0).prefix()
+                + " 最旧可查=" + transcripts.find(owner, firstWorkflowId).isPresent());
+    }
+
+    @Test
+    @Story("067-S17: 容量口径——轨迹面有界（RunTranscripts 每 owner 留存上限）")
+    @DisplayName("067-S17④ 留存与运行序号**按 owner 分区**：一个 owner 逐出最旧运行不影响另一个 owner，且序号各自独立编号")
+    void trajectoryRetentionAndRunNumberingArePartitionedByOwner() {
+        final RunTranscripts transcripts = new RunTranscripts();
+        final String ownerA = "sess-067-s17-a-" + RUN;
+        final String ownerB = "sess-067-s17-b-" + RUN;
+        final int limit = RunTranscripts.MAX_RUNS_PER_OWNER;
+
+        // B 先登记 3 个（其中第 1 个带唯一标记，用于验证"B 的最旧不被 A 的逐出波及"）
+        final String bFirstWorkflowId = "wf-067-s17-b-first-" + RUN;
+        transcripts.begin(ownerB, bFirstWorkflowId, "Q-067-S17-B-first-" + RUN);
+        transcripts.begin(ownerB, "wf-067-s17-b-2-" + RUN, "Q-2");
+        transcripts.begin(ownerB, "wf-067-s17-b-3-" + RUN, "Q-3");
+        // A 登记到超限，触发 A 自己的逐出
+        for (int i = 1; i <= limit + 1; i++) {
+            transcripts.begin(ownerA, "wf-067-s17-a-" + i + "-" + RUN, "Q-A-" + i);
+        }
+
+        assertThat(transcripts.runsOf(ownerA)).as("A 应被逐出到上限 %d", limit).hasSize(limit);
+        assertThat(transcripts.runsOf(ownerB))
+                .as("**A 的逐出不得波及 B**（按 owner 分区）；B 应仍是 3 个，实收=%d", transcripts.runsOf(ownerB).size())
+                .hasSize(3);
+        assertThat(transcripts.find(ownerB, bFirstWorkflowId))
+                .as("B 的**最旧**运行应仍可查（只有 A 发生了逐出）")
+                .isPresent();
+        assertThat(transcripts.runsOf(ownerB).get(0).prefix())
+                .as("B 的运行序号应**独立**从 r1 开始（不受 A 的 51 次登记影响）；实收=%s",
+                        transcripts.runsOf(ownerB).get(0).prefix())
+                .isEqualTo("r1");
+        assertThat(transcripts.runsOf(ownerA).get(0).prefix())
+                .as("A 逐出后队首应为 r2；实收=%s", transcripts.runsOf(ownerA).get(0).prefix())
+                .isEqualTo("r2");
+        assertThat(transcripts.find(ownerA, bFirstWorkflowId))
+                .as("跨 owner 不得互相查到（分区隔离，与 D1/`DaOrchestrationScope` 同族保证）")
+                .isEmpty();
+        System.out.println("[067-S17④] A 留存=" + transcripts.runsOf(ownerA).size()
+                + " 队首=" + transcripts.runsOf(ownerA).get(0).prefix()
+                + " | B 留存=" + transcripts.runsOf(ownerB).size()
+                + " 队首=" + transcripts.runsOf(ownerB).get(0).prefix()
+                + " | B 最旧可查=" + transcripts.find(ownerB, bFirstWorkflowId).isPresent());
+    }
+
+    @Test
+    @Story("067-S17: 容量口径——轨迹面有界（RunTranscripts 每 owner 留存上限）")
+    @DisplayName("067-S17⑤ 被逐出的运行**经公开查询面也不可达**（留痕面容量有界的实质：不是只在内部列表里删掉）")
+    void evictedRunIsUnreachableThroughTheQuerySurface() {
+        final RunTranscripts transcripts = new RunTranscripts();
+        final String owner = "sess-067-s17-evict-" + RUN;
+        final int limit = RunTranscripts.MAX_RUNS_PER_OWNER;
+        final String evictedWorkflowId = "wf-067-s17-evicted-" + RUN;
+        final RunTranscripts.Run evicted = transcripts.begin(owner, evictedWorkflowId, "Q-evicted-" + RUN);
+        final String evictedQualified = evicted.qualify("b-1");
+        for (int i = 2; i <= limit + 1; i++) {
+            transcripts.begin(owner, "wf-067-s17-evict-" + i + "-" + RUN, "Q-" + i);
+        }
+        // 逐出后：既查不到运行记录，其带前缀的 branch_id 也不再属于任何在册运行
+        assertThat(transcripts.find(owner, evictedWorkflowId)).as("被逐出的运行应查不到").isEmpty();
+        final boolean stillReachable = transcripts.runsOf(owner).stream()
+                .anyMatch(r -> r.prefix().equals(evicted.prefix()));
+        assertThat(stillReachable)
+                .as("被逐出运行的前缀 %s 不应再出现在任何在册运行上（否则其 branch_id %s 仍可被下钻）",
+                        evicted.prefix(), evictedQualified)
+                .isFalse();
+        assertThat(transcripts.runsOf(owner).stream().map(RunTranscripts.Run::prefix).distinct().count())
+                .as("在册 %d 个运行的前缀应互不相同（每 run 独立编号，与 docs#31 裁决 1 同口径）", limit)
+                .isEqualTo(limit);
+        System.out.println("[067-S17⑤] 被逐出=" + evictedWorkflowId + " 其 qualify 形态=" + evictedQualified
+                + " 仍可查=" + transcripts.find(owner, evictedWorkflowId).isPresent());
+    }
+
+}

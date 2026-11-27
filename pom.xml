@@ -407,6 +407,11 @@
                          **/agent_bus/** 整目录排除收窄为下列 5 个仍引用旧版 RDC/SDK 内部 API 的陈旧
                          白盒/契约用例，其余 agent_bus 用例（含 FEAT-011/012/013/014 黑盒）恢复编译。 -->
                     <testExcludes>
+                        <!-- 2026-11-27：DaMemberToolBoundaryStaticTest 引用 r9 制品才有的
+                             DaProperties.Workflow.getMemberMaxIterations()（MEMBER_MAX_ITERATIONS
+                             静态断言，发布版 0.1.3 无此配置项）——065-067 批次检出以批次制品
+                             编译全量，main 上排除此类（同 10-29 模式）。 -->
+                        <exclude>**/orchestration/DaMemberToolBoundaryStaticTest.java</exclude>
                         <exclude>**/agent_bus/ClientGatewayBusA2aRouteEndToEndIT.java</exclude>
                         <exclude>**/agent_bus/ClientToolRuntimeBlackboxTest.java</exclude>
                         <exclude>**/agent_bus/LocalToolBlackboxTest.java</exclude>

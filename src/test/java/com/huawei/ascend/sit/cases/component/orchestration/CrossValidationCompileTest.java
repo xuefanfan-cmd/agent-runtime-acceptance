@@ -27,14 +27,14 @@ import java.util.concurrent.CountDownLatch;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-066 的 066-S01 ~ 066-S05：交叉验证图纸的装载期编译产物（多视角独立作答、互审层三件、结构主 Oracle）。
+ * FEAT-066 的 FEAT-066-A1 ~ FEAT-066-C1：交叉验证图纸的装载期编译产物（多视角独立作答、互审层三件、结构主 Oracle）。
  *
  * <p>Oracle 来源：FEAT-066 §2「多视角独立作答 / 互审 / 审计」+ §5.1.1
  * 「编译在装载期完成且**可观测**：编译产物的分层结构、依赖集均可由测试断言」+ §3
  * 「装载后对外表现为普通依赖图图纸」；L2-066 §3.1。
  * Feature §6 明文要求覆盖「编译产物结构断言（分层/依赖集/**排除自身**）」与「互审关闭变体」。
  *
- * <p><b>本特性最核心的判据在 066-S03</b>：每个互审步只能看到**其余**视角的结论，
+ * <p><b>本特性最核心的判据在 FEAT-066-B2</b>：每个互审步只能看到**其余**视角的结论，
  * 看不到自己视角的结论（"挑错不重写自己"）。若互审看到自身产物即 FAIL。
  *
  * <p>不应断言：互审成员 {@code instruction()} 的**具体文案**（Feature §2 只说"指令由引擎生成"，
@@ -74,14 +74,14 @@ class CrossValidationCompileTest {
             """;
 
     @Test
-    @Story("066-S01: 多视角独立作答")
-    @DisplayName("066-S01 三视角无依赖同层并行，且各自实收输入不含任何其他视角的产物")
+    @Story("FEAT-066-A1: 多视角独立作答")
+    @DisplayName("FEAT-066-A1 三视角无依赖同层并行，且各自实收输入不含任何其他视角的产物")
     void perspectivesAreIndependentAndParallel() {
         final BlueprintSpec spec = BlueprintLoader.load(THREE_PERSPECTIVES_NO_REVIEW);
-        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_NO_REVIEW, "066-S01", RUN);
-        final String markerA = "P-066-S01-pa-" + RUN;
-        final String markerB = "P-066-S01-pb-" + RUN;
-        final String markerC = "P-066-S01-pc-" + RUN;
+        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_NO_REVIEW, "FEAT-066-A1", RUN);
+        final String markerA = "P-FEAT-066-A1-pa-" + RUN;
+        final String markerB = "P-FEAT-066-A1-pb-" + RUN;
+        final String markerC = "P-FEAT-066-A1-pc-" + RUN;
         loaded.recorders.get("pa").returns(markerA);
         loaded.recorders.get("pb").returns(markerB);
         loaded.recorders.get("pc").returns(markerC);
@@ -89,10 +89,10 @@ class CrossValidationCompileTest {
         final CountDownLatch latch = new CountDownLatch(3);
         for (String perspective : List.of("pa", "pb", "pc")) {
             loaded.recorders.get(perspective)
-                    .awaitsLatch(latch, "066-S01 视角 " + perspective + " 等不到其余两个视角 ⇒ 视角层未真并行");
+                    .awaitsLatch(latch, "FEAT-066-A1 视角 " + perspective + " 等不到其余两个视角 ⇒ 视角层未真并行");
         }
 
-        final BlueprintResult result = loaded.execute("U-066-S01-" + RUN, 4, new TraceForest());
+        final BlueprintResult result = loaded.execute("U-FEAT-066-A1-" + RUN, 4, new TraceForest());
 
         // ① 三个 p_ 步无依赖且同层（登记序连续排在审计步之前）
         final List<StepSpec> perspectiveSteps = spec.steps().stream()
@@ -131,8 +131,8 @@ class CrossValidationCompileTest {
     }
 
     @Test
-    @Story("066-S02: 互审层由引擎派生（1:1 合成，图纸未声明）")
-    @DisplayName("066-S02 review:true → 派生 3 个 review_<视角id> 成员与 3 个 r_<视角id> 步，指令嵌入原视角指令")
+    @Story("FEAT-066-B1: 互审层由引擎派生（1:1 合成，图纸未声明）")
+    @DisplayName("FEAT-066-B1 review:true → 派生 3 个 review_<视角id> 成员与 3 个 r_<视角id> 步，指令嵌入原视角指令")
     void reviewLayerIsDerivedOneToOne() {
         final BlueprintSpec spec = BlueprintLoader.load(THREE_PERSPECTIVES_WITH_REVIEW);
 
@@ -162,22 +162,22 @@ class CrossValidationCompileTest {
     }
 
     @Test
-    @Story("066-S03: 互审只看别人的结论（排除自身）")
-    @DisplayName("066-S03 每个 r_<id> 实收输入含其余两视角标记、不含自身视角标记、不含任何互审与审计标记")
+    @Story("FEAT-066-B2: 互审只看别人的结论（排除自身）")
+    @DisplayName("FEAT-066-B2 每个 r_<id> 实收输入含其余两视角标记、不含自身视角标记、不含任何互审与审计标记")
     void reviewerSeesOnlyOtherPerspectives() {
         final BlueprintSpec spec = BlueprintLoader.load(THREE_PERSPECTIVES_WITH_REVIEW);
-        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_WITH_REVIEW, "066-S03", RUN);
+        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_WITH_REVIEW, "FEAT-066-B2", RUN);
         final Map<String, String> perspectiveMarkers = Map.of(
-                "pa", "P-066-S03-pa-" + RUN, "pb", "P-066-S03-pb-" + RUN, "pc", "P-066-S03-pc-" + RUN);
+                "pa", "P-FEAT-066-B2-pa-" + RUN, "pb", "P-FEAT-066-B2-pb-" + RUN, "pc", "P-FEAT-066-B2-pc-" + RUN);
         final Map<String, String> reviewMarkers = Map.of(
-                "review_pa", "R-066-S03-pa-" + RUN, "review_pb", "R-066-S03-pb-" + RUN,
-                "review_pc", "R-066-S03-pc-" + RUN);
-        final String auditMarker = "AUDIT-066-S03-" + RUN;
+                "review_pa", "R-FEAT-066-B2-pa-" + RUN, "review_pb", "R-FEAT-066-B2-pb-" + RUN,
+                "review_pc", "R-FEAT-066-B2-pc-" + RUN);
+        final String auditMarker = "AUDIT-FEAT-066-B2-" + RUN;
         perspectiveMarkers.forEach((memberId, marker) -> loaded.recorders.get(memberId).returns(marker));
         reviewMarkers.forEach((memberId, marker) -> loaded.recorders.get(memberId).returns(marker));
         loaded.recorders.get("aud").returns(auditMarker);
 
-        loaded.execute("U-066-S03-" + RUN, 4, new TraceForest());
+        loaded.execute("U-FEAT-066-B2-" + RUN, 4, new TraceForest());
 
         for (String perspective : List.of("pa", "pb", "pc")) {
             final String reviewer = "review_" + perspective;
@@ -214,7 +214,7 @@ class CrossValidationCompileTest {
                     .as("互审步 r_%s 的依赖集应恰为其余两个视角步", perspective)
                     .containsExactlyInAnyOrderElementsOf(expectedDeps);
         }
-        // 审计员收到全体六份（三视角 + 三互审）——详见 066-S06 的逐字断言
+        // 审计员收到全体六份（三视角 + 三互审）——详见 FEAT-066-D1 的逐字断言
         final String auditGoal = loaded.recorders.get("aud").subGoal(0);
         assertThat(auditGoal).as("审计员应收到全部三视角产物")
                 .contains(markerOf(perspectiveMarkers, "pa"))
@@ -228,8 +228,8 @@ class CrossValidationCompileTest {
     }
 
     @Test
-    @Story("066-S04: 互审关闭变体（review 缺省）")
-    @DisplayName("066-S04 review 缺省 → 编译产物无 r_ 步、无 review_ 成员，audit 只依赖全部 p_ 步")
+    @Story("FEAT-066-B3: 互审关闭变体（review 缺省）")
+    @DisplayName("FEAT-066-B3 review 缺省 → 编译产物无 r_ 步、无 review_ 成员，audit 只依赖全部 p_ 步")
     void reviewAbsentProducesNoReviewLayer() {
         final BlueprintSpec spec = BlueprintLoader.load(THREE_PERSPECTIVES_NO_REVIEW);
 
@@ -248,16 +248,16 @@ class CrossValidationCompileTest {
     }
 
     @Test
-    @Story("066-S05: 编译产物结构断言（本特性的主 Oracle）")
-    @DisplayName("066-S05 编译产物七项结构：DAG/id 保留/三层拓扑/p_ 无依赖/audit 六依赖/唯一汇点/skipIf 规范化为 NEVER")
+    @Story("FEAT-066-C1: 编译产物结构断言（本特性的主 Oracle）")
+    @DisplayName("FEAT-066-C1 编译产物七项结构：DAG/id 保留/三层拓扑/p_ 无依赖/audit 六依赖/唯一汇点/skipIf 规范化为 NEVER")
     void compiledSpecStructure() {
-        final String yaml = THREE_PERSPECTIVES_WITH_REVIEW.replace("T-066-CV3R", "T-066-S05");
+        final String yaml = THREE_PERSPECTIVES_WITH_REVIEW.replace("T-066-CV3R", "T-FEAT-066-C1");
         final BlueprintSpec spec = BlueprintLoader.load(yaml);
 
         // ① 装载后对外表现为普通依赖图图纸
         assertThat(spec.type()).as("① cross_validation 编译产物 type 应为 DAG").isEqualTo(BlueprintType.DAG);
         // ② 图纸 id 保留
-        assertThat(spec.id()).as("② 图纸 id 应原样保留").isEqualTo("T-066-S05");
+        assertThat(spec.id()).as("② 图纸 id 应原样保留").isEqualTo("T-FEAT-066-C1");
         // ③ 拓扑分层 == 3 层：3 个 p_ / 3 个 r_ / audit
         assertThat(spec.steps()).as("③ 编译产物应共 7 步（3 视角 + 3 互审 + 1 审计）").hasSize(7);
         assertThat(idsOfLayer(spec, 0)).as("③ 第 1 层应为 3 个 p_ 步（按视角声明序）")

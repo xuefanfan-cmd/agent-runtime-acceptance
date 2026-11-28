@@ -21,7 +21,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 065-S21 与 066-S13（**同一份证据服务两个特性**，覆盖台账登记共担）：
+ * 065-S21 与 FEAT-066-F3（**同一份证据服务两个特性**，覆盖台账登记共担）：
  * 执行层无 {@code cross_validation} 专用分支（静态合同核对）。
  *
  * <p>Oracle 来源：FEAT-065 §5.1.1「交叉验证形态在装载期编译为依赖图，**执行层无专用分支**」；
@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>这是设计**本来只要求静态验证**的条目（形态 {@code static}），因此静态断言即充分、不属降级
  * （RULES「测试证据门禁」：静态检查只有在设计本来要求静态验证时才能证明能力）。
- * 与之互补的**动态**证据是 066-S12（交叉验证图纸与手写等价 DAG 执行结果逐项一致）。
+ * 与之互补的**动态**证据是 FEAT-066-F2（交叉验证图纸与手写等价 DAG 执行结果逐项一致）。
  *
  * <p><b>源码定位方式</b>（设计 §6 要求"把源码路径作为测试资源解析，避免硬编码本机路径"）：
  * 按 ① 系统属性 {@code orchestration.source.root} ② 环境变量 {@code ORCHESTRATION_SOURCE_ROOT}
@@ -53,8 +53,8 @@ class OrchestrationNoSpecialBranchStaticTest {
     private static final List<String> FORBIDDEN_LITERALS = List.of("cross_validation", "CROSS_VALIDATION");
 
     @Test
-    @Story("065-S21 / 066-S13: 执行层无 cross_validation 专用分支（静态）")
-    @DisplayName("065-S21 / 066-S13 BlueprintScheduler.java 全文（含注释）不含 cross_validation 字面量")
+    @Story("065-S21 / FEAT-066-F3: 执行层无 cross_validation 专用分支（静态）")
+    @DisplayName("065-S21 / FEAT-066-F3 BlueprintScheduler.java 全文（含注释）不含 cross_validation 字面量")
     void schedulerSourceHasNoCrossValidationBranch() throws IOException {
         final Path sourceRoot = resolveSourceRoot();
         final Path scheduler = sourceRoot.resolve(SCHEDULER_SOURCE);

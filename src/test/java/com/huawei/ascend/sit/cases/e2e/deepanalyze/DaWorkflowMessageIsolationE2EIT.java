@@ -59,7 +59,7 @@ class DaWorkflowMessageIsolationE2EIT extends DaOrchestrationE2EBase {
     @Stories({
             // 067-S22（2026-11-26 补挂，三层 ID 对账）：PB 探针即本特性的跨会话留言隔离端到端场景
             // （TestPlan :158/:196/:322 明写「067-S22（PA/PB 隔离探针）」——同一 testcase 共担，
-            // 先例同 065-S21/066-S13、065-S23/067-S31）。判据「会话 A 的定向留言不应被会话 B 的
+            // 先例同 065-S21/FEAT-066-F3、065-S23/067-S31）。判据「会话 A 的定向留言不应被会话 B 的
             // 同名成员取走」与本方法断言逐字对应；r9 e2e PASS（XML 已归档）。
             @Story("067-S22: 跨会话留言隔离端到端探针 PB——会话 A 的定向留言不应被会话 B 的同名成员取走"),
             // 原 PB 探针 Story 保留（DA 宿主隔离属性的对抗性探针出身，铁律 B 出身登记）
@@ -131,7 +131,7 @@ class DaWorkflowMessageIsolationE2EIT extends DaOrchestrationE2EBase {
         // 的前提去门控**确定性通道**。run-105（r8 制品）实测：`toolCalls[].output` 已可用——`agent-solution#462`
         // 的断链修复 `14f68d83e` 随 `!860` 进 `common@cf4571b30`，是本轮基线 `e6e84cd71` 的**祖先**
         // （`git merge-base --is-ancestor` = 真），r8 的 `DaEventTranslator` 里 `tool_result`/`tool_output`
-        // 双名兼容在场；同轮 `065-S22/S23`、`066-S16` 等用例正是靠这条通道取到 `steps[]`/`final_output` 并 PASS。
+        // 双名兼容在场；同轮 `065-S22/S23`、`FEAT-066-G1` 等用例正是靠这条通道取到 `steps[]`/`final_output` 并 PASS。
         // 但本轮模型没有在答复正文里回显 question 标记 ⇒ 用例在 413.4 s 后被 Assumptions 中止记 INCONCLUSIVE，
         // 白跑一轮且拿不到结论（全日志搜该标记命中 0；同窗口 `llm` 日志器的 `OpenAI API response received`
         // 仍有 66 行 ⇒ 不是日志面回归，是"依赖模型回显随机标记"这条间接观测链本身不稳定）。

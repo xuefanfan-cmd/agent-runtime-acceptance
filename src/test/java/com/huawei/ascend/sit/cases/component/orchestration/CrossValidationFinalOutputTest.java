@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S07 / 066-S08：交叉验证的结果收口与回退。
+ * FEAT-066-D2 / FEAT-066-D3：交叉验证的结果收口与回退。
  *
  * <p>Oracle 来源：FEAT-066 §2「最终答案收口」+ §5.1.2；收口规则沿用 FEAT-065 §2。
  * **FEAT-065:45 现文（docs `!383`／`main@bd6ac83f` 起）**为当前层三分支：全部空白 ⇒ 保留此前已收集结果；
@@ -25,9 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 本类 S08 构造的是**恰好一份非空白**那一支：`pa` 有产物、`pb` 与 `aud` 空白。）
  *
  * <p>S07 的判据含一条**否定式**断言：不存在任何能让审计步被跳过的图纸写法——
- * 因为编译产物的 {@code skipIf} 恒为规范化后的 {@code NEVER}（已由 066-S05 ⑦ 证明），
+ * 因为编译产物的 {@code skipIf} 恒为规范化后的 {@code NEVER}（已由 FEAT-066-C1 ⑦ 证明），
  * 作者无法通过 {@code cross_validation} 图纸给审计步挂条件跳过（{@code steps} 键本身就被拒，
- * 见 066-S15 ⑤）。本用例据此断言审计步 {@code skipped == false} 且它就是收口来源。
+ * 见 FEAT-066-E3 ⑤）。本用例据此断言审计步 {@code skipped == false} 且它就是收口来源。
  *
  * <p>S08 拦住的故障：审计员返回空白时，收口产物**被空覆盖**（应为回退到上一层的既有收口产物；
  * 本例该层恰好一份非空白 ⇒ 即该步产物原文）。
@@ -41,7 +41,7 @@ class CrossValidationFinalOutputTest {
 
     private static final String TWO_PERSPECTIVES_NO_REVIEW = """
             blueprint:
-              id: T-066-S0%s
+              id: T-FEAT-066-%s
               type: cross_validation
               perspectives:
                 - {id: pa, instruction: "从技术可行性视角作答"}
@@ -50,17 +50,17 @@ class CrossValidationFinalOutputTest {
             """;
 
     @Test
-    @Story("066-S07: 最终答案收口于审计步")
-    @DisplayName("066-S07 finalOutput == 审计步产物，审计步未被跳过")
+    @Story("FEAT-066-D2: 最终答案收口于审计步")
+    @DisplayName("FEAT-066-D2 finalOutput == 审计步产物，审计步未被跳过")
     void finalOutputIsTheAuditStepOutput() {
-        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-066-S0%s", "T-066-S07");
-        final var loaded = OrchestrationTestSupport.load(yaml, "066-S07", RUN);
-        final String auditMarker = "AUDIT-066-S07-" + RUN;
-        loaded.recorders.get("pa").returns("P-066-S07-pa-" + RUN);
-        loaded.recorders.get("pb").returns("P-066-S07-pb-" + RUN);
+        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-FEAT-066-%s", "T-FEAT-066-D2");
+        final var loaded = OrchestrationTestSupport.load(yaml, "FEAT-066-D2", RUN);
+        final String auditMarker = "AUDIT-FEAT-066-D2-" + RUN;
+        loaded.recorders.get("pa").returns("P-FEAT-066-D2-pa-" + RUN);
+        loaded.recorders.get("pb").returns("P-FEAT-066-D2-pb-" + RUN);
         loaded.recorders.get("aud").returns(auditMarker);
 
-        final BlueprintResult result = loaded.execute("U-066-S07-" + RUN, 4, new TraceForest());
+        final BlueprintResult result = loaded.execute("U-FEAT-066-D2-" + RUN, 4, new TraceForest());
 
         final StepOutcome audit = result.stepOutcomes().stream()
                 .filter(o -> o.stepId().equals("audit")).findFirst().orElseThrow();
@@ -70,24 +70,24 @@ class CrossValidationFinalOutputTest {
         assertThat(result.finalOutput()).as("收口产物应与审计步 output 逐字相同")
                 .isEqualTo(audit.output());
         assertThat(result.finalOutputText()).as("收口产物不应为缺席").isPresent();
-        assertThat(result.blueprintId()).isEqualTo("T-066-S07");
+        assertThat(result.blueprintId()).isEqualTo("T-FEAT-066-D2");
         assertThat(result.stepOutcomes()).as("三步都应有留痕").hasSize(3);
         assertThat(result.stepOutcomes()).as("本图纸无任何步骤应被跳过")
                 .allSatisfy(o -> assertThat(o.skipped()).isFalse());
     }
 
     @Test
-    @Story("066-S08: 审计步空白时按 FEAT-065 收口三层规则回退")
-    @DisplayName("066-S08 审计员返回空 → finalOutput 回退为末个非空白步产物，且 outcomes 仍含全部步")
+    @Story("FEAT-066-D3: 审计步空白时按 FEAT-065 收口三层规则回退")
+    @DisplayName("FEAT-066-D3 审计员返回空 → finalOutput 回退为末个非空白步产物，且 outcomes 仍含全部步")
     void blankAuditOutputFallsBackToLastNonBlank() {
-        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-066-S0%s", "T-066-S08");
-        final var loaded = OrchestrationTestSupport.load(yaml, "066-S08", RUN);
-        final String fallback = "FALLBACK-066-S08-" + RUN;
+        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-FEAT-066-%s", "T-FEAT-066-D3");
+        final var loaded = OrchestrationTestSupport.load(yaml, "FEAT-066-D3", RUN);
+        final String fallback = "FALLBACK-FEAT-066-D3-" + RUN;
         loaded.recorders.get("pa").returns(fallback);
         loaded.recorders.get("pb").returns("");        // 缺席
         loaded.recorders.get("aud").returns("");       // 审计员返回空
 
-        final BlueprintResult result = loaded.execute("U-066-S08-" + RUN, 4, new TraceForest());
+        final BlueprintResult result = loaded.execute("U-FEAT-066-D3-" + RUN, 4, new TraceForest());
 
         assertThat(result.finalOutput()).as("审计步空白时，收口产物应回退为上一层的既有收口产物"
                         + "（FEAT-065:45 现文：本层恰好一份非空白 ⇒ 直接以该产物原文替换、不加标题），**不得为空**")
@@ -104,7 +104,7 @@ class CrossValidationFinalOutputTest {
     }
 
     /**
-     * 066-S08 的**多产物 + 多层**格（TestPlan !508 判据：「覆盖多层与多产物」）：
+     * FEAT-066-D3 的**多产物 + 多层**格（TestPlan !508 判据：「覆盖多层与多产物」）：
      * 视角层（第 1 层）两份**全非空白** ⇒ 按三层规则③拼 `## <步骤id>` 分节聚合；
      * 审计层（第 2 层）全空白 ⇒ 按三层规则①④保留视角层的分节聚合结果，不回退成单份、也不置空。
      *
@@ -114,18 +114,18 @@ class CrossValidationFinalOutputTest {
      * （会把分节聚合错读成单份产物胜出）⇒ 评审处置 [A] 后以三层规则为准。
      */
     @Test
-    @Story("066-S08: 审计步空白时按 FEAT-065 收口三层规则回退")
-    @DisplayName("066-S08 多产物格：双视角全非空白 + 审计空白 → 收口保留视角层 ## p_pa/## p_pb 分节聚合（跨层空白传递）")
+    @Story("FEAT-066-D3: 审计步空白时按 FEAT-065 收口三层规则回退")
+    @DisplayName("FEAT-066-D3 多产物格：双视角全非空白 + 审计空白 → 收口保留视角层 ## p_pa/## p_pb 分节聚合（跨层空白传递）")
     void blankAuditWithMultipleNonBlankPerspectivesKeepsSectionedAggregation() {
-        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-066-S0%s", "T-066-S08-multi");
-        final var loaded = OrchestrationTestSupport.load(yaml, "066-S08-multi", RUN);
-        final String markerA = "P-066-S08-multi-pa-" + RUN;
-        final String markerB = "P-066-S08-multi-pb-" + RUN;
+        final String yaml = TWO_PERSPECTIVES_NO_REVIEW.replace("T-FEAT-066-%s", "T-FEAT-066-D3-multi");
+        final var loaded = OrchestrationTestSupport.load(yaml, "FEAT-066-D3-multi", RUN);
+        final String markerA = "P-FEAT-066-D3-multi-pa-" + RUN;
+        final String markerB = "P-FEAT-066-D3-multi-pb-" + RUN;
         loaded.recorders.get("pa").returns(markerA);
         loaded.recorders.get("pb").returns(markerB);
         loaded.recorders.get("aud").returns("");       // 审计员返回空
 
-        final BlueprintResult result = loaded.execute("U-066-S08-multi-" + RUN, 4, new TraceForest());
+        final BlueprintResult result = loaded.execute("U-FEAT-066-D3-multi-" + RUN, 4, new TraceForest());
 
         // 视角层两份非空白 ⇒ 三层规则③：按声明序拼 "## p_pa" / "## p_pb" 分节，且各含产物原文
         assertThat(result.finalOutput())

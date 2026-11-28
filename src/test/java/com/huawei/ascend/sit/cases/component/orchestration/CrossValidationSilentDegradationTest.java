@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * 066-S15：{@code review} 非法形态与多余 {@code steps} 键——**装载期 fail-fast**（主断言已完全反转）。
+ * FEAT-066-E3：{@code review} 非法形态与多余 {@code steps} 键——**装载期 fail-fast**（主断言已完全反转）。
  *
  * <p>⚠️ <b>§11.2 权威更正</b>：本条在旧基线（docs {@code 561f02dd} / solution {@code 53c1a174a}）下的
  * 主断言是"装载成功且无 {@code r_} 层"（当时实现为**静默降级**）。新基线下该期望已作废：
@@ -70,15 +70,15 @@ class CrossValidationSilentDegradationTest {
 
     static Stream<Arguments> illegalForms() {
         return Stream.of(
-                new IllegalForm("① review 为映射", "T-066-S15-map", "  review: {enabled: true}",
+                new IllegalForm("① review 为映射", "T-FEAT-066-E3-map", "  review: {enabled: true}",
                         "review must be a boolean scalar"),
-                new IllegalForm("② review 为列表", "T-066-S15-list", "  review: [true]",
+                new IllegalForm("② review 为列表", "T-FEAT-066-E3-list", "  review: [true]",
                         "review must be a boolean scalar"),
-                new IllegalForm("③ review 为非布尔标量", "T-066-S15-num", "  review: 1",
+                new IllegalForm("③ review 为非布尔标量", "T-FEAT-066-E3-num", "  review: 1",
                         "review must be a boolean scalar"),
-                new IllegalForm("④ review 为非 true/false 字符串", "T-066-S15-str", "  review: \"enabled\"",
+                new IllegalForm("④ review 为非 true/false 字符串", "T-FEAT-066-E3-str", "  review: \"enabled\"",
                         "review must be a boolean scalar"),
-                new IllegalForm("⑤ review 合法但多写 steps 键", "T-066-S15-steps",
+                new IllegalForm("⑤ review 合法但多写 steps 键", "T-FEAT-066-E3-steps",
                         "  review: true\n  steps:\n    - {id: s1, member: pa}",
                         "must not declare 'steps'"))
                 .map(v -> Arguments.of(v.label(), v));
@@ -86,14 +86,14 @@ class CrossValidationSilentDegradationTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("illegalForms")
-    @Story("066-S15: review 非法形态与多余 steps 键一律装载期拒绝（不静默降级）")
-    @DisplayName("066-S15 非法 review 形态与多写 steps 键：装载期拒绝 + 含图纸 id 与键定位 + 执行体零调用")
+    @Story("FEAT-066-E3: review 非法形态与多余 steps 键一律装载期拒绝（不静默降级）")
+    @DisplayName("FEAT-066-E3 非法 review 形态与多写 steps 键：装载期拒绝 + 含图纸 id 与键定位 + 执行体零调用")
     void illegalReviewAndStepsAreRejectedAtLoad(final String label, final IllegalForm form) {
         assertRejected(form.blueprintId(), form.fragment(), form.expectedLocator());
     }
 
     /**
-     * 共用的装载拒绝断言（066-S11 的后两个实例复用本实现，见 §11.2「后两个与 066-S15 共用断言实现」）。
+     * 共用的装载拒绝断言（FEAT-066-E2 的后两个实例复用本实现，见 §11.2「后两个与 FEAT-066-E3 共用断言实现」）。
      *
      * @param blueprintId     图纸 id（形状/交叉验证编译族的消息必带）
      * @param fragment        待插入骨架的非法写法
@@ -105,7 +105,7 @@ class CrossValidationSilentDegradationTest {
         final Map<String, Recording> recorders = new LinkedHashMap<>();
         for (String memberId : List.of("pa", "pb", "aud")) {
             recorders.put(memberId, new Recording(memberId,
-                    OrchestrationTestSupport.marker("066-S15", memberId, RUN)));
+                    OrchestrationTestSupport.marker("FEAT-066-E3", memberId, RUN)));
         }
 
         final BlueprintException ex =
@@ -122,12 +122,12 @@ class CrossValidationSilentDegradationTest {
     }
 
     @Test
-    @Story("066-S15: review 合法形态对照组")
-    @DisplayName("066-S15⑥ 对照组：review true/false/缺省三张合法图纸均装载成功，仅 true 有 r_ 层")
+    @Story("FEAT-066-E3: review 合法形态对照组")
+    @DisplayName("FEAT-066-E3⑥ 对照组：review true/false/缺省三张合法图纸均装载成功，仅 true 有 r_ 层")
     void legalReviewFormsAreAccepted() {
         // review: true → 有互审层
         final BlueprintSpec withReview = BlueprintLoader.load(
-                SKELETON.formatted("T-066-S15-ok-true", "  review: true"));
+                SKELETON.formatted("T-FEAT-066-E3-ok-true", "  review: true"));
         assertThat(withReview.type()).isEqualTo(BlueprintType.DAG);
         assertThat(withReview.steps()).extracting(StepSpec::id)
                 .as("review:true 应派生 r_ 互审层")
@@ -139,7 +139,7 @@ class CrossValidationSilentDegradationTest {
 
         // review: false → 无互审层
         final BlueprintSpec reviewFalse = BlueprintLoader.load(
-                SKELETON.formatted("T-066-S15-ok-false", "  review: false"));
+                SKELETON.formatted("T-FEAT-066-E3-ok-false", "  review: false"));
         assertThat(reviewFalse.type()).isEqualTo(BlueprintType.DAG);
         assertThat(reviewFalse.steps()).extracting(StepSpec::id)
                 .as("review:false 不应派生 r_ 互审层")
@@ -150,7 +150,7 @@ class CrossValidationSilentDegradationTest {
 
         // review 缺省 → 与 false 同构
         final BlueprintSpec reviewAbsent = BlueprintLoader.load(
-                SKELETON.formatted("T-066-S15-ok-absent", ""));
+                SKELETON.formatted("T-FEAT-066-E3-ok-absent", ""));
         assertThat(reviewAbsent.steps()).extracting(StepSpec::id)
                 .as("review 缺省不应派生 r_ 互审层")
                 .containsExactly("p_pa", "p_pb", "audit");

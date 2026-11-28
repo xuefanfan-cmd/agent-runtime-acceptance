@@ -22,10 +22,10 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S14：视角部分缺席（Feature §4 明列场景）。
+ * FEAT-066-F4：视角部分缺席（Feature §4 明列场景）。
  *
  * <p>Oracle 来源：FEAT-066 §4「视角部分缺席」+ §5.1.3；FEAT-065 §5.1.3 的 isBlank 统一缺席判据；
- * 已核实编译步 {@code skipIf} 恒为规范化后的 {@code NEVER}（见 066-S05 ⑦）。
+ * 已核实编译步 {@code skipIf} 恒为规范化后的 {@code NEVER}（见 FEAT-066-C1 ⑦）。
  *
  * <p>四项判据：① 缺席视角步 {@code skipped == false}（**视角步无上游，永不因策略跳过**）且产物缺席；
  * ② 留痕仍 7 条齐备；③ 审计员实收输入**不含**缺席视角的投影、**含**其余视角与全部互审标记；
@@ -46,7 +46,7 @@ class CrossValidationAbsentPerspectiveTest {
 
     private static final String THREE_PERSPECTIVES_WITH_REVIEW = """
             blueprint:
-              id: T-066-S14-%s
+              id: T-FEAT-066-F4-%s
               type: cross_validation
               review: true
               perspectives:
@@ -76,26 +76,26 @@ class CrossValidationAbsentPerspectiveTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("absentForms")
-    @Story("066-S14: 视角部分缺席")
-    @DisplayName("066-S14 缺席视角步不算跳过、留痕齐备、审计员仍收其余全体、互审步照常执行")
+    @Story("FEAT-066-F4: 视角部分缺席")
+    @DisplayName("FEAT-066-F4 缺席视角步不算跳过、留痕齐备、审计员仍收其余全体、互审步照常执行")
     void absentPerspectiveDoesNotSkipAndDoesNotStarveAuditor(final String label, final AbsentForm form) {
         final String yaml = THREE_PERSPECTIVES_WITH_REVIEW.formatted(form.idSuffix());
-        final var loaded = OrchestrationTestSupport.load(yaml, "066-S14-" + form.idSuffix(), RUN);
+        final var loaded = OrchestrationTestSupport.load(yaml, "FEAT-066-F4-" + form.idSuffix(), RUN);
         final Map<String, String> perspectiveMarkers = Map.of(
-                "pa", "P-066-S14-pa-" + RUN,
-                "pb", "P-066-S14-pb-" + RUN,
-                "pc", "P-066-S14-pc-" + RUN);
+                "pa", "P-FEAT-066-F4-pa-" + RUN,
+                "pb", "P-FEAT-066-F4-pb-" + RUN,
+                "pc", "P-FEAT-066-F4-pc-" + RUN);
         final Map<String, String> reviewMarkers = Map.of(
-                "review_pa", "R-066-S14-pa-" + RUN,
-                "review_pb", "R-066-S14-pb-" + RUN,
-                "review_pc", "R-066-S14-pc-" + RUN);
+                "review_pa", "R-FEAT-066-F4-pa-" + RUN,
+                "review_pb", "R-FEAT-066-F4-pb-" + RUN,
+                "review_pc", "R-FEAT-066-F4-pc-" + RUN);
         perspectiveMarkers.forEach((memberId, marker) -> loaded.recorders.get(memberId).returns(marker));
         reviewMarkers.forEach((memberId, marker) -> loaded.recorders.get(memberId).returns(marker));
-        loaded.recorders.get("aud").returns("AUDIT-066-S14-" + RUN);
+        loaded.recorders.get("aud").returns("AUDIT-FEAT-066-F4-" + RUN);
         // 按构造把指定视角改为缺席
         form.absentOutputs().forEach((memberId, output) -> loaded.recorders.get(memberId).returns(output));
 
-        final BlueprintResult result = loaded.execute("U-066-S14-" + form.idSuffix() + "-" + RUN,
+        final BlueprintResult result = loaded.execute("U-FEAT-066-F4-" + form.idSuffix() + "-" + RUN,
                 4, new TraceForest());
 
         // ① 缺席视角步 skipped == false 且产物缺席；在场视角步产物为唯一标记
@@ -154,7 +154,7 @@ class CrossValidationAbsentPerspectiveTest {
 
         // 收口仍在审计步
         assertThat(result.finalOutput()).as("%s：收口产物应为审计步产物", label)
-                .isEqualTo("AUDIT-066-S14-" + RUN);
+                .isEqualTo("AUDIT-FEAT-066-F4-" + RUN);
         assertThat(result.stepOutcomes()).extracting(StepOutcome::stepId)
                 .containsExactly("p_pa", "p_pb", "p_pc", "r_pa", "r_pb", "r_pc", "audit");
     }

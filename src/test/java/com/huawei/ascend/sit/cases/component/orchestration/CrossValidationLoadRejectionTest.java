@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * 066-S09（标识碰撞拒绝，**新基线 4 种形态全部可判定**）与 066-S11（装载拒绝，§11.2 扩为 6 例）。
+ * FEAT-066-E1（标识碰撞拒绝，**新基线 4 种形态全部可判定**）与 FEAT-066-E2（装载拒绝，§11.2 扩为 6 例）。
  *
  * <p>Oracle 来源（§11.2 权威更正）：
  * <ul>
@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
  *       (review_&lt;视角 id&gt;)重名**即 fail-fast」+ §4「标识碰撞」前置条件"互审启用时"
  *       + §5.1.3 错误表；L2-066 §7.2。判定机制是"**重名**"而非"前缀"。</li>
  *   <li><b>S11</b>：Feature §5.1.3 错误表 + §3「成员声明与 FEAT-065 图纸成员同构」；
- *       §11.2 把 4 例扩为 6 例（后 2 例与 066-S15 共用断言实现）。</li>
+ *       §11.2 把 4 例扩为 6 例（后 2 例与 FEAT-066-E3 共用断言实现）。</li>
  * </ul>
  *
  * <p><b>S09 的 ②③ 被拒即判 FAIL（过度拦截）</b>——这正是旧基线下的歧义区，
@@ -64,9 +64,9 @@ class CrossValidationLoadRejectionTest {
     static Stream<Arguments> collisionForms() {
         return Stream.of(
                 // ① review:true + 视角含 review_a 且另有视角 a ⇒ 派生的 review_a 与已声明视角 review_a 重名 → 拒
-                new CollisionForm("① review:true + 视角含 review_a 且另有视角 a → 拒", "T-066-S09-reject", """
+                new CollisionForm("① review:true + 视角含 review_a 且另有视角 a → 拒", "T-FEAT-066-E1-reject", """
                         blueprint:
-                          id: T-066-S09-reject
+                          id: T-FEAT-066-E1-reject
                           type: cross_validation
                           review: true
                           perspectives:
@@ -75,9 +75,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                         """, true, "duplicate member id=review_a"),
                 // ② review 缺省 + 视角 id = review_x ⇒ 互审未启用、无派生成员 ⇒ 纳
-                new CollisionForm("② review 缺省 + 视角 id = review_x → 纳", "T-066-S09-absent", """
+                new CollisionForm("② review 缺省 + 视角 id = review_x → 纳", "T-FEAT-066-E1-absent", """
                         blueprint:
-                          id: T-066-S09-absent
+                          id: T-FEAT-066-E1-absent
                           type: cross_validation
                           perspectives:
                             - {id: review_x, instruction: "视角甲"}
@@ -85,9 +85,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                         """, false, null),
                 // ③ review:true + 视角 {review_x, a, b}（**无**视角 x）⇒ 派生 review_review_x/review_a/review_b，无重名 → 纳
-                new CollisionForm("③ review:true + 视角 {review_x,a,b}（无视角 x）→ 纳", "T-066-S09-prefix", """
+                new CollisionForm("③ review:true + 视角 {review_x,a,b}（无视角 x）→ 纳", "T-FEAT-066-E1-prefix", """
                         blueprint:
-                          id: T-066-S09-prefix
+                          id: T-FEAT-066-E1-prefix
                           type: cross_validation
                           review: true
                           perspectives:
@@ -97,9 +97,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                         """, false, null),
                 // ④ 对照组：review:true + 视角 id 全不以 review_ 开头 → 纳
-                new CollisionForm("④ 对照组：review:true + 常规视角 id → 纳", "T-066-S09-normal", """
+                new CollisionForm("④ 对照组：review:true + 常规视角 id → 纳", "T-FEAT-066-E1-normal", """
                         blueprint:
-                          id: T-066-S09-normal
+                          id: T-FEAT-066-E1-normal
                           type: cross_validation
                           review: true
                           perspectives:
@@ -112,13 +112,13 @@ class CrossValidationLoadRejectionTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("collisionForms")
-    @Story("066-S09: 标识碰撞——互审启用时按重名判定 fail-fast")
-    @DisplayName("066-S09 碰撞判定四形态：①拒（含图纸 id 与碰撞成员 id）②③④纳（被拒即过度拦截 FAIL）")
+    @Story("FEAT-066-E1: 标识碰撞——互审启用时按重名判定 fail-fast")
+    @DisplayName("FEAT-066-E1 碰撞判定四形态：①拒（含图纸 id 与碰撞成员 id）②③④纳（被拒即过度拦截 FAIL）")
     void collisionGuardFourForms(final String label, final CollisionForm form) {
         final Map<String, Recording> recorders = new LinkedHashMap<>();
         for (String memberId : List.of("pa", "pb", "aud", "a", "b", "review_a", "review_x")) {
             recorders.put(memberId, new Recording(memberId,
-                    OrchestrationTestSupport.marker("066-S09", memberId, RUN)));
+                    OrchestrationTestSupport.marker("FEAT-066-E1", memberId, RUN)));
         }
 
         final BlueprintException ex =
@@ -159,14 +159,14 @@ class CrossValidationLoadRejectionTest {
         return Stream.of(
                 new LoadRejection("① perspectives 为空列表", """
                         blueprint:
-                          id: T-066-S11-empty
+                          id: T-FEAT-066-E2-empty
                           type: cross_validation
                           perspectives: []
                           auditor: {id: aud, instruction: "汇总审计"}
                         """, "members must be a non-empty array", false),
                 new LoadRejection("② 只有 1 个视角", """
                         blueprint:
-                          id: T-066-S11-one
+                          id: T-FEAT-066-E2-one
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -174,7 +174,7 @@ class CrossValidationLoadRejectionTest {
                         """, "requires at least 2 perspectives", true),
                 new LoadRejection("③ 缺 auditor 键", """
                         blueprint:
-                          id: T-066-S11-noauditor
+                          id: T-FEAT-066-E2-noauditor
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -182,17 +182,17 @@ class CrossValidationLoadRejectionTest {
                         """, "requires an auditor mapping", true),
                 new LoadRejection("④ 某视角 instruction 为空（成员声明与 FEAT-065 同构）", """
                         blueprint:
-                          id: T-066-S11-noinstr
+                          id: T-FEAT-066-E2-noinstr
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "   "}
                             - {id: pb, instruction: "视角乙"}
                           auditor: {id: aud, instruction: "汇总审计"}
                         """, "member id=pa instruction must be non-blank", false),
-                // ⑤⑥ 与 066-S15 共用断言实现（§11.2：覆盖台账分别登记 REQ-013/014 与 REQ-011 的承接）
-                new LoadRejection("⑤ review 非法形态（与 066-S15 共用）", """
+                // ⑤⑥ 与 FEAT-066-E3 共用断言实现（§11.2：覆盖台账分别登记 REQ-013/014 与 REQ-011 的承接）
+                new LoadRejection("⑤ review 非法形态（与 FEAT-066-E3 共用）", """
                         blueprint:
-                          id: T-066-S11-badreview
+                          id: T-FEAT-066-E2-badreview
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -200,12 +200,12 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                           review: {enabled: true}
                         """, "review must be a boolean scalar", true),
-                // ⑤b/⑤c/⑤d：066-S15（!508 评审 [A]，2026-11-18 复审撤销 GAP-066-07 的 partial 豁免）——
+                // ⑤b/⑤c/⑤d：FEAT-066-E3（!508 评审 [A]，2026-11-18 复审撤销 GAP-066-07 的 partial 豁免）——
                 // L1-066 L37 现行明文「仅 true/false/缺省三种形态合法，其余形态装载期拒绝」。
                 // 映射（⑤a）／列表（⑤b）／非布尔标量（⑤c）／非 true-false 字符串（⑤d）均为非法形态。
-                new LoadRejection("⑤b review 非法形态·列表 [true]（066-S15）", """
+                new LoadRejection("⑤b review 非法形态·列表 [true]（FEAT-066-E3）", """
                         blueprint:
-                          id: T-066-S15-list
+                          id: T-FEAT-066-E3-list
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -213,9 +213,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                           review: [true]
                         """, "review must be a boolean scalar", true),
-                new LoadRejection("⑤c review 非法形态·非布尔标量 1（066-S15）", """
+                new LoadRejection("⑤c review 非法形态·非布尔标量 1（FEAT-066-E3）", """
                         blueprint:
-                          id: T-066-S15-scalar
+                          id: T-FEAT-066-E3-scalar
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -223,9 +223,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                           review: 1
                         """, "review must be a boolean scalar", true),
-                new LoadRejection("⑤d review 非法形态·非 true-false 字符串 yes（066-S15）", """
+                new LoadRejection("⑤d review 非法形态·非 true-false 字符串 yes（FEAT-066-E3）", """
                         blueprint:
-                          id: T-066-S15-str
+                          id: T-FEAT-066-E3-str
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -233,9 +233,9 @@ class CrossValidationLoadRejectionTest {
                           auditor: {id: aud, instruction: "汇总审计"}
                           review: "yes"
                         """, "review must be a boolean scalar", true),
-                new LoadRejection("⑥ cross_validation 带 steps（与 066-S15 共用）", """
+                new LoadRejection("⑥ cross_validation 带 steps（与 FEAT-066-E3 共用）", """
                         blueprint:
-                          id: T-066-S11-withsteps
+                          id: T-FEAT-066-E2-withsteps
                           type: cross_validation
                           perspectives:
                             - {id: pa, instruction: "视角甲"}
@@ -249,13 +249,13 @@ class CrossValidationLoadRejectionTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("loadRejections")
-    @Story("066-S11: 装载拒绝（视角不足 / 审计缺失 / 成员声明同构 / review 非法 / 带 steps）")
-    @DisplayName("066-S11 六例装载拒绝：均抛 BlueprintException + 定位可见 + 按族核对图纸 id + 执行体零调用")
+    @Story("FEAT-066-E2: 装载拒绝（视角不足 / 审计缺失 / 成员声明同构 / review 非法 / 带 steps）")
+    @DisplayName("FEAT-066-E2 六例装载拒绝：均抛 BlueprintException + 定位可见 + 按族核对图纸 id + 执行体零调用")
     void loadRejectionsSixForms(final String label, final LoadRejection form) {
         final Map<String, Recording> recorders = new LinkedHashMap<>();
         for (String memberId : List.of("pa", "pb", "aud")) {
             recorders.put(memberId, new Recording(memberId,
-                    OrchestrationTestSupport.marker("066-S11", memberId, RUN)));
+                    OrchestrationTestSupport.marker("FEAT-066-E2", memberId, RUN)));
         }
 
         final BlueprintException ex =
@@ -276,7 +276,7 @@ class CrossValidationLoadRejectionTest {
     }
 
     /**
-     * 066-S15 的**大小写变体**负向格（!508 评审 [A]，2026-11-18 复审）。
+     * FEAT-066-E3 的**大小写变体**负向格（!508 评审 [A]，2026-11-18 复审）。
      *
      * <p>Oracle：L1-066 L37 现行明文「{@code review} 仅 true/false/缺省三种形态合法，
      * 其余形态**装载期拒绝**」⇒ {@code TRUE}／{@code False} 属非法形态。GAP-066-07 的 partial 豁免
@@ -289,13 +289,13 @@ class CrossValidationLoadRejectionTest {
      * 不作为可收口的 partial、不改判据。
      */
     @Test
-    @Story("066-S15: review 大小写变体属非法形态 → 装载期拒绝（实现若接受=开发缺陷）")
-    @DisplayName("066-S15 大小写变体 TRUE/False → 期望装载期拒绝；实现若接受 ⇒ 开发缺陷（GAP-066-07 豁免已撤销）")
+    @Story("FEAT-066-E3: review 大小写变体属非法形态 → 装载期拒绝（实现若接受=开发缺陷）")
+    @DisplayName("FEAT-066-E3 大小写变体 TRUE/False → 期望装载期拒绝；实现若接受 ⇒ 开发缺陷（GAP-066-07 豁免已撤销）")
     void reviewCaseVariantsAreRejectedAtLoadTime() {
         for (String variant : List.of("TRUE", "False")) {
             final String yaml = """
                     blueprint:
-                      id: T-066-S15-case
+                      id: T-FEAT-066-E3-case
                       type: cross_validation
                       perspectives:
                         - {id: pa, instruction: "视角甲"}

@@ -23,12 +23,12 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S12：交叉验证编译产物与**手写等价 DAG** 完全一致（无隐藏通道）。
+ * FEAT-066-F2：交叉验证编译产物与**手写等价 DAG** 完全一致（无隐藏通道）。
  *
  * <p>Oracle 来源：FEAT-066 §5.1.1「图纸一旦装载，执行语义与一张手写等价 DAG **完全一致**
  * ——无隐藏通道」；FEAT-066 §6「不得在执行层为交叉验证增加专用分支」。
  *
- * <p>与 065-S21 / 066-S13 的静态断言互为补充：那两条证明**源码里没有专用字面量**，
+ * <p>与 065-S21 / FEAT-066-F3 的静态断言互为补充：那两条证明**源码里没有专用字面量**，
  * 本条证明**行为上没有专用通道**——同一组确定性执行体分别跑编译产物与手写 DAG，
  * 结构（成员/步骤/依赖/skipIf/类型/id）与执行结果（登记序、各步 skipped、各步产物、收口产物）
  * 必须逐项相同。出现任何差异即说明存在交叉验证专用通道。
@@ -46,7 +46,7 @@ class CrossValidationEquivalenceTest {
 
     private static final String CROSS_VALIDATION = """
             blueprint:
-              id: T-066-S12
+              id: T-FEAT-066-F2
               type: cross_validation
               review: true
               perspectives:
@@ -56,8 +56,8 @@ class CrossValidationEquivalenceTest {
             """;
 
     @Test
-    @Story("066-S12: 与手写等价 DAG 完全一致（无隐藏通道）")
-    @DisplayName("066-S12 编译产物与手写等价 DAG：spec 逐项相同 + 执行结果逐项相同")
+    @Story("FEAT-066-F2: 与手写等价 DAG 完全一致（无隐藏通道）")
+    @DisplayName("FEAT-066-F2 编译产物与手写等价 DAG：spec 逐项相同 + 执行结果逐项相同")
     void compiledSpecIsIdenticalToHandWrittenEquivalentDag() {
         final BlueprintSpec compiled = BlueprintLoader.load(CROSS_VALIDATION);
         final String handWrittenYaml = toDagYaml(compiled);
@@ -81,8 +81,8 @@ class CrossValidationEquivalenceTest {
         }
 
         // ② 用**同一组确定性执行体**分别执行，结果逐项相同
-        final BlueprintResult compiledResult = executeWith("066-S12-cv", compiled);
-        final BlueprintResult handResult = executeWith("066-S12-dag", handWritten);
+        final BlueprintResult compiledResult = executeWith("FEAT-066-F2-cv", compiled);
+        final BlueprintResult handResult = executeWith("FEAT-066-F2-dag", handWritten);
 
         assertThat(handResult.stepOutcomes()).extracting(StepOutcome::stepId)
                 .as("登记序应完全一致")
@@ -110,8 +110,8 @@ class CrossValidationEquivalenceTest {
         final var loaded = new OrchestrationTestSupport.Loaded(spec,
                 OrchestrationTestSupport.recorders(spec, caseId, RUN));
         // 标记串只按成员 id 生成，不带 caseId ⇒ 两次执行的产物可逐字比对
-        loaded.recorders.forEach((memberId, rec) -> rec.returns("EQ-066-S12-" + memberId + "-" + RUN));
-        return loaded.execute("U-066-S12-" + RUN, 4, new TraceForest());
+        loaded.recorders.forEach((memberId, rec) -> rec.returns("EQ-FEAT-066-F2-" + memberId + "-" + RUN));
+        return loaded.execute("U-FEAT-066-F2-" + RUN, 4, new TraceForest());
     }
 
     /** 把编译产物**逐字**写成一张手写 dag 图纸（成员指令原样搬，不做任何改写）。 */

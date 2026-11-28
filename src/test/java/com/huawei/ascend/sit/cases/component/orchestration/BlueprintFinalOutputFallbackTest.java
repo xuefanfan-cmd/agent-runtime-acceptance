@@ -23,10 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>【2026-10-28 出处更新】FEAT-065:45 现文（docs `!383`／`main@bd6ac83f`）已把收口写成当前层三分支：
  * 全部空白 ⇒ 保留此前已收集结果；恰好一份非空白 ⇒ 直接以该产物原文替换、**不加标题**；多份非空白 ⇒
  * 按声明序拼成 `## <步骤id>` 分节。本类的 pipeline 每层单步 ⇒ 落在"恰好一份非空白"这一支；
- * 旧措辞「末个非空白步产物胜出」在**单步层**上与现文等价（多步层才不等价，那一支由 066-S16 的 B 档覆盖）。
+ * 旧措辞「末个非空白步产物胜出」在**单步层**上与现文等价（多步层才不等价，那一支由 FEAT-066-G1 的 B 档覆盖）。
  * 多步层的分节聚合由**本类** {@link #skippedStepDoesNotParticipateInFallback()}（dag 首层两份非空白 ⇒
  * `## sOne`/`## sThree` 分节、空白与跳过步不得出现分节头）、`BlueprintFourShapesExecutionOrderTest`
- * （四形态逐层核对：多步层要求"含末步产物原文 + 含末步分节头"）与 066-S16 端到端 B 档共同覆盖。
+ * （四形态逐层核对：多步层要求"含末步产物原文 + 含末步分节头"）与 FEAT-066-G1 端到端 B 档共同覆盖。
  *
  * <p>Oracle 来源：FEAT-065 §2「结果收口」+ §5.1.3；已核实实现为 {@code isBlank()} 判定 +
  * 从前往后扫描保留既有值（{@code BlueprintScheduler.collectOneResult}）。

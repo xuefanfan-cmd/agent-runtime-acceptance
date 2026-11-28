@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p><b>模型不配合的处置（设计明文）</b>：主 Agent **未调用** {@code workflow_run} 时记
  * {@code INCONCLUSIVE}（JUnit {@link Assumptions#abort}→SKIPPED），**不判产品 FAIL**——
- * 设计未承诺"措辞 → 调用"的确定性（065-S22 / 066-S16 / 067-S16 三处均如此规定）。
+ * 设计未承诺"措辞 → 调用"的确定性（065-S22 / FEAT-066-G1 / 067-S16 三处均如此规定）。
  */
 abstract class DaOrchestrationE2EBase extends BaseManagedStackTest {
 
@@ -251,7 +251,7 @@ abstract class DaOrchestrationE2EBase extends BaseManagedStackTest {
         // 设计明文：主 Agent 未调用该工具属 L3 层不确定性 ⇒ INCONCLUSIVE，不判产品 FAIL
         Assumptions.abort("主 Agent 本轮未调用 workflow_run（模型未配合，属 L3 不确定性）；"
                 + "实收 toolCalls 的 toolName 集合=[" + names.toString().trim() + "]。"
-                + "按 FEAT-065 065-S22 / FEAT-066 066-S16 / FEAT-067 067-S16 的规定记 INCONCLUSIVE，不判 FAIL；"
+                + "按 FEAT-065 065-S22 / FEAT-066 FEAT-066-G1 / FEAT-067 067-S16 的规定记 INCONCLUSIVE，不判 FAIL；"
                 + "恢复动作 = 重试或强化指令语料。");
         throw new IllegalStateException("unreachable");
     }
@@ -259,7 +259,7 @@ abstract class DaOrchestrationE2EBase extends BaseManagedStackTest {
     /**
      * 任务级失败的归因分流（**产品 FAIL 与模型未配合 INCONCLUSIVE 必须分开**）。
      *
-     * <p>设计口径：067-S16 / 065-S22 / 066-S16 的 INCONCLUSIVE 只适用于
+     * <p>设计口径：067-S16 / 065-S22 / FEAT-066-G1 的 INCONCLUSIVE 只适用于
      * 「主 Agent **未调用** {@code workflow_run}（模型未配合）」。而实测到的
      * {@code Tool 'workflow_run' timed out after 300.0s} 是**工具被调用了但没跑完**——
      * 属产品侧失败，必须记 **FAIL** 并归因，绝不能混记为 INCONCLUSIVE（那会把产品缺陷洗成"模型不配合"）。

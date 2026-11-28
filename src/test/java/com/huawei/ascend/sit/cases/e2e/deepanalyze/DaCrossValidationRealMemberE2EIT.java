@@ -31,16 +31,16 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S16：真实 LLM 成员的三视角六标记汇聚（L2 端到端，**补开发自陈缺口**）。
+ * FEAT-066-G1：真实 LLM 成员的三视角六标记汇聚（L2 端到端，**补开发自陈缺口**）。
  *
  * <p>Oracle 来源：FEAT-066 §2 + §4；L2-066 §7.2 自陈「审计收六份产物（三视角+三互审）——
  * **执行级背书为双视角四标记 UT；六份为结构断言+投影机制推导**」⇒ 本场景是**新增证据**，
- * 不是与 066-S06（L1 双视角四标记）重复。
+ * 不是与 FEAT-066-D1（L1 双视角四标记）重复。
  *
  * <p>五项 Then：① {@code status=completed}；② {@code steps[]} 条数 == **7**（3 视角 + 3 互审 + 1 审计）；
  * ③ 每步 {@code member} 标识形态正确（视角 id / {@code review_<视角id>} / 审计 id）；
  * ④ {@code final_output} 的**收口来源**按权威口径分流（见下）；
- * ⑤ 与 066-S05 的 **L1 编译产物结构逐项对照一致**（分层、依赖集、登记序）。
+ * ⑤ 与 FEAT-066-C1 的 **L1 编译产物结构逐项对照一致**（分层、依赖集、登记序）。
  *
  * <p><b>【2026-10-26 判据④ 改判，经用户授权】原写法「每步必有非空产物 + final_output == audit 产物且非空」
  * 属测试侧过度指定</b>。权威口径（改判当时为 docs `main@192d0b9d`；**2026-10-28 起为 `main@bd6ac83f`**，
@@ -86,7 +86,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 因此"检索**发生**了"现在是**可观测且应验**的（由 067-S31 断言 members[].tool_call_count 合计 > 0、last_tool ⊆ 14 件）；
  * 本用例仍**不**断言检索是否命中、也不断言审计结论质量（FEAT-066 §5.2 明文不承诺）。
  * **不断言六份产物在审计输入里逐字可见**——真实模型输出不可控，L2 层的汇聚证据以
- * "条数 + 成员形态 + 收口来源"为主，逐字原文断言只在 L1（066-S06）做。
+ * "条数 + 成员形态 + 收口来源"为主，逐字原文断言只在 L1（FEAT-066-D1）做。
  *
  * <p>INCONCLUSIVE 与 FAIL 分开：主 Agent 未调用 {@code workflow_run} ⇒ INCONCLUSIVE；
  * 调用了但条数/成员形态/收口来源不符 ⇒ **FAIL**（真实成员下编译或调度变形）。
@@ -112,10 +112,10 @@ class DaCrossValidationRealMemberE2EIT extends DaOrchestrationE2EBase {
     private static final String TEMPLATE = "multi-perspective-council";
 
     @Test
-    @Story("066-S16: 真实 LLM 成员三视角六标记汇聚")
-    @DisplayName("066-S16 三视角+互审+审计：steps==7、成员形态正确、final_output 收口来源按 FEAT-066:39 分流（audit 非空白=严格相等 / 空白=回退末个非空白步），且与 L1 编译产物结构一致")
+    @Story("FEAT-066-G1: 真实 LLM 成员三视角六标记汇聚")
+    @DisplayName("FEAT-066-G1 三视角+互审+审计：steps==7、成员形态正确、final_output 收口来源按 FEAT-066:39 分流（audit 非空白=严格相等 / 空白=回退末个非空白步），且与 L1 编译产物结构一致")
     void realMemberCrossValidationAggregatesSevenSteps() throws Exception {
-        final String question = "用多视角会商分析：一句话说明团队协作的价值。U-066-S16-" + RUN;
+        final String question = "用多视角会商分析：一句话说明团队协作的价值。U-FEAT-066-G1-" + RUN;
         final String input = "请调用 workflow_run 工具，template 参数用 " + TEMPLATE
                 + " ，question 参数用：" + question
                 + " 。不要自己作答，必须调用该工具；工具返回后只回复 final_output 的原文。";
@@ -201,7 +201,7 @@ class DaCrossValidationRealMemberE2EIT extends DaOrchestrationE2EBase {
             }
             if (preceding.isEmpty()) {
                 Allure.addAttachment("判据④ 无法评估（audit 与其之前所有步产物全空白）", "text/plain", truncate(raw, 8192));
-                org.junit.jupiter.api.Assumptions.abort("066-S16 判据④ INCONCLUSIVE：audit 及其之前所有步产物全部空白，"
+                org.junit.jupiter.api.Assumptions.abort("FEAT-066-G1 判据④ INCONCLUSIVE：audit 及其之前所有步产物全部空白，"
                         + "无从评估收口来源。成员模型面未产出，属 L3 不确定性，不判产品 FAIL。");
                 return;
             }
@@ -272,7 +272,7 @@ class DaCrossValidationRealMemberE2EIT extends DaOrchestrationE2EBase {
                         + "\n收口来源步=" + closing.id() + "\naudit.skipped=" + auditStep.skipped()
                         + "\n空白步=" + blankSteps);
 
-        // ⑤ 与 L1 编译产物结构逐项对照一致（066-S05 的同一张图纸）
+        // ⑤ 与 L1 编译产物结构逐项对照一致（FEAT-066-C1 的同一张图纸）
         final BlueprintSpec spec = templateSpec;
         assertThat(spec.steps()).as("L1 对照侧编译产物应为 7 步").hasSize(7);
         assertThat(stepIds).as("⑤ L3 步骤标识应与 L1 编译产物逐项一致")
@@ -282,7 +282,7 @@ class DaCrossValidationRealMemberE2EIT extends DaOrchestrationE2EBase {
         final Map<String, SubAgentExecutor> bindings = new LinkedHashMap<>();
         for (var member : spec.members()) {
             final String id = member.id();
-            bindings.put(id, (userInput, subGoal) -> "L1-066-S16-" + id + "-" + RUN);
+            bindings.put(id, (userInput, subGoal) -> "L1-FEAT-066-G1-" + id + "-" + RUN);
         }
         final BlueprintResult l1;
         try (BlueprintScheduler scheduler = new BlueprintScheduler(new TraceForest(), 4)) {
@@ -302,7 +302,7 @@ class DaCrossValidationRealMemberE2EIT extends DaOrchestrationE2EBase {
         assertThat(closing.output())
                 .as("⑤ L3 的收口来源步产物来自真实模型，不应等于 L1 的确定性标记串")
                 .isNotEqualTo(l1Outcomes.get(6).output());
-        Allure.addAttachment("L1 对照侧结构导出（066-S05 同图纸）", "text/plain",
+        Allure.addAttachment("L1 对照侧结构导出（FEAT-066-C1 同图纸）", "text/plain",
                 String.join("\n", l1Outcomes.stream()
                         .map(o -> o.stepId() + "|" + o.memberId() + "|skipped=" + o.skipped()).toList()));
         Allure.addAttachment("L3 steps[] 原文（截断 8KB）", "text/plain", truncate(raw, 8192));

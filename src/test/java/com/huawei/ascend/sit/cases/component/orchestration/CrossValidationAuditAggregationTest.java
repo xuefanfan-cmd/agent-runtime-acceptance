@@ -17,7 +17,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S06：审计员汇聚**双标记**（L1 层，双视角四标记）。
+ * FEAT-066-D1：审计员汇聚**双标记**（L1 层，双视角四标记）。
  *
  * <p>Oracle 来源：FEAT-066 §2「审计员汇聚」+ §5.1.2；Feature §6 明文
  * 「双标记断言 = 同时断言审计输入含各**视角产物文本**与**互审产物文本**」。
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>不应断言：4 段的**顺序**（GAP-066-02 已收窄为 non-gating；§11.2 明确
  * "顺序事实已确定但设计未承诺 ⇒ 标 OUT / non-gating，顺序变化不判 FAIL"）；
  * 不断言有分栏标识或来源标签（L2-066 §1.3 自陈"无结构化分栏"⇒ 要求它会把符合设计的实现判 FAIL）。
- * 六视角/六标记的真实模型形态归 066-S16（端到端，本环境 blocked）。
+ * 六视角/六标记的真实模型形态归 FEAT-066-G1（端到端，本环境 blocked）。
  */
 @Tag("component")
 @Tag("feat-066")
@@ -40,7 +40,7 @@ class CrossValidationAuditAggregationTest {
     /** 双视角 + review:true + 审计员 ⇒ 5 步（2 视角 + 2 互审 + 1 审计）。 */
     private static final String TWO_PERSPECTIVES_WITH_REVIEW = """
             blueprint:
-              id: T-066-S06
+              id: T-FEAT-066-D1
               type: cross_validation
               review: true
               perspectives:
@@ -50,14 +50,14 @@ class CrossValidationAuditAggregationTest {
             """;
 
     @Test
-    @Story("066-S06: 审计员汇聚双标记（视角产物 + 互审产物）")
-    @DisplayName("066-S06 审计员实收输入同时含 2 个视角标记与 2 个互审标记，且逐字完整")
+    @Story("FEAT-066-D1: 审计员汇聚双标记（视角产物 + 互审产物）")
+    @DisplayName("FEAT-066-D1 审计员实收输入同时含 2 个视角标记与 2 个互审标记，且逐字完整")
     void auditorReceivesAllUpstreamVerbatim() {
-        final var loaded = OrchestrationTestSupport.load(TWO_PERSPECTIVES_WITH_REVIEW, "066-S06", RUN);
-        final String perspectiveA = "P-066-S06-A-" + RUN;
-        final String perspectiveB = "P-066-S06-B-" + RUN;
-        final String reviewA = "R-066-S06-A-" + RUN;
-        final String reviewB = "R-066-S06-B-" + RUN;
+        final var loaded = OrchestrationTestSupport.load(TWO_PERSPECTIVES_WITH_REVIEW, "FEAT-066-D1", RUN);
+        final String perspectiveA = "P-FEAT-066-D1-A-" + RUN;
+        final String perspectiveB = "P-FEAT-066-D1-B-" + RUN;
+        final String reviewA = "R-FEAT-066-D1-A-" + RUN;
+        final String reviewB = "R-FEAT-066-D1-B-" + RUN;
         loaded.recorders.get("pa").returns(perspectiveA);
         loaded.recorders.get("pb").returns(perspectiveB);
         loaded.recorders.get("review_pa").returns(reviewA);
@@ -66,7 +66,7 @@ class CrossValidationAuditAggregationTest {
         final var auditor = loaded.recorders.get("aud");
         auditor.returnsDynamic(() -> "AUDIT-MIRROR|" + auditor.lastSubGoal());
 
-        final BlueprintResult result = loaded.execute("U-066-S06-" + RUN, 4, new TraceForest());
+        final BlueprintResult result = loaded.execute("U-FEAT-066-D1-" + RUN, 4, new TraceForest());
 
         assertThat(result.stepOutcomes()).as("双视角 + 双互审 + 审计 = 5 步").hasSize(5);
         assertThat(auditor.calls()).as("审计步应被执行一次").isEqualTo(1);
@@ -90,7 +90,7 @@ class CrossValidationAuditAggregationTest {
         assertThat(result.stepOutcomes()).extracting(com.openjiuwen.agents.orchestration.StepOutcome::stepId)
                 .containsExactly("p_pa", "p_pb", "r_pa", "r_pb", "audit");
         // OUT / non-gating：顺序事实（按 dependsOn 序）已读码确定，但设计未承诺 ⇒ 只作增强记录，
-        // 顺序变化**不判 FAIL**（§11.2 对 066-S06 的更正）
+        // 顺序变化**不判 FAIL**（§11.2 对 FEAT-066-D1 的更正）
         assertThat(goal.indexOf(perspectiveA)).as("增强证据（non-gating）：视角段应出现在互审段之前")
                 .isLessThan(goal.indexOf(reviewA));
     }

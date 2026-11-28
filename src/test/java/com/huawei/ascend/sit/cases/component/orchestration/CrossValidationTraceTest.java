@@ -19,7 +19,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 066-S10：交叉验证的留痕（视角 / 互审 / 审计每步登记）。
+ * FEAT-066-F1：交叉验证的留痕（视角 / 互审 / 审计每步登记）。
  *
  * <p>Oracle 来源：FEAT-066 §2「留痕」；登记机制沿用 FEAT-065 §5.1.5（见 065-S09 / 065-S10）。
  *
@@ -39,7 +39,7 @@ class CrossValidationTraceTest {
 
     private static final String THREE_PERSPECTIVES_WITH_REVIEW = """
             blueprint:
-              id: T-066-S10
+              id: T-FEAT-066-F1
               type: cross_validation
               review: true
               perspectives:
@@ -50,13 +50,13 @@ class CrossValidationTraceTest {
             """;
 
     @Test
-    @Story("066-S10: 视角/互审/审计每步登记")
-    @DisplayName("066-S10 七步全部登记，序列 == p_(视角声明序) → r_(视角声明序) → audit，森林可按根取回")
+    @Story("FEAT-066-F1: 视角/互审/审计每步登记")
+    @DisplayName("FEAT-066-F1 七步全部登记，序列 == p_(视角声明序) → r_(视角声明序) → audit，森林可按根取回")
     void allSevenStepsAreRegisteredInOrder() {
-        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_WITH_REVIEW, "066-S10", RUN);
+        final var loaded = OrchestrationTestSupport.load(THREE_PERSPECTIVES_WITH_REVIEW, "FEAT-066-F1", RUN);
         final TraceForest forest = new TraceForest();
 
-        final BlueprintResult result = loaded.execute("U-066-S10-" + RUN, 4, forest);
+        final BlueprintResult result = loaded.execute("U-FEAT-066-F1-" + RUN, 4, forest);
 
         final List<StepOutcome> outcomes = result.stepOutcomes();
         assertThat(outcomes).as("3 视角 + 3 互审 + 1 审计 = 7 条留痕").hasSize(7);

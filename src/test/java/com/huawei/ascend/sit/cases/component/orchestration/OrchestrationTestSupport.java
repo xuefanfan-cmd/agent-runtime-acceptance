@@ -30,7 +30,7 @@ import java.util.function.Supplier;
  * 明文交给装配方的位置。把执行体与调度器装配收敛到一处，避免 12 个测试类各写一份而口径漂移。
  *
  * <p><b>这不是 Mock LLM</b>：执行体由测试提供是设计给出的装配方式（FEAT-065 §3、NC-02），
- * 真实模型成员形态由 065-S22 / 066-S16 / 067-S16 的端到端用例承接，两层互为对照。
+ * 真实模型成员形态由 065-S22 / FEAT-066-G1 / 067-S16 的端到端用例承接，两层互为对照。
  */
 final class OrchestrationTestSupport {
 

@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 维度**把认证打开（认证默认关闭，属被测默认行为，因此必须显式覆写才能验这条）。
  * 所用的密钥是**测试专用固定值**，不是任何真实凭据。
  *
- * <p>对应场景 {@code da.auth.filter}；逐用例判定规则见
+ * <p>对应场景 {@code FEAT-054-E1}；逐用例判定规则见
  * {@code 01-Design_File/20260921/FEAT-054/FEAT-054-测试设计初稿.md}。
  */
 @Tag("e2e")
@@ -57,8 +57,8 @@ class DaServiceAuthE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.auth.filter: 无密钥请求一律 401 且响应体不含密钥信息")
-    @DisplayName("da.auth.filter/without-secret: GET /agent/status 无 X-Engine-Secret → 401")
+    @Story("FEAT-054-E1: 无密钥请求一律 401 且响应体不含密钥信息")
+    @DisplayName("FEAT-054-E1/without-secret: GET /agent/status 无 X-Engine-Secret → 401")
     void requestWithoutSecretIsRejected() throws Exception {
         initClient();
         HttpResponse<String> r = get("/agent/status/whatever-task", null);
@@ -68,8 +68,8 @@ class DaServiceAuthE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.auth.filter: 错误密钥与缺失密钥同体，不泄露差异")
-    @DisplayName("da.auth.filter/wrong-secret: GET /agent/status 错密钥 → 401 且与无密钥同体")
+    @Story("FEAT-054-E1: 错误密钥与缺失密钥同体，不泄露差异")
+    @DisplayName("FEAT-054-E1/wrong-secret: GET /agent/status 错密钥 → 401 且与无密钥同体")
     void requestWithWrongSecretIsRejectedIdentically() throws Exception {
         initClient();
         HttpResponse<String> without = get("/agent/status/whatever-task", null);
@@ -83,8 +83,8 @@ class DaServiceAuthE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.auth.filter: 合法密钥放行（进入业务逻辑）")
-    @DisplayName("da.auth.filter/with-secret: GET /agent/status 合法密钥 → 通过过滤器")
+    @Story("FEAT-054-E1: 合法密钥放行（进入业务逻辑）")
+    @DisplayName("FEAT-054-E1/with-secret: GET /agent/status 合法密钥 → 通过过滤器")
     void requestWithValidSecretPassesFilter() throws Exception {
         initClient();
         HttpResponse<String> r = get("/agent/status/no-such-task-054", TEST_SECRET);
@@ -95,8 +95,8 @@ class DaServiceAuthE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.auth.filter: 探活端点不在守护范围")
-    @DisplayName("da.auth.filter/health-unguarded: GET /health 无密钥 → 200")
+    @Story("FEAT-054-E1: 探活端点不在守护范围")
+    @DisplayName("FEAT-054-E1/health-unguarded: GET /health 无密钥 → 200")
     void healthEndpointIsNotGuarded() throws Exception {
         initClient();
         HttpResponse<String> r = get("/health", null);

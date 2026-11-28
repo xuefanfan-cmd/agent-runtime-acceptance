@@ -19,7 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.compat.buffer-evict}：事件缓冲容量逐出策略与受保护事件集。
+ * FEAT-054 {@code FEAT-054-C4}：事件缓冲容量逐出策略与受保护事件集。
  *
  * <p>构造方式取自细档设计（不构造 >5000 事件的真实长任务）：把 `deepanalyze.compat.max-events-per-task`
  * 调小到 5，使真实任务即可触发逐出；再经"重连重放"观察——重放帧数必须显著少于直播帧数（证明逐出确实发生），
@@ -58,8 +58,8 @@ class DaCompatBufferEvictE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.buffer-evict: 逐出策略与受保护事件集")
-    @DisplayName("da.compat.buffer-evict: 调小上限触发逐出 → 重放变短但受保护事件仍在且序号单调")
+    @Story("FEAT-054-C4: 逐出策略与受保护事件集")
+    @DisplayName("FEAT-054-C4: 调小上限触发逐出 → 重放变短但受保护事件仍在且序号单调")
     void evictsIncrementalEventsButKeepsProtectedOnes() throws Exception {
         initClient();
         String sessionId = "sess-evict-" + UUID.randomUUID();

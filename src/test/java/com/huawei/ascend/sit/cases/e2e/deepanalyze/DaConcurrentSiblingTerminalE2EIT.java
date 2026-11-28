@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 同会话并发（{@code da.compat.concurrent-same-session}）**悬挂补证**：被挡下的兄弟请求是否落终态？
+ * FEAT-054 同会话并发（{@code FEAT-054-C5}）**悬挂补证**：被挡下的兄弟请求是否落终态？
  *
  * <p>背景：#386（PR !672）修复后同会话并发不再返回 500，但诊断记录显示部分流在 {@code start} 之后即关流、
  * 既无 {@code error} 也无 {@code done}。本类把该现象推进为**外部可复核**的判据，用于判定"会话忙"拒绝
@@ -73,7 +73,7 @@ class DaConcurrentSiblingTerminalE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.concurrent-same-session: 已受理的兄弟请求必须有终态（不得悬挂到容器超时）")
+    @Story("FEAT-054-C5: 已受理的兄弟请求必须有终态（不得悬挂到容器超时）")
     @DisplayName("同会话并发 3 流：已被受理的任务在流结束后不得仍为 running")
     void acceptedSiblingStreamsMustReachTerminalState() throws Exception {
         initClient();

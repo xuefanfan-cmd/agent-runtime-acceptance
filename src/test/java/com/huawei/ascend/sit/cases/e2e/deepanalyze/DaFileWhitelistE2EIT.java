@@ -53,8 +53,8 @@ class DaFileWhitelistE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.file.whitelist: 非白名单文件输入被拦截且不进入执行")
-    @DisplayName("da.file.whitelist/reject: 非白名单类型 → 4xx 业务错误，不进入执行")
+    @Story("FEAT-054-F5: 非白名单文件输入被拦截且不进入执行")
+    @DisplayName("FEAT-054-F5/reject: 非白名单类型 → 4xx 业务错误，不进入执行")
     void nonWhitelistedInputIsRejected() throws Exception {
         initClient();
 

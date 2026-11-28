@@ -20,7 +20,7 @@ import java.util.zip.ZipFile;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.asset.version}：条款版本标识可回溯、模板漂移可被工具检出（静态形态）。
+ * FEAT-054 {@code FEAT-054-B4}：条款版本标识可回溯、模板漂移可被工具检出（静态形态）。
  *
  * <p>判据来源：特性 §3.1「模板版本钉死」+ §2 验收出口 #5/#6；设计侧 2026-09-22 澄清（A-Q5）：
  * {@code baseCoreVersion} 是**内容来源版本**（允许与消费版本不同），漂移检出工具必须把
@@ -37,8 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DaAssetVersionE2EIT {
 
     @Test
-    @Story("da.asset.version: 资产元数据在制品内可回溯")
-    @DisplayName("da.asset.version: 发布制品内资产 meta 齐备且带版本字段")
+    @Story("FEAT-054-B4: 资产元数据在制品内可回溯")
+    @DisplayName("FEAT-054-B4: 发布制品内资产 meta 齐备且带版本字段")
     void assetMetadataIsTraceableInArtifact() throws Exception {
         Path jar = resolveArtifact();
         assertThat(Files.isReadable(jar)).as("发布制品必须可读: " + jar).isTrue();

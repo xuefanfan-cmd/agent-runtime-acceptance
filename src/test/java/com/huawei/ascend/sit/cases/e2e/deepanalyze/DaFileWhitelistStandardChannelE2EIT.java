@@ -21,7 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.file.whitelist}：**ISSUE #367 修复后回归**，走标准 A2A 消息通道触达文件类型白名单。
+ * FEAT-054 {@code FEAT-054-F5}：**ISSUE #367 修复后回归**，走标准 A2A 消息通道触达文件类型白名单。
  *
  * <p>背景：原报告的缺陷是"两侧形状脱节"——runtime 适配层
  * （{@code A2AProtocolAdapter.extractParts}）把入站文件 part 归一为
@@ -98,8 +98,8 @@ class DaFileWhitelistStandardChannelE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.file.whitelist: 白名单外 raw part（平铺 filename）被拒 DA-FILE-003")
-    @DisplayName("da.file.whitelist: raw + filename=payload.exe → DA-FILE-003（#367 关闭回归）")
+    @Story("FEAT-054-F5: 白名单外 raw part（平铺 filename）被拒 DA-FILE-003")
+    @DisplayName("FEAT-054-F5: raw + filename=payload.exe → DA-FILE-003（#367 关闭回归）")
     void nonWhitelistedFileBytesPartIsRejectedWithBusinessCode() throws Exception {
         initClient();
         HttpResponse<String> response = send(rawFilePart(NON_WHITELISTED, "application/octet-stream"),
@@ -109,8 +109,8 @@ class DaFileWhitelistStandardChannelE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.file.whitelist: 白名单外 url part（平铺 filename）被拒 DA-FILE-003")
-    @DisplayName("da.file.whitelist: url + filename=payload.exe → DA-FILE-003（#367 关闭回归）")
+    @Story("FEAT-054-F5: 白名单外 url part（平铺 filename）被拒 DA-FILE-003")
+    @DisplayName("FEAT-054-F5: url + filename=payload.exe → DA-FILE-003（#367 关闭回归）")
     void nonWhitelistedFileUriPartIsRejectedWithBusinessCode() throws Exception {
         initClient();
         HttpResponse<String> response = send(urlFilePart(NON_WHITELISTED), REJECT_TIMEOUT);
@@ -119,8 +119,8 @@ class DaFileWhitelistStandardChannelE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.file.whitelist: 白名单内 raw part 不被拒且真正进入执行（对照）")
-    @DisplayName("da.file.whitelist: raw + filename=note.txt → 无 DA-FILE-003，且非协议拒绝")
+    @Story("FEAT-054-F5: 白名单内 raw part 不被拒且真正进入执行（对照）")
+    @DisplayName("FEAT-054-F5: raw + filename=note.txt → 无 DA-FILE-003，且非协议拒绝")
     void whitelistedFilePartIsAcceptedAndReachesExecution() throws Exception {
         initClient();
         HttpResponse<String> response = send(rawFilePart(WHITELISTED, "text/plain"), CONTROL_TIMEOUT);

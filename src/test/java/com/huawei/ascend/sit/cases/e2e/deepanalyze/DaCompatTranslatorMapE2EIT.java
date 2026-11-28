@@ -19,7 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.compat.translator-map}：事件翻译泵映射逐行（段落状态机、轮次组织、无源不伪造）。
+ * FEAT-054 {@code FEAT-054-C3}：事件翻译泵映射逐行（段落状态机、轮次组织、无源不伪造）。
  *
  * <p>Oracle：L2 §2.11 事件翻译泵契约映射表（设计侧 B-Q10/B-Q9 裁决：以映射表右列为覆盖基准，
  * "17 种"记为待对齐约数）。
@@ -49,8 +49,8 @@ class DaCompatTranslatorMapE2EIT extends DaCompatStreamTestBase {
             "push_content_chunk");
 
     @Test
-    @Story("da.compat.translator-map: 段落状态机、轮次组织与无源不伪造")
-    @DisplayName("da.compat.translator-map: 事件映射逐行合规，无源事件不得伪造")
+    @Story("FEAT-054-C3: 段落状态机、轮次组织与无源不伪造")
+    @DisplayName("FEAT-054-C3: 事件映射逐行合规，无源事件不得伪造")
     void translatorMapFollowsSegmentStateMachine() throws Exception {
         initClient();
         String sessionId = "sess-map-" + UUID.randomUUID();
@@ -60,7 +60,7 @@ class DaCompatTranslatorMapE2EIT extends DaCompatStreamTestBase {
 
         List<Frame> frames = DaCompatSseSupport.readFramesUntilEof(response.body(), Duration.ofSeconds(90))
                 .stream().filter(frame -> !frame.heartbeat()).toList();
-        Allure.addAttachment("da.compat.translator-map 事件序列", "text/plain",
+        Allure.addAttachment("FEAT-054-C3 事件序列", "text/plain",
                 frames.stream().map(Frame::event).toList().toString());
         assertThat(frames).isNotEmpty();
 

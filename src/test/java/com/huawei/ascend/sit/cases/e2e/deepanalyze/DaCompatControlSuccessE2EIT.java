@@ -43,8 +43,8 @@ class DaCompatControlSuccessE2EIT extends DaCompatStreamTestBase {
     private static final String INPUT = "请用一句话说明数据分析的第一步是什么，不要调用任何工具。";
 
     @Test
-    @Story("da.compat.run-sync: 同步执行聚合成功态")
-    @DisplayName("da.compat.run-sync: POST /agent/run → 200 且聚合出 completed 结果")
+    @Story("FEAT-054-D4: 同步执行聚合成功态")
+    @DisplayName("FEAT-054-D4: POST /agent/run → 200 且聚合出 completed 结果")
     void runSyncAggregatesCompletedResult() throws Exception {
         initClient();
         String sessionId = "sess-sync-" + UUID.randomUUID();
@@ -60,8 +60,8 @@ class DaCompatControlSuccessE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.status-tasks: 任务快照与会话任务列表 + 属主绑定")
-    @DisplayName("da.compat.status-tasks: 状态/列表成功可见，异属主请求被拒（404 / 空数组）")
+    @Story("FEAT-054-D5: 任务快照与会话任务列表 + 属主绑定")
+    @DisplayName("FEAT-054-D5: 状态/列表成功可见，异属主请求被拒（404 / 空数组）")
     void statusTasksAndOwnerBinding() throws Exception {
         initClient();
         String sessionId = "sess-status-" + UUID.randomUUID();
@@ -93,8 +93,8 @@ class DaCompatControlSuccessE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.cancel: 取消运行中任务并落定终态")
-    @DisplayName("da.compat.cancel: 运行中任务受理为 cancelled，事件面落定 cancelled→done，状态面可见")
+    @Story("FEAT-054-D1: 取消运行中任务并落定终态")
+    @DisplayName("FEAT-054-D1: 运行中任务受理为 cancelled，事件面落定 cancelled→done，状态面可见")
     void cancelRunningTaskSettlesCancelled() throws Exception {
         initClient();
         String sessionId = "sess-cancel-" + UUID.randomUUID();
@@ -134,8 +134,8 @@ class DaCompatControlSuccessE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.inject: 运行中任务注入消息被受理")
-    @DisplayName("da.compat.inject: 运行中任务注入 → 200 {status:injected}")
+    @Story("FEAT-054-D3: 运行中任务注入消息被受理")
+    @DisplayName("FEAT-054-D3: 运行中任务注入 → 200 {status:injected}")
     void injectRunningTaskAccepted() throws Exception {
         initClient();
         String sessionId = "sess-inject-" + UUID.randomUUID();

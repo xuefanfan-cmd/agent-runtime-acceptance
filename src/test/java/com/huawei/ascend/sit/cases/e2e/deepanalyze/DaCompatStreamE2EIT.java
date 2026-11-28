@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.compat.stream-shape}：DA 形态流式执行的事件信封、轮次组织、心跳与关流。
+ * FEAT-054 {@code FEAT-054-C1}：DA 形态流式执行的事件信封、轮次组织、心跳与关流。
  *
  * <p>Oracle：特性 §2 验收出口 #12、§4 端点明细；L2 §2.11 线格式契约（Oracle 强度：设计认可口径，
  * 一手源 DA 仓不可访问 — 见裁决记录 DES-Q10）。
@@ -38,8 +38,8 @@ class DaCompatStreamE2EIT extends DaCompatStreamTestBase {
     private static final String INPUT = "请用一句话说明你能做哪类数据分析，不要调用任何工具。";
 
     @Test
-    @Story("da.compat.stream-shape: DA 事件信封、轮次组织、心跳与关流")
-    @DisplayName("da.compat.stream-shape: POST /agent/run-stream → 帧格式合规、seq 连续、done 关流、心跳在场")
+    @Story("FEAT-054-C1: DA 事件信封、轮次组织、心跳与关流")
+    @DisplayName("FEAT-054-C1: POST /agent/run-stream → 帧格式合规、seq 连续、done 关流、心跳在场")
     void streamFrameShapeAndHeartbeat() throws Exception {
         initClient();
         String sessionId = "sess-stream-" + UUID.randomUUID();
@@ -50,7 +50,7 @@ class DaCompatStreamE2EIT extends DaCompatStreamTestBase {
 
         // 一次性读到 EOF：正常返回即证明服务端在 done 之后关流；不关流则超时失败。
         List<Frame> raw = DaCompatSseSupport.readFramesUntilEof(response.body(), Duration.ofSeconds(90));
-        Allure.addAttachment("da.compat.stream-shape 原始帧", "text/plain", raw.toString());
+        Allure.addAttachment("FEAT-054-C1 原始帧", "text/plain", raw.toString());
 
         List<Frame> frames = raw.stream().filter(frame -> !frame.heartbeat()).toList();
         assertThat(frames).as("事件流至少应有 start/complete/done 三帧").isNotEmpty();

@@ -38,7 +38,7 @@ class DaReplayBoundaryE2EIT extends DaCompatStreamTestBase {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
-    @Story("da.compat.reconnect: 异常 Last-Event-ID 安全处理")
+    @Story("FEAT-054-C2: 异常 Last-Event-ID 安全处理")
     @DisplayName("重放边界：乱码/超长/负数/异任务 id → 非 5xx 且不串任务")
     void malformedLastEventIdIsHandledSafely() throws Exception {
         initClient();
@@ -73,7 +73,7 @@ class DaReplayBoundaryE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.reconnect: 跨任务缓冲互不污染")
+    @Story("FEAT-054-C2: 跨任务缓冲互不污染")
     @DisplayName("重放边界：A 任务重放里不含 B 任务事件（双向）")
     void replayDoesNotLeakAcrossTasks() throws Exception {
         initClient();
@@ -86,7 +86,7 @@ class DaReplayBoundaryE2EIT extends DaCompatStreamTestBase {
     }
 
     @Test
-    @Story("da.compat.reconnect: 多客户端同任务订阅互不吞并")
+    @Story("FEAT-054-C2: 多客户端同任务订阅互不吞并")
     @DisplayName("重放边界：两客户端同时重放同一任务 → 各自拿到完整事件集")
     void concurrentReplaysBothReceiveFullEventSet() throws Exception {
         initClient();

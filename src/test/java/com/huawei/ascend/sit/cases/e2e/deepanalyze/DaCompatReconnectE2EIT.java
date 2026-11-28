@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.compat.reconnect}：SSE 断线重连的 Last-Event-ID 续传与缓冲重放无缺口。
+ * FEAT-054 {@code FEAT-054-C2}：SSE 断线重连的 Last-Event-ID 续传与缓冲重放无缺口。
  *
  * <p>Oracle：特性 §2 验收出口 #13；L2 §2.11 缓冲重放契约、§3.11 无缺口判据（设计认可口径）。
  *
@@ -39,8 +39,8 @@ class DaCompatReconnectE2EIT extends DaCompatStreamTestBase {
     private static final int DISCONNECT_AFTER_FRAMES = 3;
 
     @Test
-    @Story("da.compat.reconnect: 断线重连无缺口")
-    @DisplayName("da.compat.reconnect: 断线后带 Last-Event-ID 重连 → 重放无缺口并以 reconnect_done 收尾")
+    @Story("FEAT-054-C2: 断线重连无缺口")
+    @DisplayName("FEAT-054-C2: 断线后带 Last-Event-ID 重连 → 重放无缺口并以 reconnect_done 收尾")
     void reconnectReplaysWithoutGap() throws Exception {
         initClient();
         String sessionId = "sess-reconnect-" + UUID.randomUUID();

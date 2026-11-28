@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054：{@code da.run.minimal-task} —— 经**标准 A2A 入口**发起一次 DA 场景任务并完成产出结果。
+ * FEAT-054：{@code FEAT-054-B1} —— 经**标准 A2A 入口**发起一次 DA 场景任务并完成产出结果。
  *
  * <p>设计侧 2026-09-22 裁决（B-Q1）：工具团队最小工具集未交付期间，**零工具最小任务可作替代路径**，
  * 四条建立在"任务能跑通"之上的验收照常进行；工具能力本身按前置未满足单独记账。
@@ -78,15 +78,15 @@ class DaMinimalTaskE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.run.minimal-task: 零工具最小任务经标准入口跑通")
-    @DisplayName("da.run.minimal-task: 标准 A2A 入口发起一次 DA 场景任务 → COMPLETED 且产出非空结果")
+    @Story("FEAT-054-B1: 零工具最小任务经标准入口跑通")
+    @DisplayName("FEAT-054-B1: 标准 A2A 入口发起一次 DA 场景任务 → COMPLETED 且产出非空结果")
     void minimalTaskReachesCompletedWithoutTools() {
         InteractionFlow.of(client(AGENT))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)
                 .send(INPUT_TEXT)
                     .awaitState(TaskState.TASK_STATE_COMPLETED)
                     .assertAnswer(text -> {
-                        Allure.addAttachment("da.run.minimal-task 产出正文", "text/plain", text);
+                        Allure.addAttachment("FEAT-054-B1 产出正文", "text/plain", text);
                         assertThat(text)
                                 .as("主断言：零工具最小任务必须产出非空结果，否则验收出口 #2 不成立")
                                 .isNotBlank();
@@ -95,14 +95,14 @@ class DaMinimalTaskE2EIT extends BaseManagedStackTest {
     }
 
     /**
-     * {@code da.estimate.event}：复杂度估算结果的可观察取证。
+     * {@code FEAT-054-F4}：复杂度估算结果的可观察取证。
      *
      * <p>设计侧 2026-09-22 裁决（B-Q6）：接受"结构化日志事件 {@code da_complexity_estimate} + DFX-001 日志路由"
      * 作为"对外可见"的取证路径（用例标 partial，结论注明取证依赖）。本用例从 SUT 日志实证该事件在场。
      */
     @Test
-    @Story("da.estimate.event: 复杂度估算事件可观测（档位+建议轮数）")
-    @DisplayName("da.estimate.event: SUT 日志出现 da_complexity_estimate 且带档位与建议轮数")
+    @Story("FEAT-054-F4: 复杂度估算事件可观测（档位+建议轮数）")
+    @DisplayName("FEAT-054-F4: SUT 日志出现 da_complexity_estimate 且带档位与建议轮数")
     void complexityEstimateIsObservableInSutLog() throws Exception {
         InteractionFlow.of(client(AGENT))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)

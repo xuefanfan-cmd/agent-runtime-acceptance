@@ -25,11 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * FEAT-054：能力名片（Agent Card）真实性 + 轨迹开关关闭态的外部契约。
  *
  * 覆盖两个场景：
- * 1) da.card.truthfulness —— 设计 §3.2 运行时服务面接线②「对外暴露的 skills 必须是真实可调用能力、
+ * 1) FEAT-054-A3 —— 设计 §3.2 运行时服务面接线②「对外暴露的 skills 必须是真实可调用能力、
  *    capabilities 不得夸大未激活能力」（验收出口 #10）。本类断言**结构性真实性**（字段齐全、id 唯一、
  *    不声明未启用的能力开关），并把"声明的技能是否真的可调用"作为证据记录；该判定依赖设计问题 D-04
  *    （工具集未交付阶段名片该声明什么），裁决前不断言其通过与否。
- * 2) da.otel.twostate 的**关闭态半边** —— 设计 §3.2 运行时服务面接线④「开关默认关闭、关闭后无任何
+ * 2) FEAT-054-F2 的**关闭态半边** —— 设计 §3.2 运行时服务面接线④「开关默认关闭、关闭后无任何
  *    可观测行为变化」。本类只验证"关闭态下对外接口行为与默认基线一致"；"轨迹在后端不可见"这一半
  *    需要可达的遥测后端，不在本类覆盖范围。
  *
@@ -78,8 +78,8 @@ class DaCardTruthfulnessE2EIT extends BaseManagedStackTest {
      * 属"真实可调用场景能力"，保留声明合规。本用例用**一次真实任务**把声明落到可观察行为上。
      */
     @Test
-    @Story("da.card.truthfulness: 声明的技能真实可调用")
-    @DisplayName("da.card.truthfulness/callable: 经标准入口真实调用一次并完成")
+    @Story("FEAT-054-A3: 声明的技能真实可调用")
+    @DisplayName("FEAT-054-A3/callable: 经标准入口真实调用一次并完成")
     void declaredSkillsAreCallable() {
         initClient();
         var skills = client(AGENT).getAgentCard().skills();
@@ -109,8 +109,8 @@ class DaCardTruthfulnessE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.card.truthfulness: 名片字段齐全且不夸大能力")
-    @DisplayName("da.card.truthfulness/structural: name 非空、capabilities 与配置一致")
+    @Story("FEAT-054-A3: 名片字段齐全且不夸大能力")
+    @DisplayName("FEAT-054-A3/structural: name 非空、capabilities 与配置一致")
     void cardFieldsAreStructurallyTruthful() {
         initClient();
         AgentCard card = client(AGENT).getAgentCard();
@@ -129,8 +129,8 @@ class DaCardTruthfulnessE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.card.truthfulness: skills 结构合法并记录可调用性证据")
-    @DisplayName("da.card.truthfulness/skills: skills 结构合法，逐项记录可调用性证据")
+    @Story("FEAT-054-A3: skills 结构合法并记录可调用性证据")
+    @DisplayName("FEAT-054-A3/skills: skills 结构合法，逐项记录可调用性证据")
     void declaredSkillsAreStructurallyValid() {
         initClient();
         AgentCard card = client(AGENT).getAgentCard();
@@ -150,8 +150,8 @@ class DaCardTruthfulnessE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.otel.twostate: 轨迹开关关闭时对外接口行为与基线一致")
-    @DisplayName("da.otel.twostate/off-half: 探活与能力名片行为不因轨迹开关而变")
+    @Story("FEAT-054-F2: 轨迹开关关闭时对外接口行为与基线一致")
+    @DisplayName("FEAT-054-F2/off-half: 探活与能力名片行为不因轨迹开关而变")
     void otelOffKeepsExternalBehaviourUnchanged() throws Exception {
         initClient();
         HttpResponse<String> health = get("/health");

@@ -83,7 +83,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
             "/agent/run | {\"sessionId\":\"sess-matrix\",\"input\":\"\"} | 400",
             "/agent/run | {not-json | 400",
     })
-    @Story("da.compat.errors: 入体畸形矩阵（400 且不得 500）")
+    @Story("FEAT-054-D11: 入体畸形矩阵（400 且不得 500）")
     @DisplayName("参数矩阵：run-stream/run 畸形入体 → 400，错误体同源")
     void malformedBodiesAreRejectedNotCrashing(String path, String body, int expected) throws Exception {
         initClient();
@@ -103,7 +103,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
             "/agent/answer/no-such-054",
             "/agent/inject/no-such-054",
     })
-    @Story("da.compat.errors: 未知 taskId 矩阵（404 且不得 500）")
+    @Story("FEAT-054-D11: 未知 taskId 矩阵（404 且不得 500）")
     @DisplayName("参数矩阵：未知 taskId → 404")
     void unknownTaskIdAlwaysNotFound(String path) throws Exception {
         initClient();
@@ -119,7 +119,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
     /** GET 型端点（status）的未知 taskId：同样 404，且方法不匹配不得 405。 */
     @ParameterizedTest(name = "[{index}] {0} → 404")
     @ValueSource(strings = {"/agent/status/no-such-054"})
-    @Story("da.compat.errors: 未知 taskId 矩阵（GET 型端点）")
+    @Story("FEAT-054-D11: 未知 taskId 矩阵（GET 型端点）")
     @DisplayName("参数矩阵：未知 taskId（GET status）→ 404")
     void unknownTaskIdOnGetEndpoints(String path) throws Exception {
         initClient();
@@ -132,7 +132,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
     /** 会话隔离（IDOR）扩展：cancel/answer/inject 用"异属主"会话访问真实任务必须 404。 */
     @ParameterizedTest(name = "[{index}] {0} 异属主 → 404")
     @ValueSource(strings = {"/agent/cancel/", "/agent/answer/", "/agent/inject/"})
-    @Story("da.compat.owner-binding: 全端点异属主访问被拒（IDOR 扩展）")
+    @Story("FEAT-054-E2: 全端点异属主访问被拒（IDOR 扩展）")
     @DisplayName("参数矩阵：控制面全端点异属主 → 404")
     void crossOwnerAccessIsDeniedOnAllControlEndpoints(String prefix) throws Exception {
         initClient();
@@ -156,7 +156,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
 
     /** GET 型端点（status）的异属主访问同样必须 404。 */
     @Test
-    @Story("da.compat.owner-binding: status 异属主被拒")
+    @Story("FEAT-054-E2: status 异属主被拒")
     @DisplayName("参数矩阵：/agent/status 异属主 → 404")
     void crossOwnerAccessIsDeniedOnStatusEndpoint() throws Exception {
         initClient();
@@ -189,7 +189,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
             "PUT | /agent/status/no-such-054",
             "PUT | /agent/run-stream",
     })
-    @Story("da.compat.errors: 方法不匹配 → 405/404 且不得 5xx")
+    @Story("FEAT-054-D11: 方法不匹配 → 405/404 且不得 5xx")
     @DisplayName("参数矩阵：方法不匹配（PUT/DELETE）→ 405 或 404")
     void methodMismatchDoesNotCrash(String method, String path) throws Exception {
         initClient();
@@ -207,7 +207,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
 
     /** 未知字段容忍：合法请求带未知字段应照常受理（不得 5xx、不得因未知字段 400）。 */
     @Test
-    @Story("da.compat.errors: 未知字段容忍")
+    @Story("FEAT-054-D11: 未知字段容忍")
     @DisplayName("参数矩阵：合法入体 + 未知字段 → 照常受理（非 5xx、非 400）")
     void unknownFieldsAreTolerated() throws Exception {
         initClient();
@@ -224,7 +224,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
 
     /** 穿越型 sessionId 与畸形 id：不得 5xx；状态/任务查询不得泄露其它会话数据。 */
     @Test
-    @Story("da.compat.errors: 穿越/畸形标识不得 5xx")
+    @Story("FEAT-054-D11: 穿越/畸形标识不得 5xx")
     @DisplayName("参数矩阵：穿越字符与超长 id → 非 5xx，且不回显系统文件")
     void traversalAndOversizedIdsNeverCrash() throws Exception {
         initClient();
@@ -260,7 +260,7 @@ class DaCompatParamMatrixE2EIT extends BaseManagedStackTest {
             "LONG_ASCII",
             "NON_ASCII",
     })
-    @Story("da.compat.errors: 超长/非 ASCII 入体不得 5xx")
+    @Story("FEAT-054-D11: 超长/非 ASCII 入体不得 5xx")
     @DisplayName("参数矩阵：超长与非 ASCII 入体 → 非 5xx")
     void extremeInputsNeverCrash(String kind) throws Exception {
         initClient();

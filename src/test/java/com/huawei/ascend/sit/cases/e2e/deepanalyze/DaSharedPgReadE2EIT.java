@@ -38,7 +38,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 共享 PG 数据面：{@code da.data.pg-read}（2026-11-26 按 FEAT-069 修订口径翻转，
+ * FEAT-054 共享 PG 数据面：{@code FEAT-054-E3}（2026-11-26 按 FEAT-069 修订口径翻转，
  * 判据来源＝TestPlan 行（docs 检出 docs/feat-054-testplan @ aca0f54f，!377 翻转后）：
  * <em>settings/sessions/messages 零读取（语句日志断言）；session_memory 由宿主自写自读
  * （upsert 与直改回读生效）；零写入限定 messages/sessions/agent_tasks 等禁止写入表</em>。
@@ -220,8 +220,8 @@ class DaSharedPgReadE2EIT {
     }
 
     @Test
-    @Story("da.data.pg-read: 技能读面经 agent 账号读回种子技能")
-    @DisplayName("da.data.pg-read: GET /api/agents/skills* 读到共享 PG 里的技能，未命中 404")
+    @Story("FEAT-054-E3: 技能读面经 agent 账号读回种子技能")
+    @DisplayName("FEAT-054-E3: GET /api/agents/skills* 读到共享 PG 里的技能，未命中 404")
     void skillsReadPlaneReadsSharedPg() throws Exception {
         HttpResponse<String> active = get("/api/agents/skills/active", READ_TIMEOUT);
         Allure.addAttachment("GET /api/agents/skills/active", "text/plain", active.body());
@@ -243,8 +243,8 @@ class DaSharedPgReadE2EIT {
     }
 
     @Test
-    @Story("da.data.pg-read: provider 探测走宿主自带配置面（settings 零播种）")
-    @DisplayName("da.data.pg-read: POST /api/agents/providers/{id}/test 命中宿主配置面 provider；未命中 404")
+    @Story("FEAT-054-E3: provider 探测走宿主自带配置面（settings 零播种）")
+    @DisplayName("FEAT-054-E3: POST /api/agents/providers/{id}/test 命中宿主配置面 provider；未命中 404")
     void providerProbeReadsHostConfigPlane() throws Exception {
         HttpResponse<String> probe = post("/api/agents/providers/" + PROVIDER_ID + "/test", "{}", READ_TIMEOUT);
         Allure.addAttachment("POST /api/agents/providers/{hostcfg}/test", "text/plain", probe.body());
@@ -264,8 +264,8 @@ class DaSharedPgReadE2EIT {
     }
 
     @Test
-    @Story("da.data.pg-read: session_memory 宿主自写自读（回读现读）与只读铁律收窄")
-    @DisplayName("da.data.pg-read: DA 直改记忆后任务回读生效；sessions/messages 零读零写、"
+    @Story("FEAT-054-E3: session_memory 宿主自写自读（回读现读）与只读铁律收窄")
+    @DisplayName("FEAT-054-E3: DA 直改记忆后任务回读生效；sessions/messages 零读零写、"
             + "agent_tasks/settings 零写入（语句日志＋行数双面）")
     void runReadsMemoryFreshAndNeverTouchesForbiddenTables() throws Exception {
         // DA 直改模拟：测试侧 JDBC 直改 session_memory 行（模拟 DA 侧写方对记忆的直接修改）
@@ -342,8 +342,8 @@ class DaSharedPgReadE2EIT {
     }
 
     @Test
-    @Story("da.data.pg-read: 压缩摘要 upsert 落行（session_memory 自写半边）")
-    @DisplayName("da.data.pg-read: 触发压缩后 session_memory 出现宿主自写行（压缩触发面）")
+    @Story("FEAT-054-E3: 压缩摘要 upsert 落行（session_memory 自写半边）")
+    @DisplayName("FEAT-054-E3: 触发压缩后 session_memory 出现宿主自写行（压缩触发面）")
     void sessionMemoryUpsertRowOnCompression() throws Exception {
         // 构造说明（2026-11-26）：压缩触发（context.compression_state chunk）由 core 侧上下文
         // 压缩器判定，r3 宿主未暴露 trigger-tokens 宿主侧旋钮（引擎源码 grep SessionMemoryManager/

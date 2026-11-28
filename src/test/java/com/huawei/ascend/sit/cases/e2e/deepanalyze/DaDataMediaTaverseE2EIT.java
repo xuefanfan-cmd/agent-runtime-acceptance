@@ -25,7 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.data.media-taverse}：媒体元数据读面与路径穿越防御。
+ * FEAT-054 {@code FEAT-054-E4}：媒体元数据读面与路径穿越防御。
  *
  * <p>媒体目录布局（被测实现 {@code DaMediaStore} L23）：{@code {DA_DATA_DIR}/sessions/{sessionId}/media/{mediaId}/meta.json}。
  * 本用例**自建**该目录与 meta.json（测试侧 fixture，不改业务代码），把 {@code deepanalyze.data.media-dir}
@@ -98,8 +98,8 @@ class DaDataMediaTaverseE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.data.media-taverse: 合法 mediaId 被解析并跑通")
-    @DisplayName("da.data.media-taverse: 媒体元数据读面可读 + 任务完成")
+    @Story("FEAT-054-E4: 合法 mediaId 被解析并跑通")
+    @DisplayName("FEAT-054-E4: 媒体元数据读面可读 + 任务完成")
     void existingMediaIsReadAndTaskCompletes() throws Exception {
         HttpResponse<String> response = post("/agent/run", "{\"sessionId\":\"" + sessionId
                 + "\",\"input\":\"请用一句话说明你收到了一个附件，不要调用任何工具。\","
@@ -110,8 +110,8 @@ class DaDataMediaTaverseE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.data.media-taverse: 不存在的 mediaId 被拒")
-    @DisplayName("da.data.media-taverse: 未知 mediaId → 400 媒体解析失败")
+    @Story("FEAT-054-E4: 不存在的 mediaId 被拒")
+    @DisplayName("FEAT-054-E4: 未知 mediaId → 400 媒体解析失败")
     void unknownMediaReturnsBadRequest() throws Exception {
         HttpResponse<String> response = post("/agent/run", "{\"sessionId\":\"" + sessionId
                 + "\",\"input\":\"附件说明\",\"mediaIds\":[\"no-such-media-054\"]}");
@@ -121,8 +121,8 @@ class DaDataMediaTaverseE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.data.media-taverse: 路径穿越被拒")
-    @DisplayName("da.data.media-taverse: 穿越型 mediaId → 被拒，不读媒体目录外文件")
+    @Story("FEAT-054-E4: 路径穿越被拒")
+    @DisplayName("FEAT-054-E4: 穿越型 mediaId → 被拒，不读媒体目录外文件")
     void traversalMediaIdIsRejected() throws Exception {
         HttpResponse<String> response = post("/agent/run", "{\"sessionId\":\"" + sessionId
                 + "\",\"input\":\"附件说明\",\"mediaIds\":[\"..%2F..%2Fetc%2Fpasswd\",\"../../etc/passwd\"]}");
@@ -134,7 +134,7 @@ class DaDataMediaTaverseE2EIT extends BaseManagedStackTest {
     }
 
     /**
-     * {@code da.file.whitelist} 的**ISSUE #367 修复后回归（2026-09-23 由降级恢复为真执行）**。
+     * {@code FEAT-054-F5} 的**ISSUE #367 修复后回归（2026-09-23 由降级恢复为真执行）**。
      *
      * <p>历史：上一轮该用例的 PASS 作废（拒绝发生在媒体解析阶段、未触达白名单），随后以 {@code @Disabled}
      * 降级登记，升级触发条件＝"#367 修复后改回真执行并复跑"。修复 PR !672 让 DA 兼容端点的
@@ -144,8 +144,8 @@ class DaDataMediaTaverseE2EIT extends BaseManagedStackTest {
      * 白名单外扩展名（.exe），从而真正打到该复用口。
      */
     @Test
-    @Story("da.file.whitelist: 白名单外文件类型被拒（真触达校验）")
-    @DisplayName("da.file.whitelist: .exe 附件 → 400 且业务错误码 DA-FILE-003")
+    @Story("FEAT-054-F5: 白名单外文件类型被拒（真触达校验）")
+    @DisplayName("FEAT-054-F5: .exe 附件 → 400 且业务错误码 DA-FILE-003")
     void nonWhitelistedFileTypeIsRejectedWithBusinessCode() throws Exception {
         HttpResponse<String> response = post("/agent/run", "{\"sessionId\":\"" + sessionId
                 + "\",\"input\":\"附件说明\",\"mediaIds\":[\"" + blockedMediaId + "\"]}");

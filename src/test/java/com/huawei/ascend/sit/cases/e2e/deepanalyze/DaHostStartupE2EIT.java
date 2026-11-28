@@ -33,10 +33,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>对应设计 §2 验收出口 #1；逐用例判定规则见
  * {@code 01-Design_File/20260921/FEAT-054/FEAT-054-测试设计初稿.md} 的
- * {@code da.deploy.startup}。
+ * {@code FEAT-054-A1}。
  *
  * <p>刻意不断言：启动耗时阈值（只记录观测值）、能力名片各字段的语义正确性
- * （那是 {@code da.card.truthfulness} 的职责）。
+ * （那是 {@code FEAT-054-A3} 的职责）。
  */
 @Tag("e2e")
 @Tag("smoke")
@@ -56,8 +56,8 @@ class DaHostStartupE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.deploy.startup: 独立部署启动与就绪")
-    @DisplayName("da.deploy.startup: DA 宿主被拉起、探活与能力名片可达")
+    @Story("FEAT-054-A1: 独立部署启动与就绪")
+    @DisplayName("FEAT-054-A1: DA 宿主被拉起、探活与能力名片可达")
     void serviceStartsAndReportsReady() throws Exception {
         AgentCard card = client(AGENT).getAgentCard();
 

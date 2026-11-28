@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 端点是示例地址，不可达）。因此本类只覆盖"启动链路未被新增扩展破坏"这一面，
  * 更完整的启动期语义回归需要可达的 Hub 或开发侧承接，已在覆盖台账登记。
  *
- * <p>对应范围卡 §3 回归项 {@code rg.skillhub.startup}。
+ * <p>对应范围卡 §3 回归项 {@code FEAT-054-R3}。
  */
 @Tag("e2e")
 @Tag("deepanalyze")
@@ -58,8 +58,8 @@ class DaSkillHubStartupRegressionIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("rg.skillhub.startup: 启动期拉取开关打开后宿主仍可服务")
-    @DisplayName("rg.skillhub.startup/startup-with-pull-enabled: 能力名片与探活仍可用")
+    @Story("FEAT-054-R3: 启动期拉取开关打开后宿主仍可服务")
+    @DisplayName("FEAT-054-R3/startup-with-pull-enabled: 能力名片与探活仍可用")
     void hostStillServesWithStartupPullEnabled() throws Exception {
         initClient();
 

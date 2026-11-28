@@ -21,9 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * FEAT-054：DA 兼容适配层的**外部契约**（控制面与错误面），只覆盖不依赖"任务能跑通"的部分。
  *
- * <p>覆盖场景：{@code da.compat.cancel}、{@code da.compat.answer}、{@code da.compat.inject}、
- * {@code da.compat.run-sync}、{@code da.compat.status-tasks}、{@code da.compat.errors}、
- * {@code da.compat.skills-read}、{@code da.compat.providers-test}。
+ * <p>覆盖场景：{@code FEAT-054-D1}、{@code FEAT-054-D2}、{@code FEAT-054-D3}、
+ * {@code FEAT-054-D4}、{@code FEAT-054-D5}、{@code FEAT-054-D11}、
+ * {@code FEAT-054-D7}、{@code FEAT-054-D6}。
  *
  * <p>本类只验证"输入非法 / 任务不存在 / 数据面未配置"这些**不需要模型与工具**的路径。
  * 成功路径（真实任务闭环、取消终态组、同步执行聚合、属主绑定）依赖
@@ -57,11 +57,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         }
     }
 
-    // ---- da.compat.cancel：不存在或非运行中的任务 → 404 ----
+    // ---- FEAT-054-D1：不存在或非运行中的任务 → 404 ----
 
     @Test
-    @Story("da.compat.cancel: 取消非运行中任务返回 404")
-    @DisplayName("da.compat.cancel: POST /agent/cancel/{unknownTask} → 404 + {error}")
+    @Story("FEAT-054-D1: 取消非运行中任务返回 404")
+    @DisplayName("FEAT-054-D1: POST /agent/cancel/{unknownTask} → 404 + {error}")
     void cancelUnknownTaskReturnsNotFound() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/cancel/" + UNKNOWN_TASK, null);
@@ -70,11 +70,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         assertThat(r.body()).as("错误体应为 DA 同源的 {error} 形态").contains("error");
     }
 
-    // ---- da.compat.answer：缺参 400 / 无待答 404 ----
+    // ---- FEAT-054-D2：缺参 400 / 无待答 404 ----
 
     @Test
-    @Story("da.compat.answer: 缺 answer 返回 400")
-    @DisplayName("da.compat.answer: POST /agent/answer/{task} 空体 → 400 + {error}")
+    @Story("FEAT-054-D2: 缺 answer 返回 400")
+    @DisplayName("FEAT-054-D2: POST /agent/answer/{task} 空体 → 400 + {error}")
     void answerWithoutAnswerReturnsBadRequest() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/answer/" + UNKNOWN_TASK, "{}");
@@ -84,8 +84,8 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.compat.answer: 无待答问题返回 404")
-    @DisplayName("da.compat.answer: POST /agent/answer/{unknownTask} → 404 + {error}")
+    @Story("FEAT-054-D2: 无待答问题返回 404")
+    @DisplayName("FEAT-054-D2: POST /agent/answer/{unknownTask} → 404 + {error}")
     void answerUnknownTaskReturnsNotFound() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/answer/" + UNKNOWN_TASK, "{\"answer\":\"x\"}");
@@ -94,11 +94,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         assertThat(r.body()).contains("error");
     }
 
-    // ---- da.compat.inject：缺参 400 / 任务不存在 404 ----
+    // ---- FEAT-054-D3：缺参 400 / 任务不存在 404 ----
 
     @Test
-    @Story("da.compat.inject: 缺 message 返回 400")
-    @DisplayName("da.compat.inject: POST /agent/inject/{task} 空体 → 400 + {error}")
+    @Story("FEAT-054-D3: 缺 message 返回 400")
+    @DisplayName("FEAT-054-D3: POST /agent/inject/{task} 空体 → 400 + {error}")
     void injectWithoutMessageReturnsBadRequest() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/inject/" + UNKNOWN_TASK, "{}");
@@ -108,8 +108,8 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.compat.inject: 任务不存在返回 404")
-    @DisplayName("da.compat.inject: POST /agent/inject/{unknownTask} → 404 + {error}")
+    @Story("FEAT-054-D3: 任务不存在返回 404")
+    @DisplayName("FEAT-054-D3: POST /agent/inject/{unknownTask} → 404 + {error}")
     void injectUnknownTaskReturnsNotFound() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/inject/" + UNKNOWN_TASK, "{\"message\":\"x\"}");
@@ -118,11 +118,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         assertThat(r.body()).contains("error");
     }
 
-    // ---- da.compat.run-sync：缺参 400 ----
+    // ---- FEAT-054-D4：缺参 400 ----
 
     @Test
-    @Story("da.compat.run-sync: 缺 sessionId/input 返回 400")
-    @DisplayName("da.compat.run-sync: POST /agent/run 空体 → 400 + {error}")
+    @Story("FEAT-054-D4: 缺 sessionId/input 返回 400")
+    @DisplayName("FEAT-054-D4: POST /agent/run 空体 → 400 + {error}")
     void runSyncWithoutParamsReturnsBadRequest() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/run", "{}");
@@ -131,11 +131,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         assertThat(r.body()).contains("error");
     }
 
-    // ---- da.compat.status-tasks：未命中 404；未知会话任务列表为空 ----
+    // ---- FEAT-054-D5：未命中 404；未知会话任务列表为空 ----
 
     @Test
-    @Story("da.compat.status-tasks: 状态查询未命中返回 404")
-    @DisplayName("da.compat.status-tasks: GET /agent/status/{unknownTask} → 404 + {error}")
+    @Story("FEAT-054-D5: 状态查询未命中返回 404")
+    @DisplayName("FEAT-054-D5: GET /agent/status/{unknownTask} → 404 + {error}")
     void statusUnknownTaskReturnsNotFound() throws Exception {
         initClient();
         HttpResponse<String> r = get("/agent/status/" + UNKNOWN_TASK);
@@ -145,8 +145,8 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.compat.status-tasks: 未知会话任务列表为空数组且不泄露存在性")
-    @DisplayName("da.compat.status-tasks: GET /agent/tasks/{unknownSession} → 200 + []")
+    @Story("FEAT-054-D5: 未知会话任务列表为空数组且不泄露存在性")
+    @DisplayName("FEAT-054-D5: GET /agent/tasks/{unknownSession} → 200 + []")
     void taskListForUnknownSessionIsEmpty() throws Exception {
         initClient();
         HttpResponse<String> r = get("/agent/tasks/" + UNKNOWN_SESSION);
@@ -157,11 +157,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
                 .isEqualTo("[]");
     }
 
-    // ---- da.compat.errors：run-stream 入口参数校验（DA 同源 400）----
+    // ---- FEAT-054-D11：run-stream 入口参数校验（DA 同源 400）----
 
     @Test
-    @Story("da.compat.errors: 流式执行缺 sessionId 返回 400")
-    @DisplayName("da.compat.errors: POST /agent/run-stream 缺 sessionId → 400 + {error}")
+    @Story("FEAT-054-D11: 流式执行缺 sessionId 返回 400")
+    @DisplayName("FEAT-054-D11: POST /agent/run-stream 缺 sessionId → 400 + {error}")
     void runStreamWithoutSessionIdReturnsBadRequest() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/run-stream", "{\"input\":\"hello\"}");
@@ -171,8 +171,8 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.compat.errors: 流式执行 input 与 mediaIds 均为空返回 400")
-    @DisplayName("da.compat.errors: POST /agent/run-stream 空输入 → 400 + {error}")
+    @Story("FEAT-054-D11: 流式执行 input 与 mediaIds 均为空返回 400")
+    @DisplayName("FEAT-054-D11: POST /agent/run-stream 空输入 → 400 + {error}")
     void runStreamWithEmptyInputReturnsBadRequest() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/run-stream", "{\"sessionId\":\"s-054\",\"input\":\"\"}");
@@ -181,11 +181,11 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
         assertThat(r.body()).contains("error");
     }
 
-    // ---- da.compat.skills-read / providers-test：数据面未配置 → 503 ----
+    // ---- FEAT-054-D7 / providers-test：数据面未配置 → 503 ----
 
     @Test
-    @Story("da.compat.skills-read: 数据面未配置返回 503")
-    @DisplayName("da.compat.skills-read: GET /agent/skills → 503（数据面未配置）")
+    @Story("FEAT-054-D7: 数据面未配置返回 503")
+    @DisplayName("FEAT-054-D7: GET /agent/skills → 503（数据面未配置）")
     void skillsListWithoutDataPlaneReturnsServiceUnavailable() throws Exception {
         initClient();
         HttpResponse<String> r = get("/agent/skills");
@@ -197,8 +197,8 @@ class DaCompatControlContractE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.compat.providers-test: 数据面未配置返回 503")
-    @DisplayName("da.compat.providers-test: POST /agent/providers/{id}/test → 503（数据面未配置）")
+    @Story("FEAT-054-D6: 数据面未配置返回 503")
+    @DisplayName("FEAT-054-D6: POST /agent/providers/{id}/test → 503（数据面未配置）")
     void providerTestWithoutDataPlaneReturnsServiceUnavailable() throws Exception {
         initClient();
         HttpResponse<String> r = post("/agent/providers/any-provider/test", "{}");

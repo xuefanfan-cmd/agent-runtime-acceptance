@@ -19,7 +19,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.otel.twostate} 的**开启态半边**：轨迹装配开启后，运行轨迹真实落盘且可外部观察。
+ * FEAT-054 {@code FEAT-054-F2} 的**开启态半边**：轨迹装配开启后，运行轨迹真实落盘且可外部观察。
  *
  * <p>关键发现（2026-09-22 取数）：runtime-ext 的轨迹子系统把运行记录写进 **Redis**
  * （`RedisTrajectoryStore`，键前缀 `runtime:run:` / `runtime:run-idx:*` / `runtime:audit:*`），
@@ -64,8 +64,8 @@ class DaTrajectoryEnabledE2EIT extends BaseManagedStackTest {
     }
 
     @Test
-    @Story("da.otel.twostate: 轨迹装配开启后运行记录落盘可观察")
-    @DisplayName("da.otel.twostate/enabled: 开启轨迹装配 → 任务跑通且 Redis 出现 runtime:run 轨迹键")
+    @Story("FEAT-054-F2: 轨迹装配开启后运行记录落盘可观察")
+    @DisplayName("FEAT-054-F2/enabled: 开启轨迹装配 → 任务跑通且 Redis 出现 runtime:run 轨迹键")
     void trajectoryIsPersistedWhenEnabled() throws Exception {
         InteractionFlow.of(client(AGENT))
                 .withTimeoutMs(config.getPollTimeoutSeconds() * 1000L)

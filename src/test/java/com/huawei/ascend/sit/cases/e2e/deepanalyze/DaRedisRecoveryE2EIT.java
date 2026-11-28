@@ -27,7 +27,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * FEAT-054 {@code da.redis.recovery}：配置 Redis 后任务状态跨进程重启可恢复。
+ * FEAT-054 {@code FEAT-054-F1}：配置 Redis 后任务状态跨进程重启可恢复。
  *
  * <p>**编排方式**：框架 `SutStack` 无单实例 stop/restart API（取数：`SutStack` 仅暴露
  * `managedInstance(name)` 与 `close()`，L275/L397），经用户 2026-09-22 同意，本类**自建进程编排**：
@@ -50,8 +50,8 @@ class DaRedisRecoveryE2EIT {
     private Process sut;
 
     @Test
-    @Story("da.redis.recovery: 任务状态跨进程重启从 Redis 恢复")
-    @DisplayName("da.redis.recovery: 跑任务 → 杀进程 → 同 Redis 重启 → 状态仍在（Redis 键/任务可查）")
+    @Story("FEAT-054-F1: 任务状态跨进程重启从 Redis 恢复")
+    @DisplayName("FEAT-054-F1: 跑任务 → 杀进程 → 同 Redis 重启 → 状态仍在（Redis 键/任务可查）")
     void taskStateSurvivesProcessRestart() throws Exception {
         Path jar = resolveArtifact();
         assertThat(Files.isReadable(jar)).as("发布制品必须可读: " + jar).isTrue();
@@ -94,7 +94,7 @@ class DaRedisRecoveryE2EIT {
             List<String> after = probe.keys("a2a:task:*");
             Allure.addAttachment("重启后 Redis 任务键", "text/plain", after.toString());
             assertThat(after)
-                    .as("重启后任务状态必须仍在 Redis 中（跨进程可恢复），否则 da.redis.recovery 不成立")
+                    .as("重启后任务状态必须仍在 Redis 中（跨进程可恢复），否则 FEAT-054-F1 不成立")
                     .containsAll(before);
         } finally {
             if (sut != null) {

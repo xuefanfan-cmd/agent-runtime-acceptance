@@ -133,7 +133,22 @@ class DaConcurrentStreamDiagnosisE2EIT extends DaCompatStreamTestBase {
                     List<Frame> frames = reader.awaitFinish(Duration.ofSeconds(120));
                     reader.close();
                     List<String> events = frames.stream().filter(f -> !f.heartbeat()).map(Frame::event).toList();
-                    return "status=200,hasDone=" + events.contains("done") + ",events=" + events;
+                    // FEAT-054-C5 正向隔离判据（docs !377 r2）：各流 seq 独立递增、无跨任务事件混入（每流 taskId 归属一致）
+                    List<String> ids = frames.stream().filter(f -> !f.heartbeat()).map(Frame::id)
+                            .filter(id -> id != null && id.contains("-")).toList();
+                    java.util.Set<String> taskIds = ids.stream()
+                            .map(id -> id.substring(0, id.lastIndexOf('-'))).collect(java.util.stream.Collectors.toSet());
+                    List<Integer> seqs = ids.stream().map(id -> {
+                        try { return Integer.parseInt(id.substring(id.lastIndexOf('-') + 1)); }
+                        catch (NumberFormatException nfe) { return -1; }
+                    }).filter(s -> s >= 0).toList();
+                    boolean seqMonotonic = true;
+                    for (int k = 1; k < seqs.size(); k++) {
+                        if (seqs.get(k) <= seqs.get(k - 1)) { seqMonotonic = false; break; }
+                    }
+                    boolean mixed = taskIds.size() > 1;
+                    return "status=200,hasDone=" + events.contains("done") + ",mixed=" + mixed
+                            + ",seqMonotonic=" + seqMonotonic + ",taskIds=" + taskIds + ",events=" + events;
                 } catch (Exception failure) {
                     return "EX:" + failure.getClass().getSimpleName() + ":" + failure.getMessage();
                 }
@@ -147,6 +162,13 @@ class DaConcurrentStreamDiagnosisE2EIT extends DaCompatStreamTestBase {
         assertThat(results)
                 .as("ISSUE #386 关闭判据：同会话并发流式不得出现 5xx（泵中断必须优雅关流，不得收成 500）")
                 .allSatisfy(result -> assertThat(result).contains("status=200"));
+        // FEAT-054-C5 正向隔离断言（docs !377 r2 新增）：无跨任务事件混入 + 各流 seq 独立递增
+        assertThat(results)
+                .as("FEAT-054-C5 正向隔离：每流事件 taskId 归属一致，无跨任务事件混入")
+                .allSatisfy(result -> assertThat(result).contains("mixed=false"));
+        assertThat(results)
+                .as("FEAT-054-C5 正向隔离：各流 seq 独立递增（单调不回退）")
+                .allSatisfy(result -> assertThat(result).contains("seqMonotonic=true"));
     }
 
     private void runGroup(int count, boolean sameSession) throws Exception {
